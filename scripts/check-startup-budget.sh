@@ -49,9 +49,39 @@ regression_tolerance=1.15
 # A window that reappears the moment it is closed looks like a bug in Panefile
 # rather than a benchmark in progress. Offscreen still performs a real
 # paintEvent, which is what is being measured.
+# Each launch is bounded. A benchmark that runs the application twenty-three
+# times has twenty-three chances to meet a binary that never exits — a missing
+# display, a stalled plugin, a deadlock in the code being measured — and without
+# a timeout the whole job hangs rather than failing. One CI run sat for
+# twenty-four minutes before it was cancelled, which is how this got written.
+#
+# `timeout` is GNU coreutils and is absent on macOS, so the launch is backgrounded
+# and reaped by hand.
+launch_timeout_seconds=20
+
 measure_once() {
-    QT_QPA_PLATFORM=offscreen "$binary" --startup-trace --quit-after-paint "$fixture" 2>&1 \
-        | awk '/first-paint/ { print $3 }'
+    local output_file
+    output_file="$(mktemp)"
+
+    QT_QPA_PLATFORM=offscreen "$binary" --startup-trace --quit-after-paint "$fixture" \
+        >"$output_file" 2>&1 &
+    local pid=$!
+
+    local waited=0
+    while kill -0 "$pid" 2>/dev/null; do
+        if (( waited >= launch_timeout_seconds * 10 )); then
+            kill -9 "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+            rm -f "$output_file"
+            return 1
+        fi
+        sleep 0.1
+        ((waited++))
+    done
+    wait "$pid" 2>/dev/null || true
+
+    awk '/first-paint/ { print $3 }' "$output_file"
+    rm -f "$output_file"
 }
 
 for ((i = 0; i < warmups; ++i)); do
@@ -59,18 +89,31 @@ for ((i = 0; i < warmups; ++i)); do
 done
 
 samples=()
+failures=0
 for ((i = 0; i < runs; ++i)); do
     sample="$(measure_once || true)"
     if [[ -n "$sample" ]]; then
         samples+=("$sample")
+    else
+        ((failures++))
+        # Give up early rather than spending twenty timeouts proving the same
+        # point. Three in a row means the binary is not going to start.
+        if (( failures >= 3 && ${#samples[@]} == 0 )); then
+            break
+        fi
     fi
 done
 
 if (( ${#samples[@]} == 0 )); then
-    echo "check-startup-budget: the binary produced no first-paint measurement." >&2
+    echo "check-startup-budget: the binary produced no first-paint measurement" \
+         "in $failures attempts (each capped at ${launch_timeout_seconds}s)." >&2
     echo "Run it by hand to see why:" >&2
-    echo "  $binary --startup-trace --quit-after-paint $fixture" >&2
+    echo "  QT_QPA_PLATFORM=offscreen $binary --startup-trace --quit-after-paint $fixture" >&2
     exit 1
+fi
+
+if (( failures > 0 )); then
+    echo "check-startup-budget: $failures of $runs launches timed out or produced nothing" >&2
 fi
 
 # The median, not the mean: a single scheduling hiccup in twenty runs should not

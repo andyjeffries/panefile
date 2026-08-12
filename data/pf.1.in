@@ -1,0 +1,125 @@
+.TH PF 1 "2026" "Panefile @PROJECT_VERSION@" "User Commands"
+.SH NAME
+pf \- keyboard-driven, multi-panel file manager
+.SH SYNOPSIS
+.B pf
+[\fIOPTIONS\fR] [\fIPATH\fR...]
+.SH DESCRIPTION
+.B Panefile
+is a file manager for Wayland in which one window contains any number of
+independent directory panels side by side. Each panel keeps its own working
+directory, cursor, history, sort order and filter. Panels are created, split,
+closed and cycled with single keystrokes, and files are copied between them
+without opening a second window.
+.PP
+Every action is reachable from the keyboard. The mouse is supported but never
+required.
+.SH ARGUMENTS
+.TP
+.I PATH
+A file or directory, absolute or relative, or a
+.B file://
+URI. Relative paths resolve against the working directory of the calling
+shell, not that of any already-running instance. A path naming a file
+navigates to its parent directory and places the cursor on the file.
+.PP
+Where a path opens depends on whether a Panefile window already has focus: if
+it does, the focused panel navigates there; if it does not, the path opens in a
+new panel and the window is raised. With several paths, the first follows that
+rule and the rest each open a new panel.
+.SH OPTIONS
+.SS Placement
+.TP
+.B \-\-here
+Use the focused panel even when the window is not focused.
+.TP
+.B \-\-panel
+Always open a new panel, even when the window is focused.
+.TP
+.B \-\-new\-window
+Open a new window in the existing process.
+.TP
+.B \-\-new\-instance
+Start a separate process, ignoring any running instance.
+.SS Diagnostics
+.TP
+.B \-\-startup\-trace
+Print the timing of each startup phase to standard error.
+.TP
+.B \-\-quit\-after\-paint
+Exit as soon as the first frame has been painted. Intended for benchmarking.
+.TP
+.BI \-\-benchmark " DIR"
+Scan
+.I DIR
+, print timings, and exit.
+.TP
+.B \-\-verbose
+Enable
+.B panefile.*
+debug logging.
+.SS Information
+.TP
+.B \-\-config\-dir
+Print the configuration directory and exit.
+.TP
+.B \-\-print\-default\-config
+Print the default
+.B config.toml
+and exit. Redirect it into the configuration directory to start from a
+complete, commented template.
+.TP
+.BR \-h ", " \-\-help
+Print a usage summary and exit.
+.TP
+.BR \-v ", " \-\-version
+Print the version and exit.
+.SH FILES
+.TP
+.I ~/.config/panefile/config.toml
+Behaviour settings.
+.TP
+.I ~/.config/panefile/hotkeys.toml
+Key bindings. Every action may have any number of bindings, and a binding
+containing spaces is a sequence of chords pressed in order.
+.TP
+.I ~/.config/panefile/theme.toml
+Active theme name, or inline colour overrides.
+.TP
+.I ~/.config/panefile/themes/
+User themes. Bundled themes live in
+.IR @CMAKE_INSTALL_FULL_DATADIR@/panefile/themes/ .
+.TP
+.I ~/.local/share/panefile/
+Pinned directories, session state and window geometry. Panefile never writes
+to the configuration directory.
+.PP
+On macOS these live under
+.I ~/Library/Application Support/panefile/
+instead, and the cache under
+.IR ~/Library/Caches/panefile/ .
+All of them honour the
+.BR PANEFILE_CONFIG_DIR ", " PANEFILE_STATE_DIR " and " PANEFILE_CACHE_DIR
+environment variables.
+.SH ENVIRONMENT
+.TP
+.B EDITOR
+Editor launched by
+.BR e " and " E .
+Falls back to
+.BR VISUAL ", then " nano .
+.TP
+.B TERMINAL
+Terminal emulator launched by
+.BR T .
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 2
+A path argument did not exist, or an option was not recognised.
+.SH SEE ALSO
+.BR xdg-open (1)
+.PP
+Full documentation: @PROJECT_HOMEPAGE_URL@

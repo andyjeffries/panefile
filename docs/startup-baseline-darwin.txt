@@ -1,0 +1,6 @@
+# Mean process lifetime in ms for: pf --quit-after-paint $HOME
+# Measured with hyperfine --warmup 3 --runs 20, Release build.
+# macOS 26.3, Apple silicon, Qt 6.10.2. Recorded at M0 (empty window).
+# This is a relative baseline: see docs/startup-budget.md for why macOS is
+# not held to the 80 ms absolute target of §11.
+236.1

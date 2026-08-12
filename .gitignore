@@ -1,0 +1,11 @@
+build/
+compile_commands.json
+.cache/
+.ccls-cache/
+
+# Editor and OS noise
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/

@@ -1,0 +1,14 @@
+// Generated from Version.h.in — do not edit the generated copy.
+#pragma once
+
+#define PF_VERSION        "@PROJECT_VERSION@"
+#define PF_VERSION_MAJOR  @PROJECT_VERSION_MAJOR@
+#define PF_VERSION_MINOR  @PROJECT_VERSION_MINOR@
+#define PF_VERSION_PATCH  @PROJECT_VERSION_PATCH@
+
+#define PF_APPLICATION_NAME     "panefile"
+#define PF_APPLICATION_DISPLAY  "Panefile"
+#define PF_ORGANIZATION_DOMAIN  "panefile.org"
+#define PF_HOMEPAGE_URL         "@PROJECT_HOMEPAGE_URL@"
+#define PF_INSTALL_PREFIX       "@CMAKE_INSTALL_PREFIX@"
+#define PF_INSTALL_DATADIR      "@CMAKE_INSTALL_FULL_DATADIR@/@PF_APPLICATION_NAME_LC@"

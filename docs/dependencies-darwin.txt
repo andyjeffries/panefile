@@ -1,0 +1,15 @@
+# Dynamic dependencies of the pf binary on macOS.
+# Regenerate: scripts/check-dependencies.sh build/release/bin/pf.app/Contents/MacOS/pf > docs/dependencies-darwin.txt
+# See §3.4: every optional feature must arrive as a plugin, not a DT_NEEDED entry.
+AppKit
+DiskArbitration
+ImageIO
+IOKit
+libc++.dylib
+libSystem.B.dylib
+Metal
+OpenGL
+QtCore
+QtGui
+QtWidgets
+UniformTypeIdentifiers

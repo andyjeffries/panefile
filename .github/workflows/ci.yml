@@ -1,0 +1,164 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Arch is the primary target and the only job that enforces the §11 startup
+  # budget, since that budget is a Linux acceptance criterion.
+  arch:
+    name: Arch (GCC, Release)
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm --needed \
+            git cmake ninja clang \
+            qt6-base qt6-multimedia qt6-pdf \
+            libarchive ksyntax-highlighting ffmpegthumbnailer poppler-qt6 \
+            shared-mime-info hicolor-icon-theme desktop-file-utils \
+            hyperfine xorg-server-xvfb
+
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake --preset release -DPF_WARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        run: cmake --build --preset release
+
+      - name: Test
+        run: ctest --preset release
+
+      - name: Check dynamic dependencies
+        run: scripts/check-dependencies.sh build/release/bin/pf docs/dependencies-linux.txt
+
+      - name: Startup budget
+        run: scripts/check-startup-budget.sh build/release/bin/pf
+
+  ubuntu:
+    name: Ubuntu 24.04 (${{ matrix.compiler }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: gcc-14
+            cc: gcc-14
+            cxx: g++-14
+          - compiler: clang-18
+            cc: clang-18
+            cxx: clang++-18
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build ${{ matrix.compiler }} \
+            qt6-base-dev qt6-base-dev-tools libqt6svg6-dev \
+            libarchive-dev libkf6syntaxhighlighting-dev \
+            libffmpegthumbnailer-dev libpoppler-qt6-dev \
+            shared-mime-info desktop-file-utils
+
+      - name: Configure
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: cmake --preset dev
+
+      - name: Build
+        run: cmake --build --preset dev
+
+      - name: Test
+        run: ctest --preset dev
+
+  # macOS is a supported target, not a development convenience, so it runs the
+  # same suite. It is also the only job that exercises the FSEvents and
+  # DiskArbitration implementations of the platform seam.
+  macos:
+    name: macOS (AppleClang)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: brew install qt cmake ninja libarchive ffmpegthumbnailer poppler-qt6
+
+      - name: Configure
+        run: cmake --preset dev -DPF_WARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        run: cmake --build --preset dev
+
+      - name: Test
+        run: ctest --preset dev
+
+  sanitizers:
+    name: ASan + UBSan
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build clang-18 qt6-base-dev qt6-base-dev-tools libarchive-dev
+
+      - name: Configure
+        env:
+          CC: clang-18
+          CXX: clang++-18
+        run: cmake --preset asan
+
+      - name: Build
+        run: cmake --build --preset asan
+
+      # §14: any leak in a job or the scanner is a bug, not a tolerated warning.
+      - name: Test
+        env:
+          ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ctest --preset asan
+
+  lint:
+    name: clang-format + clang-tidy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build clang-18 clang-format-18 clang-tidy-18 \
+            qt6-base-dev qt6-base-dev-tools libarchive-dev
+
+      - name: Check formatting
+        run: |
+          find src tests -name '*.cpp' -o -name '*.h' \
+            | xargs clang-format-18 --dry-run --Werror
+
+      - name: Configure for compile_commands.json
+        env:
+          CC: clang-18
+          CXX: clang++-18
+        run: cmake --preset dev
+
+      - name: Build generated sources
+        run: cmake --build --preset dev --target pf_core pf_platform pf_config
+
+      - name: clang-tidy
+        run: |
+          find src -name '*.cpp' \
+            | xargs clang-tidy-18 -p build/dev --warnings-as-errors='*'

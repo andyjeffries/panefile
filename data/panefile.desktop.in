@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Panefile
+GenericName=File Manager
+Comment=Keyboard-driven, multi-panel file manager
+Exec=@PF_DESKTOP_EXEC@ %U
+Icon=panefile
+Terminal=false
+Categories=Utility;Core;FileTools;FileManager;
+Keywords=file;manager;browser;explorer;folder;panel;
+MimeType=inode/directory;
+StartupNotify=true
+StartupWMClass=panefile

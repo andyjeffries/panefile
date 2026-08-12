@@ -1,0 +1,51 @@
+# §15: LLVM base, 4-space indent, 100 columns.
+---
+Language: Cpp
+BasedOnStyle: LLVM
+
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 100
+
+AccessModifierOffset: -4
+AlwaysBreakTemplateDeclarations: Yes
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterClass: true
+  AfterFunction: true
+  AfterNamespace: false
+  AfterStruct: false
+  AfterEnum: false
+  AfterControlStatement: Never
+  BeforeCatch: false
+  BeforeElse: false
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+
+FixNamespaceComments: true
+NamespaceIndentation: None
+PointerAlignment: Right
+SpaceAfterTemplateKeyword: false
+Cpp11BracedListStyle: true
+IndentPPDirectives: None
+
+# Own header first, then this project, then Qt, then the standard library.
+# Keeping Qt separate from the standard library makes an accidental heavyweight
+# Qt include in a low layer visible in review (§3.1).
+SortIncludes: CaseSensitive
+IncludeBlocks: Preserve
+IncludeCategories:
+  - Regex: '^"(app|config|core|fs|model|platform|ui)/'
+    Priority: 2
+  - Regex: '^<Q'
+    Priority: 3
+  - Regex: '^<toml\+\+/'
+    Priority: 4
+  - Regex: '^<'
+    Priority: 5
+  - Regex: '.*'
+    Priority: 1

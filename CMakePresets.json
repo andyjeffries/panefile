@@ -1,0 +1,63 @@
+{
+    "version": 6,
+    "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+    "configurePresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        },
+        {
+            "name": "dev",
+            "inherits": "base",
+            "displayName": "Development (Debug, tests, warnings as errors)",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "PF_BUILD_TESTS": "ON",
+                "PF_WARNINGS_AS_ERRORS": "ON"
+            }
+        },
+        {
+            "name": "release",
+            "inherits": "base",
+            "displayName": "Release (optimised, LTO, startup budget applies)",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "PF_BUILD_TESTS": "ON"
+            }
+        },
+        {
+            "name": "asan",
+            "inherits": "base",
+            "displayName": "AddressSanitizer + UndefinedBehaviorSanitizer (§14)",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+                "PF_BUILD_TESTS": "ON",
+                "PF_ENABLE_ASAN": "ON"
+            }
+        }
+    ],
+    "buildPresets": [
+        { "name": "dev", "configurePreset": "dev" },
+        { "name": "release", "configurePreset": "release" },
+        { "name": "asan", "configurePreset": "asan" }
+    ],
+    "testPresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "output": { "outputOnFailure": true },
+            "execution": { "noTestsAction": "error", "stopOnFailure": false },
+            "environment": {
+                "QT_QPA_PLATFORM": "offscreen"
+            }
+        },
+        { "name": "dev", "inherits": "base", "configurePreset": "dev" },
+        { "name": "release", "inherits": "base", "configurePreset": "release" },
+        { "name": "asan", "inherits": "base", "configurePreset": "asan" }
+    ]
+}

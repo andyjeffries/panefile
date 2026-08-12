@@ -11,11 +11,18 @@ namespace {
 
 constexpr int kPhaseCount = static_cast<int>(StartupPhase::Count);
 
-struct TraceState {
+/// -1 marks a phase as not reached, which has to be distinguishable from a
+/// phase that was reached at time zero.
+constexpr std::array<qint64, kPhaseCount> makeUnreachedStamps()
+{
     std::array<qint64, kPhaseCount> stamps{};
-    bool reportingEnabled = false;
+    stamps.fill(-1);
+    return stamps;
+}
 
-    TraceState() { stamps.fill(-1); }
+struct TraceState {
+    std::array<qint64, kPhaseCount> stamps = makeUnreachedStamps();
+    bool reportingEnabled = false;
 };
 
 // Function-local static: constructed on first mark(), never at load time (§3.4).

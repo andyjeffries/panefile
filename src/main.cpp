@@ -20,14 +20,13 @@
 
 namespace {
 
-int writeLine(FILE *stream, const QString &text)
+void writeLine(FILE *stream, const QString &text)
 {
     QTextStream out(stream);
     out << text;
     if (!text.endsWith(QLatin1Char('\n'))) {
         out << '\n';
     }
-    return 0;
 }
 
 /// Handles the arguments that print something and exit. None of them construct
@@ -39,17 +38,24 @@ int handleEarlyExit(const pf::CommandLineOptions &options)
 {
     using pf::CommandLineAction;
 
+    // Selecting the text first, then writing it once, rather than a write per
+    // branch: the branches differ only in which string they produce, and saying
+    // so directly is both shorter and honest about what varies.
+    QString output;
     switch (options.action) {
     case CommandLineAction::ShowHelp:
-        return writeLine(stdout, pf::helpText());
+        output = pf::helpText();
+        break;
     case CommandLineAction::ShowVersion:
-        return writeLine(stdout, pf::versionText());
+        output = pf::versionText();
+        break;
     case CommandLineAction::PrintConfigDir:
-        return writeLine(stdout, pf::platform::configDir());
+        output = pf::platform::configDir();
+        break;
     case CommandLineAction::PrintDefaultConfig:
-        return writeLine(stdout, QString::fromUtf8(pf::config::kDefaultConfigToml.data(),
-                                                   static_cast<qsizetype>(
-                                                       pf::config::kDefaultConfigToml.size())));
+        output = QString::fromUtf8(pf::config::kDefaultConfigToml.data(),
+                                   static_cast<qsizetype>(pf::config::kDefaultConfigToml.size()));
+        break;
     case CommandLineAction::Error:
         writeLine(stderr, QStringLiteral("pf: ") + options.message);
         return options.exitCode;
@@ -57,7 +63,9 @@ int handleEarlyExit(const pf::CommandLineOptions &options)
     case CommandLineAction::Benchmark:
         return -1;
     }
-    return -1;
+
+    writeLine(stdout, output);
+    return 0;
 }
 
 } // namespace

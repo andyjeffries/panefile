@@ -27,7 +27,7 @@ QString envOverride(const char *name)
 
 QString envDir(const char *name)
 {
-    const QString value = envOverride(name);
+    QString value = envOverride(name);
     // The XDG spec says a relative value must be ignored, not resolved.
     if (value.isEmpty() || !QDir::isAbsolutePath(value)) {
         return {};

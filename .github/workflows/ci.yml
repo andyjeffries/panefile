@@ -48,7 +48,15 @@ jobs:
       - name: Check dynamic dependencies
         run: scripts/check-dependencies.sh build/release/bin/pf docs/dependencies-linux.txt
 
+      # Under the offscreen platform plugin: a container has no display server,
+      # and the alternative — a software X server under xvfb — would put its own
+      # variance into every measurement. Offscreen still performs a real
+      # paintEvent, so the phases this is watching for regressions are all
+      # exercised; what it omits is the compositor round trip, which is not
+      # ours to regress. The authoritative figure comes from real hardware.
       - name: Startup budget
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: scripts/check-startup-budget.sh build/release/bin/pf docs/startup-baseline-linux.txt
 
   # Compiler coverage (§15). Ubuntu 24.04 packages Qt 6.4.2 but §2 requires

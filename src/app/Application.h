@@ -47,7 +47,7 @@ private Q_SLOTS:
 private:
     void scheduleStartupTasks();
 
-    std::unique_ptr<ui::MainWindow> m_mainWindow;
+    std::unique_ptr<ui::MainWindow> m_mainWindow{};
     std::vector<std::function<void()>> m_startupTasks;
     std::size_t m_nextStartupTask = 0;
     bool m_quitAfterPaint = false;

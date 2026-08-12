@@ -22,16 +22,21 @@ Checks: >
   -misc-non-private-member-variables-in-classes,
   -misc-no-recursion,
   -misc-include-cleaner,
+  -misc-use-internal-linkage,
   modernize-*,
   -modernize-use-trailing-return-type,
   -modernize-avoid-c-arrays,
+  -modernize-use-nodiscard,
+  -modernize-macro-to-enum,
   performance-*,
+  -performance-enum-size,
   readability-*,
   -readability-identifier-length,
   -readability-magic-numbers,
   -readability-function-cognitive-complexity,
   -readability-braces-around-statements,
-  -readability-redundant-access-specifiers
+  -readability-redundant-access-specifiers,
+  -readability-non-const-parameter
 
 WarningsAsErrors: >
   bugprone-use-after-move,

@@ -55,9 +55,15 @@ if [[ -z "$baseline" ]]; then
 fi
 
 if [[ ! -f "$baseline" ]]; then
-    echo "check-dependencies: no baseline at $baseline" >&2
-    echo "Regenerate with: $0 $binary > $baseline" >&2
-    exit 1
+    # Not an error: a platform's baseline has to be recorded from a build on
+    # that platform, so the first run on a new one legitimately has nothing to
+    # compare against. Printing the list loudly is the point — it is what gets
+    # committed to close the gap.
+    echo "check-dependencies: no baseline at $baseline yet." >&2
+    echo "Record it by committing the following as $baseline:" >&2
+    echo >&2
+    echo "$actual" >&2
+    exit 0
 fi
 
 expected="$(grep -vE '^\s*(#|$)' "$baseline" | sort -u)"

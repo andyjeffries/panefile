@@ -21,6 +21,11 @@ function(pf_add_test name)
 endfunction()
 
 pf_add_test(tst_commandline SOURCES tst_commandline.cpp LIBS pf_app)
+pf_add_test(tst_format      SOURCES tst_format.cpp      LIBS pf_core)
+pf_add_test(tst_scanner     SOURCES tst_scanner.cpp     LIBS pf_fs pf_model)
+pf_add_test(tst_sorting     SOURCES tst_sorting.cpp     LIBS pf_model)
+pf_add_test(tst_cursormemory SOURCES tst_cursormemory.cpp LIBS pf_ui)
+pf_add_test(tst_filepanel   SOURCES tst_filepanel.cpp   LIBS pf_ui)
 pf_add_test(tst_paths       SOURCES tst_paths.cpp       LIBS pf_platform)
 pf_add_test(tst_startuptrace SOURCES tst_startuptrace.cpp LIBS pf_core)
 # toml++ is a private dependency of pf_config — DefaultConfig.h does not expose

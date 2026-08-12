@@ -1,6 +1,12 @@
-# Mean process lifetime in ms for: pf --quit-after-paint $HOME
-# Measured with hyperfine --warmup 3 --runs 20, Release build.
-# macOS 26.3, Apple silicon, Qt 6.10.2. Recorded at M0 (empty window).
-# This is a relative baseline: see docs/startup-budget.md for why macOS is
-# not held to the 80 ms absolute target of §11.
-236.1
+# Time to first paint, in ms, for:
+#   pf --startup-trace --quit-after-paint <fixture>
+# Median of 20 runs after 3 warmups, Release build, against the 2,200-entry
+# fixture that scripts/make-fixture.sh generates.
+#
+# macOS 26.3, Apple silicon, Qt 6.10.2. Recorded at M1.
+#
+# Roughly 170 ms of this is Qt rather than Panefile: ~77 ms constructing
+# QApplication (Cocoa plugin, NSApplication) and ~92 ms populating the font
+# database on the first QFontMetrics call. See docs/startup-budget.md for why
+# macOS is held to this relative baseline rather than to §11's 80 ms target.
+291.6

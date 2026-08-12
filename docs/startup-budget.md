@@ -21,48 +21,72 @@ recorded baseline rather than against these numbers — see below for why.
 ## Measuring
 
 ```
-pf --startup-trace --quit-after-paint ~
+pf --startup-trace --quit-after-paint <fixture>
 ```
 
 prints one line per phase of §3.4's critical path. `first-paint` is taken from a
-real `paintEvent` on the panel, not from `show()` returning, because the gap
-between those two is where compositor and driver costs actually land.
+real `paintEvent`, not from `show()` returning, because the gap between those
+two is where compositor and driver costs actually land.
 
-For a distribution rather than a single sample:
+`scripts/check-startup-budget.sh` takes the median of 20 such runs and fails the
+build on a regression of more than 15% from the committed baseline. Two details
+of how it measures were arrived at the hard way:
 
-```
-hyperfine --warmup 3 'pf --quit-after-paint <fixture>'
-```
+- **It reads `first-paint` from the trace rather than timing the process.**
+  Those were the same number until a directory scan was running at exit, at
+  which point process lifetime started including the wait for the scanner thread
+  to notice it had been cancelled. That is teardown, and §11's criterion is
+  "cold start to first painted window".
 
-CI fails the build if the mean regresses more than 15% from the committed
-baseline.
+- **It benchmarks a generated fixture, never `$HOME`.** §3.4 asks for "a
+  fixed-size fixture directory" and the reason is measurable: two consecutive
+  runs against `$HOME` here differed by 25%, wider than the threshold the check
+  exists to enforce. `scripts/make-fixture.sh` builds a deterministic 2,200-entry
+  tree with the mixture of kinds, hidden entries and symlinks that exercises the
+  scanner's branches.
 
 ## Recorded baselines
 
 ### macOS 26.3, Apple M-series, Qt 6.10.2, Release build
 
-Measured at M0 with an empty window (no panel, no scan) — the floor that later
-milestones are measured against.
+| Milestone | First paint | What changed |
+| --- | --- | --- |
+| M0 | 159 ms | Empty window |
+| M1 | 292 ms | One panel listing a 2,200-entry fixture |
+
+The M1 figure is measured against the fixture rather than `$HOME`; the two are
+not comparable, which is the point of having a fixture at all.
+
+Where M1's time goes:
 
 | Phase | Cumulative | Delta |
 | --- | --- | --- |
-| `argv` | 0.001 ms | 0.001 ms |
-| `window` | 80.4 ms | 80.4 ms |
-| `shown` | 118.5 ms | 38.1 ms |
-| `first-paint` | 159.1 ms | 40.6 ms |
+| `argv` | 0.01 ms | 0.01 ms |
+| `window` | 77 ms | 77 ms |
+| `scan-start` | 77 ms | 0.07 ms |
+| `shown` | 214 ms | 137 ms |
+| `first-paint` | 246 ms | 32 ms |
 
-The 80 ms before `window` is almost entirely `QApplication` construction:
-loading the Cocoa platform plugin, initialising `NSApplication`, and building
-the font database. The two ~40 ms steps after it are AppKit window realisation
-and the first frame going through the compositor.
+Two costs dominate, and neither is Panefile's own work:
+
+- **77 ms constructing `QApplication`** — loading the Cocoa platform plugin and
+  initialising `NSApplication`. Nothing of ours runs before it.
+- **~92 ms inside `show()`, populating Qt's font database.** Measured by forcing
+  a `QFontMetrics::height()` call before `show()` and watching the cost move.
+  M0 paid none of it because an empty window lays out no text; M1 pays it
+  because a file listing is text. It cannot be deferred — text is the product —
+  and it cannot usefully be moved to a worker thread, because there is under a
+  millisecond of GUI-thread work available to overlap it with.
+
+That leaves ~120 ms of the 292 attributable to anything we control, and the
+regression guard is what watches *that* number move.
 
 **This is why macOS is held to its own baseline rather than to §11's numbers.**
-None of that 159 ms is Panefile's own work — the same measurement on an empty
-Qt application costs the same — and none of it is under our control. What *is*
-under our control is the delta as milestones land, which is what the baseline
-comparison measures. A macOS `.app` launch is structurally more expensive than
-an ELF exec against a warm page cache, and pretending otherwise would either
-make the target meaningless on Linux or unreachable on macOS.
+A macOS `.app` launch is structurally more expensive than an ELF exec against a
+warm page cache, and most of the cost above is Qt's rather than ours. Holding
+both platforms to one absolute number would either make the target meaningless
+on Linux or unreachable on macOS. The delta as milestones land is the thing
+worth guarding, and it is what the baseline comparison measures.
 
 ### Linux
 

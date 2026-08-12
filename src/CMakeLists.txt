@@ -10,6 +10,7 @@ configure_file(core/Version.h.in "${CMAKE_CURRENT_BINARY_DIR}/core/Version.h" @O
 pf_layer_library(pf_core
     LAYER core
     SOURCES
+        core/Format.cpp
         core/Logging.cpp
         core/StartupTrace.cpp
     PUBLIC_DEPENDS Qt6::Core)
@@ -45,13 +46,57 @@ pf_layer_library(pf_config
     DEPENDS pf::tomlplusplus)
 
 # ---------------------------------------------------------------------------
+# fs — scanning, watching, jobs, trash, archives, mounts.
+# ---------------------------------------------------------------------------
+pf_layer_library(pf_fs
+    LAYER fs
+    SOURCES
+        fs/DirectoryScanner.cpp
+        fs/FsError.cpp
+    PUBLIC_DEPENDS Qt6::Core pf_core pf_platform)
+
+# ---------------------------------------------------------------------------
+# model — the directory model, its proxy, and icon resolution.
+# ---------------------------------------------------------------------------
+pf_layer_library(pf_model
+    LAYER model
+    SOURCES
+        model/DirectoryModel.cpp
+        model/FilterSortProxy.cpp
+        model/IconProvider.cpp
+    PUBLIC_DEPENDS Qt6::Core Qt6::Gui pf_core pf_platform pf_fs)
+
+# §4.3's bundled fallback icon set, embedded rather than installed: it is the
+# primary icon set on macOS, and on Linux a listing still has to paint when the
+# desktop's icon theme is missing an entry. §3.4 allows exactly this — "icons
+# that are actually needed at startup" — and nothing else.
+qt_add_resources(pf_model "fallback_icons"
+    PREFIX "/icons/fallback"
+    BASE "${PROJECT_SOURCE_DIR}/data/icons/fallback"
+    FILES
+        "${PROJECT_SOURCE_DIR}/data/icons/fallback/archive.svg"
+        "${PROJECT_SOURCE_DIR}/data/icons/fallback/code.svg"
+        "${PROJECT_SOURCE_DIR}/data/icons/fallback/executable.svg"
+        "${PROJECT_SOURCE_DIR}/data/icons/fallback/file.svg"
+        "${PROJECT_SOURCE_DIR}/data/icons/fallback/folder.svg"
+        "${PROJECT_SOURCE_DIR}/data/icons/fallback/image.svg"
+        "${PROJECT_SOURCE_DIR}/data/icons/fallback/symlink.svg"
+        "${PROJECT_SOURCE_DIR}/data/icons/fallback/text.svg")
+
+# ---------------------------------------------------------------------------
 # ui — widgets, delegates, painting.
 # ---------------------------------------------------------------------------
 pf_layer_library(pf_ui
     LAYER ui
     SOURCES
+        ui/CursorMemory.cpp
+        ui/FileItemDelegate.cpp
+        ui/FilePanel.cpp
         ui/MainWindow.cpp
-    PUBLIC_DEPENDS Qt6::Core Qt6::Gui Qt6::Widgets pf_core pf_platform pf_config)
+        ui/ThemePalette.cpp
+    PUBLIC_DEPENDS
+        Qt6::Core Qt6::Gui Qt6::Widgets
+        pf_core pf_platform pf_config pf_model)
 
 # ---------------------------------------------------------------------------
 # app — the composition root: lifecycle, session, panel controller.
@@ -66,7 +111,7 @@ pf_layer_library(pf_app
 # Public rather than private: main.cpp is handed the window through Application.
 target_link_libraries(pf_app PUBLIC pf_ui)
 
-pf_check_layering(pf_core pf_platform pf_config pf_ui pf_app)
+pf_check_layering(pf_core pf_platform pf_config pf_fs pf_model pf_ui pf_app)
 
 # ---------------------------------------------------------------------------
 # pf — the binary.

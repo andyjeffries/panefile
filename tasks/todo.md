@@ -25,17 +25,30 @@ tests, hold the startup budget and be manually usable before the next begins.
 Startup at M0 (macOS, Release, empty window): 159 ms to first paint, 12 dynamic
 dependencies. See `docs/startup-budget.md`.
 
-## M1 — One panel
+## M1 — One panel ✅
 
-- [ ] `FileEntry`, `DirectoryScanner` with cancellation and 512-entry batching
-- [ ] `DirectoryModel` over `std::vector<FileEntry>`, custom roles
-- [ ] `FilterSortProxy` — hidden filter, natural locale-aware sort
-- [ ] `FilePanel` with header and `QListView`
-- [ ] `FileItemDelegate`
-- [ ] MIME and icon resolution with a process-wide icon cache
-- [ ] `--benchmark <dir>`
-- [ ] Tests: scanner on symlinks, broken symlinks, permission-denied, 10k files;
-      natural sort ordering; size and date formatting
+- [x] `FileEntry`, `DirectoryScanner` with cancellation and 512-entry batching
+- [x] `DirectoryModel` over `std::vector<FileEntry>`, custom roles
+- [x] `FilterSortProxy` — hidden filter, natural locale-aware sort, five sort keys
+- [x] `FilePanel` with header, history, cursor memory and inline error state
+- [x] `FileItemDelegate` — colour by kind, symlink targets, struck-through broken links
+- [x] `IconProvider` with a process-wide cache and a bundled fallback icon set
+- [x] `Format` — sizes, list and footer timestamps, permission strings
+- [x] `scripts/ci-local.sh` — one command running every gate CI runs
+- [x] Benchmark fixture generator, so the startup guard measures something fixed
+- [x] Tests: scanner (symlinks, broken symlinks, permission denied, 10k files,
+      superseded scans, awkward filenames), natural sort, formatting, cursor
+      memory, and a rendered-panel GUI test
+
+Startup at M1 (macOS, Release, 2,200-entry fixture): 292 ms to first paint,
+12 dynamic dependencies. ~170 ms of that is Qt's own start-up rather than ours —
+see `docs/startup-budget.md`.
+
+Deferred to M3 with the rest of theming: the panel currently sets its colours
+through `QPalette`, which the stylesheet built in M3 replaces.
+
+Deferred to M2: `--benchmark <dir>` is parsed but not yet implemented; it wants
+the action registry to report through.
 
 ## M2 — Panels and input
 

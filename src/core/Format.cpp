@@ -19,7 +19,7 @@ QString formatSize(quint64 bytes)
         return QCoreApplication::translate("format", "%1 B").arg(bytes);
     }
 
-    double value = static_cast<double>(bytes);
+    auto value = static_cast<double>(bytes);
     std::size_t unit = 0;
     while (value >= kStep && unit + 1 < kUnits.size()) {
         value /= kStep;
@@ -93,9 +93,24 @@ QString formatPermissions(mode_t mode)
     };
 
     static constexpr std::array<Triple, 3> kTriples{{
-        {S_IRUSR, S_IWUSR, S_IXUSR, S_ISUID, 's', 'S'},
-        {S_IRGRP, S_IWGRP, S_IXGRP, S_ISGID, 's', 'S'},
-        {S_IROTH, S_IWOTH, S_IXOTH, S_ISVTX, 't', 'T'},
+        {.read = S_IRUSR,
+         .write = S_IWUSR,
+         .execute = S_IXUSR,
+         .special = S_ISUID,
+         .specialExecute = 's',
+         .specialNoExecute = 'S'},
+        {.read = S_IRGRP,
+         .write = S_IWGRP,
+         .execute = S_IXGRP,
+         .special = S_ISGID,
+         .specialExecute = 's',
+         .specialNoExecute = 'S'},
+        {.read = S_IROTH,
+         .write = S_IWOTH,
+         .execute = S_IXOTH,
+         .special = S_ISVTX,
+         .specialExecute = 't',
+         .specialNoExecute = 'T'},
     }};
 
     for (const Triple &triple : kTriples) {
@@ -113,4 +128,4 @@ QString formatPermissions(mode_t mode)
     return result;
 }
 
-}   // namespace pf
+} // namespace pf

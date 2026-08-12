@@ -36,6 +36,10 @@ public:
 
     ui::MainWindow *mainWindow() const;
 
+    /// The directory the initial panel opens at, from the path arguments or
+    /// $HOME (§10.1, §10.2). Static and pure so the routing rules are testable.
+    static QString initialPath(const CommandLineOptions &options);
+
     /// Queues work to run after the first paint, one item per event loop turn.
     /// Safe to call before the window exists; the queue drains once it does.
     void postStartupTask(std::function<void()> task);
@@ -47,7 +51,7 @@ private Q_SLOTS:
 private:
     void scheduleStartupTasks();
 
-    std::unique_ptr<ui::MainWindow> m_mainWindow{};
+    std::unique_ptr<ui::MainWindow> m_mainWindow;
     std::vector<std::function<void()>> m_startupTasks;
     std::size_t m_nextStartupTask = 0;
     bool m_quitAfterPaint = false;

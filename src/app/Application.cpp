@@ -4,8 +4,11 @@
 #include "core/Logging.h"
 #include "core/StartupTrace.h"
 #include "core/Version.h"
+#include "ui/FilePanel.h"
 #include "ui/MainWindow.h"
 
+#include <QDir>
+#include <QFileInfo>
 #include <QTimer>
 
 namespace pf {
@@ -29,6 +32,25 @@ ui::MainWindow *Application::mainWindow() const
     return m_mainWindow.get();
 }
 
+QString Application::initialPath(const CommandLineOptions &options)
+{
+    // §10.1: paths are resolved against the *client's* working directory. In a
+    // freshly started process that is simply our own, but stating it here keeps
+    // the rule in one place for when M10 adds the forwarding case, where the
+    // running instance's cwd is the wrong answer.
+    for (const QString &argument : options.paths) {
+        const QFileInfo info(QDir::current().absoluteFilePath(argument));
+        if (!info.exists()) {
+            continue;
+        }
+        // §10.2: a path naming a file navigates to its parent and puts the
+        // cursor on the file.
+        return info.isDir() ? info.absoluteFilePath() : info.absolutePath();
+    }
+
+    return QDir::homePath();
+}
+
 void Application::startUp(const CommandLineOptions &options)
 {
     m_quitAfterPaint = options.quitAfterPaint;
@@ -38,6 +60,19 @@ void Application::startUp(const CommandLineOptions &options)
 
     connect(m_mainWindow.get(), &ui::MainWindow::firstPaintCompleted, this,
             &Application::onFirstPaint);
+
+    // §3.4 step 6: start the scan before show(). It runs on a worker thread, so
+    // dispatching it first means the enumeration overlaps with window
+    // realisation instead of starting after it.
+    m_mainWindow->activePanel()->navigateTo(initialPath(options));
+    StartupTrace::mark(StartupPhase::ScanStarted);
+
+    if (!options.paths.isEmpty()) {
+        const QFileInfo info(QDir::current().absoluteFilePath(options.paths.constFirst()));
+        if (info.exists() && !info.isDir()) {
+            m_mainWindow->activePanel()->setCursorName(info.fileName());
+        }
+    }
 
     m_mainWindow->show();
     StartupTrace::mark(StartupPhase::Shown);

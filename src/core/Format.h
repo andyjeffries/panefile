@@ -31,4 +31,4 @@ QString formatFullTime(const QDateTime &when);
 /// Unix permission string, e.g. "-rw-r--r--" or "drwxr-xr-x".
 QString formatPermissions(mode_t mode);
 
-}   // namespace pf
+} // namespace pf

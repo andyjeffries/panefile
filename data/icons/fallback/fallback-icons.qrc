@@ -1,0 +1,24 @@
+<!--
+  The bundled fallback icon set of §4.3.
+
+  Embedded rather than installed because it has to be available before anything
+  is installed, and because it is the *primary* set on macOS, which has no
+  freedesktop icon theme at all. §3.4 rules out qrc blobs "beyond icons that are
+  actually needed at startup" — these are exactly that: a directory listing
+  cannot paint its first row without them.
+
+  Eight monochrome glyphs, tinted at load time to the entry's colour, rather
+  than eight colour variants of each.
+-->
+<RCC>
+    <qresource prefix="/icons/fallback">
+        <file>archive.svg</file>
+        <file>code.svg</file>
+        <file>executable.svg</file>
+        <file>file.svg</file>
+        <file>folder.svg</file>
+        <file>image.svg</file>
+        <file>symlink.svg</file>
+        <file>text.svg</file>
+    </qresource>
+</RCC>

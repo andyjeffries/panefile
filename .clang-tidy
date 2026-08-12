@@ -36,7 +36,8 @@ Checks: >
   -readability-function-cognitive-complexity,
   -readability-braces-around-statements,
   -readability-redundant-access-specifiers,
-  -readability-non-const-parameter
+  -readability-non-const-parameter,
+  -readability-inconsistent-declaration-parameter-name
 
 WarningsAsErrors: >
   bugprone-use-after-move,
@@ -47,6 +48,12 @@ WarningsAsErrors: >
   misc-unused-using-decls
 
 HeaderFilterRegex: '.*/src/.*'
+
+# moc output is generated into the build tree and is not ours to fix: it trips
+# a dozen readability and modernize checks that say nothing about this codebase.
+# Note that a .moc is #included into its translation unit, so filtering it out
+# by header rather than by file is the only thing that works.
+ExcludeHeaderFilterRegex: '.*(autogen|/build/).*'
 FormatStyle: file
 
 CheckOptions:

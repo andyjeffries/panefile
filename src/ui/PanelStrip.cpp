@@ -44,6 +44,9 @@ FilePanel *PanelStrip::addPanel(const QString &path)
     }
 
     auto *panel = new FilePanel(m_splitter);
+    // Set before the widget is shown, so the very first polish sees it and the
+    // stylesheet's [panelActive] rule applies without a repolish.
+    panel->setProperty("panelActive", false);
     m_splitter->addWidget(panel);
     m_panels.append(panel);
     connectPanel(panel);

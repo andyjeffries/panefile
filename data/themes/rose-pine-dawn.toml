@@ -1,0 +1,29 @@
+name = "Rosé Pine Dawn"
+
+[colors]
+background     = "#faf4ed"
+surface        = "#fffaf3"
+overlay        = "#9893a5"
+text           = "#575279"
+subtext        = "#797593"
+accent         = "#907aa9"
+selection_bg   = "#dfdad9"
+cursor_bg      = "#f2e9e1"
+directory      = "#56949f"
+executable     = "#286983"
+symlink        = "#d7827e"
+broken         = "#b4637a"
+archive        = "#ea9d34"
+image          = "#ea9d34"
+error          = "#b4637a"
+warning        = "#ea9d34"
+success        = "#286983"
+border         = "#f2e9e1"
+border_focused = "#907aa9"
+
+[ui]
+font_family       = ""
+font_size         = 10
+row_height        = 24
+border_radius     = 6
+panel_padding     = 8

@@ -38,6 +38,16 @@ of how it measures were arrived at the hard way:
   to notice it had been cancelled. That is teardown, and §11's criterion is
   "cold start to first painted window".
 
+- **It fixes the platform plugin, and the baseline is only valid under that
+  plugin.** The script forces `QT_QPA_PLATFORM=offscreen`, both so that
+  twenty-three launches do not open twenty-three windows over whatever the
+  developer is doing, and so the measurement does not depend on which compositor
+  or display is attached. Offscreen is markedly *slower* than cocoa here —
+  software rendering, no font or graphics acceleration — so the two numbers are
+  not interchangeable. Comparing a cocoa measurement against an offscreen
+  baseline reports a 2.5× regression that does not exist; that happened once,
+  which is why it is written down here.
+
 - **It benchmarks a generated fixture, never `$HOME`.** §3.4 asks for "a
   fixed-size fixture directory" and the reason is measurable: two consecutive
   runs against `$HOME` here differed by 25%, wider than the threshold the check
@@ -49,10 +59,16 @@ of how it measures were arrived at the hard way:
 
 ### macOS 26.3, Apple M-series, Qt 6.10.2, Release build
 
-| Milestone | First paint | What changed |
-| --- | --- | --- |
-| M0 | 159 ms | Empty window |
-| M1 | 292 ms | One panel listing a 2,200-entry fixture |
+| Milestone | First paint | Plugin | What changed |
+| --- | --- | --- | --- |
+| M0 | 159 ms | cocoa | Empty window |
+| M1 | 292 ms | cocoa | One panel listing a 2,200-entry fixture |
+| M3 | 255 ms | cocoa | Sidebar, three panels, theme and stylesheet |
+| M3 | 648 ms | offscreen | The same build, measured the way CI measures it |
+
+Reading config.toml and theme.toml and compiling the stylesheet costs about
+1 ms of the total, measured between the `argv` and `stylesheet` phases — which
+is the answer to whether §3.4 was right to put them on the critical path.
 
 The M1 figure is measured against the fixture rather than `$HOME`; the two are
 not comparable, which is the point of having a fixture at all.

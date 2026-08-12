@@ -1,0 +1,29 @@
+name = "Rosé Pine"
+
+[colors]
+background     = "#191724"
+surface        = "#1f1d2e"
+overlay        = "#6e6a86"
+text           = "#e0def4"
+subtext        = "#908caa"
+accent         = "#c4a7e7"
+selection_bg   = "#403d52"
+cursor_bg      = "#26233a"
+directory      = "#9ccfd8"
+executable     = "#31748f"
+symlink        = "#ebbcba"
+broken         = "#eb6f92"
+archive        = "#f6c177"
+image          = "#f6c177"
+error          = "#eb6f92"
+warning        = "#f6c177"
+success        = "#31748f"
+border         = "#26233a"
+border_focused = "#c4a7e7"
+
+[ui]
+font_family       = ""
+font_size         = 10
+row_height        = 24
+border_radius     = 6
+panel_padding     = 8

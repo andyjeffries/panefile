@@ -1,0 +1,29 @@
+name = "Catppuccin Frappé"
+
+[colors]
+background     = "#303446"
+surface        = "#414559"
+overlay        = "#737994"
+text           = "#c6d0f5"
+subtext        = "#a5adce"
+accent         = "#8caaee"
+selection_bg   = "#51576d"
+cursor_bg      = "#626880"
+directory      = "#8caaee"
+executable     = "#a6d189"
+symlink        = "#81c8be"
+broken         = "#e78284"
+archive        = "#ef9f76"
+image          = "#e5c890"
+error          = "#e78284"
+warning        = "#ef9f76"
+success        = "#a6d189"
+border         = "#51576d"
+border_focused = "#8caaee"
+
+[ui]
+font_family       = ""
+font_size         = 10
+row_height        = 24
+border_radius     = 6
+panel_padding     = 8

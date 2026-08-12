@@ -1,0 +1,29 @@
+name = "Tokyo Night Storm"
+
+[colors]
+background     = "#24283b"
+surface        = "#1f2335"
+overlay        = "#565f89"
+text           = "#c0caf5"
+subtext        = "#a9b1d6"
+accent         = "#7aa2f7"
+selection_bg   = "#2e3c64"
+cursor_bg      = "#292e42"
+directory      = "#7aa2f7"
+executable     = "#9ece6a"
+symlink        = "#73daca"
+broken         = "#f7768e"
+archive        = "#ff9e64"
+image          = "#e0af68"
+error          = "#f7768e"
+warning        = "#ff9e64"
+success        = "#9ece6a"
+border         = "#292e42"
+border_focused = "#7aa2f7"
+
+[ui]
+font_family       = ""
+font_size         = 10
+row_height        = 24
+border_radius     = 6
+panel_padding     = 8

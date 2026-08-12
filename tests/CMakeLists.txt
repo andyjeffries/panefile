@@ -35,3 +35,4 @@ pf_add_test(tst_startuptrace SOURCES tst_startuptrace.cpp LIBS pf_core)
 # toml++ is a private dependency of pf_config — DefaultConfig.h does not expose
 # it — so this test, which reads the parsed table directly, links it itself.
 pf_add_test(tst_defaultconfig SOURCES tst_defaultconfig.cpp LIBS pf_config pf::tomlplusplus)
+pf_add_test(tst_config      SOURCES tst_config.cpp      LIBS pf_config pf_input)

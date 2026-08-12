@@ -70,22 +70,6 @@ MainWindow::MainWindow(QWidget *parent)
     m_pending->setTextFormat(Qt::PlainText);
     footerLayout->addWidget(m_pending, 0);
 
-    const ThemePalette &theme = currentPalette();
-    QPalette windowPalette = palette();
-    windowPalette.setColor(QPalette::Window, theme.background);
-    windowPalette.setColor(QPalette::WindowText, theme.subtext);
-    windowPalette.setColor(QPalette::Base, theme.background);
-    windowPalette.setColor(QPalette::Text, theme.text);
-    setPalette(windowPalette);
-    central->setAutoFillBackground(true);
-    central->setPalette(windowPalette);
-    footerRow->setAutoFillBackground(true);
-    footerRow->setPalette(windowPalette);
-
-    QPalette pendingPalette = windowPalette;
-    pendingPalette.setColor(QPalette::WindowText, theme.accent);
-    m_pending->setPalette(pendingPalette);
-
     layout->addWidget(footerRow);
     setCentralWidget(central);
 

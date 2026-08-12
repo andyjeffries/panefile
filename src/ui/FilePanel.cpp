@@ -10,7 +10,10 @@
 #include <QFileInfo>
 #include <QLabel>
 #include <QListView>
+#include <QPainter>
 #include <QScrollBar>
+#include <QStyle>
+#include <QStyleOption>
 #include <QVBoxLayout>
 
 namespace pf::ui {
@@ -88,39 +91,23 @@ FilePanel::FilePanel(QWidget *parent)
 
 void FilePanel::applyPalette()
 {
-    // An interim measure: M3 compiles the theme into a stylesheet applied to
-    // the whole application before any widget exists (§3.4), which is both
-    // broader and cheaper than setting palettes widget by widget. Until then
-    // the panel would inherit the platform's default light palette, and the
-    // theme's colours — chosen against a dark background — are close to
-    // unreadable on it.
+    // The stylesheet built in M3 now carries the panel's colours, so nothing is
+    // set by hand here any more. What remains is the one thing a stylesheet
+    // cannot express: the view's *item* colours, which the style consults
+    // through QPalette when it draws selection and alternating rows.
     const ThemePalette &theme = currentPalette();
 
-    QPalette widgetPalette = palette();
-    widgetPalette.setColor(QPalette::Base, theme.background);
-    widgetPalette.setColor(QPalette::Window, theme.background);
-    widgetPalette.setColor(QPalette::Text, theme.text);
-    widgetPalette.setColor(QPalette::WindowText, theme.text);
-    widgetPalette.setColor(QPalette::Highlight, theme.cursorBackground);
-    widgetPalette.setColor(QPalette::HighlightedText, theme.text);
+    QPalette viewPalette = m_view->palette();
+    viewPalette.setColor(QPalette::Base, Qt::transparent);
+    viewPalette.setColor(QPalette::Text, theme.text);
+    viewPalette.setColor(QPalette::Highlight, theme.cursorBackground);
+    viewPalette.setColor(QPalette::HighlightedText, theme.text);
+    m_view->setPalette(viewPalette);
 
-    setAutoFillBackground(true);
-    setPalette(widgetPalette);
-
-    m_view->setPalette(widgetPalette);
-    m_view->viewport()->setAutoFillBackground(true);
-
-    QPalette headerPalette = widgetPalette;
-    headerPalette.setColor(QPalette::Window, theme.surface);
-    headerPalette.setColor(QPalette::WindowText, theme.subtext);
-    m_header->setAutoFillBackground(true);
-    m_header->setPalette(headerPalette);
-    m_header->setContentsMargins(theme.panelPadding, 4, theme.panelPadding, 4);
-
-    QPalette statusPalette = widgetPalette;
-    statusPalette.setColor(QPalette::WindowText, theme.error);
-    m_status->setPalette(statusPalette);
-    m_status->setContentsMargins(theme.panelPadding, 6, theme.panelPadding, 6);
+    // Padding is the stylesheet's job. Setting contentsMargins here as well
+    // double-counted it, and the header elided against a width that was wider
+    // than the space it actually had — which clipped the item count off the
+    // right-hand end.
 }
 
 FilePanel::~FilePanel()
@@ -400,6 +387,16 @@ void FilePanel::setFilterText(const QString &text)
     updateHeader();
 }
 
+void FilePanel::refreshTheme()
+{
+    applyPalette();
+    style()->unpolish(this);
+    style()->polish(this);
+    m_view->viewport()->update();
+    applyHeaderElision();
+    update();
+}
+
 void FilePanel::setActive(bool active)
 {
     if (m_active == active) {
@@ -468,9 +465,29 @@ void FilePanel::applyHeaderElision()
 {
     // Elided from the left: the tail of a path is what identifies it, so
     // "…/Developer/panefile/src" is far more useful than "/Users/andy/Deve…".
+    //
+    // Measured against contentsRect(), which is what the stylesheet's padding
+    // has already been subtracted from. Subtracting the padding again here —
+    // as this did — leaves the label thinking it has less room than it has, and
+    // the elision eats text that would have fitted.
     const QFontMetrics metrics(m_header->font());
-    const int available = std::max(0, m_header->width() - (2 * currentPalette().panelPadding));
+    const int available = std::max(0, m_header->contentsRect().width());
     m_header->setText(metrics.elidedText(m_headerText, Qt::ElideLeft, available));
+}
+
+void FilePanel::paintEvent(QPaintEvent *event)
+{
+    Q_UNUSED(event)
+
+    // A plain QWidget subclass does not render the background, border or
+    // border-radius a stylesheet gives it — Qt only does that automatically for
+    // the widget classes that already paint themselves. Without this, §9's
+    // focused-panel border simply does not appear, which matters because §9
+    // calls it "the single most important visual affordance in the app".
+    QStyleOption option;
+    option.initFrom(this);
+    QPainter painter(this);
+    style()->drawPrimitive(QStyle::PE_Widget, &option, &painter, this);
 }
 
 void FilePanel::resizeEvent(QResizeEvent *event)

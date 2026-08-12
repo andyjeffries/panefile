@@ -66,6 +66,10 @@ public:
     /// True when this panel is the focused one. Drives the border and
     /// background treatment that §9 calls the single most important visual
     /// affordance in the application.
+    /// Re-reads the theme after a hot reload. The delegate paints from the
+    /// palette directly, so a stylesheet change alone does not reach it.
+    void refreshTheme();
+
     void setActive(bool active);
     bool isActive() const;
 
@@ -81,6 +85,10 @@ Q_SIGNALS:
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
+
+    /// Draws the stylesheet's background and border. A plain QWidget subclass
+    /// does not do this for itself, and §9's focused-panel border depends on it.
+    void paintEvent(QPaintEvent *event) override;
 
 private:
     void applyPalette();

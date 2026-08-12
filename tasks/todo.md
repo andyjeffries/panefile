@@ -80,15 +80,33 @@ third panel appearing as an unreadable sliver (a splitter re-divides by stretch
 factor, and a widget added later defaults to zero), and the panel header's long
 path imposing a minimum width the splitter could not shrink below.
 
-## M3 — Config and theme
+## M3 — Config and theme ✅
 
-- [ ] `Config` — parse, validate, per-key fallback, malformed-file banner
-- [ ] `hotkeys.toml` parsing, deferred off the critical path
-- [ ] `Theme` and `StyleSheetBuilder`, applied before any widget exists
-- [ ] Hot reload of all four config files
-- [ ] Bundled themes: Catppuccin ×4, Nord, Tokyo Night, Gruvbox, Rose Pine,
-      Dracula, and a `system` theme derived from `QPalette`
-- [ ] Tests: valid, malformed, partial and unknown-key configs
+- [x] `Config` — parse, validate, per-key fallback with file/line/key issues
+- [x] `Theme` and `StyleSheetBuilder`, applied before any widget exists (§3.4)
+- [x] `hotkeys.toml`, parsed after the first paint over the already-bound defaults
+- [x] `ConfigWatcher` — hot reload of all four files, reloading only what changed
+- [x] 23 bundled themes, canonical palettes only, plus `system` from `QPalette`
+- [x] The focused-panel border of §9, which needed a `paintEvent` to appear at all
+- [x] Tests: valid, malformed, partial, unknown-key, wrong-type, out-of-range and
+      invalid-enum configs; theme colours and clamping; stylesheet substitution;
+      hotkey replacement, unbinding and conflicts
+
+Themes: Catppuccin (Mocha, Macchiato, Frappé, Latte), Nord, Tokyo Night (Night,
+Storm, Day), Gruvbox (Dark, Light), Rosé Pine (Main, Moon, Dawn), Dracula,
+Solarized (Dark, Light), One (Dark, Light), Everforest (Dark, Light), Kanagawa,
+and macOS Light and Dark from Apple's published system colours.
+
+One behaviour bug the tests caught: a user's `list_down = ["s"]` was *losing* to
+the default that already held `s`, because the conflict rule of §6.2 was being
+applied to a user-versus-default collision. §6.2's rule is about two entries in
+one file. A remap now takes the chord from whatever default held it; two
+bindings within the user's own file still conflict, and still keep the first.
+
+Also fixed: the startup baseline is now tagged with the platform plugin it was
+measured under. Switching the benchmark to `offscreen` — so it stops opening
+windows over the developer's work — made every cocoa-measured baseline report a
+2.5× regression that did not exist.
 
 ## M4 — File operations
 
@@ -126,8 +144,22 @@ path imposing a minimum width the splitter could not shrink below.
 - [ ] In-panel filter
 - [ ] `FuzzyMatcher` — fzf-style scoring with matched spans
 - [ ] Recursive finder modal
-- [ ] Bulk rename with cycle detection
-- [ ] Tests: scoring order, span correctness, Unicode, pathological inputs
+- [ ] **Bulk rename: a Finder-style sheet, replacing §7.9's `$EDITOR` round-trip.**
+      Requested by the user, and the better fit: §7.9 writes the names to a temp
+      file, launches `$EDITOR` in a terminal, blocks until it exits, and aborts
+      if the line count changed. That is a terminal idiom in a GUI application —
+      it needs a terminal to exist, freezes the window while it runs, and cannot
+      show what the result will be. Finder's sheet has three modes and a live
+      example instead:
+      - Replace Text — find / replace with
+      - Add Text — text, placed before or after the name
+      - Format — Name and Index / Counter / Date, custom format, placement,
+        start number
+      §7.9's other requirements are unchanged and apply to any rename source:
+      cycle detection via temporary names (`a→b`, `b→a`), a confirmation listing
+      every `old → new` pair, and execution as a single undoable job.
+- [ ] Tests: scoring order, span correctness, Unicode, pathological inputs;
+      each rename mode against a table of inputs, including collisions and cycles
 
 ## M8 — Archives and mounts
 

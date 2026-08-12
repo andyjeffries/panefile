@@ -67,19 +67,6 @@ HelpModal::HelpModal(const input::ActionRegistry &registry, const input::Keymap 
     m_tree->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
     m_tree->header()->setSectionResizeMode(2, QHeaderView::Stretch);
 
-    // The content panel's palette does not reach an item view's viewport, so
-    // without this the tree paints on the platform's default white.
-    QPalette treePalette = m_tree->palette();
-    treePalette.setColor(QPalette::Base, currentPalette().surface);
-    treePalette.setColor(QPalette::Text, currentPalette().text);
-    treePalette.setColor(QPalette::Window, currentPalette().surface);
-    treePalette.setColor(QPalette::WindowText, currentPalette().text);
-    treePalette.setColor(QPalette::Button, currentPalette().surface);
-    treePalette.setColor(QPalette::ButtonText, currentPalette().subtext);
-    m_tree->setPalette(treePalette);
-    m_tree->header()->setPalette(treePalette);
-    m_filter->setPalette(treePalette);
-
     layout->addWidget(m_tree, 1);
 
     auto *hint = new QLabel(tr("Esc closes"), contentWidget());

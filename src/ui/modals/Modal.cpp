@@ -20,16 +20,6 @@ Modal::Modal(QWidget *parent) : QWidget(parent), m_content(new QWidget(this))
     m_content->setObjectName(QStringLiteral("modalContent"));
     m_content->setAutoFillBackground(true);
 
-    const ThemePalette &theme = currentPalette();
-    QPalette contentPalette = m_content->palette();
-    contentPalette.setColor(QPalette::Window, theme.surface);
-    contentPalette.setColor(QPalette::WindowText, theme.text);
-    contentPalette.setColor(QPalette::Base, theme.surface);
-    contentPalette.setColor(QPalette::Text, theme.text);
-    contentPalette.setColor(QPalette::Highlight, theme.cursorBackground);
-    contentPalette.setColor(QPalette::HighlightedText, theme.text);
-    m_content->setPalette(contentPalette);
-
     // The modal tracks its parent's size, so it stays covering the window as it
     // is resized rather than being positioned once at show time.
     parent->installEventFilter(this);

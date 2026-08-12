@@ -1,0 +1,29 @@
+name = "One Dark"
+
+[colors]
+background     = "#282c34"
+surface        = "#21252b"
+overlay        = "#5c6370"
+text           = "#abb2bf"
+subtext        = "#828997"
+accent         = "#61afef"
+selection_bg   = "#3e4451"
+cursor_bg      = "#2c313c"
+directory      = "#61afef"
+executable     = "#98c379"
+symlink        = "#56b6c2"
+broken         = "#e06c75"
+archive        = "#d19a66"
+image          = "#e5c07b"
+error          = "#e06c75"
+warning        = "#d19a66"
+success        = "#98c379"
+border         = "#3e4451"
+border_focused = "#61afef"
+
+[ui]
+font_family       = ""
+font_size         = 10
+row_height        = 24
+border_radius     = 6
+panel_padding     = 8

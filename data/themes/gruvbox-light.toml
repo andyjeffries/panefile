@@ -1,0 +1,29 @@
+name = "Gruvbox Light"
+
+[colors]
+background     = "#fbf1c7"
+surface        = "#ebdbb2"
+overlay        = "#928374"
+text           = "#3c3836"
+subtext        = "#665c54"
+accent         = "#076678"
+selection_bg   = "#d5c4a1"
+cursor_bg      = "#bdae93"
+directory      = "#076678"
+executable     = "#79740e"
+symlink        = "#427b58"
+broken         = "#9d0006"
+archive        = "#af3a03"
+image          = "#b57614"
+error          = "#9d0006"
+warning        = "#af3a03"
+success        = "#79740e"
+border         = "#d5c4a1"
+border_focused = "#076678"
+
+[ui]
+font_family       = ""
+font_size         = 10
+row_height        = 24
+border_radius     = 6
+panel_padding     = 8

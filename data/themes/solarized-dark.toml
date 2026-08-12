@@ -1,0 +1,29 @@
+name = "Solarized Dark"
+
+[colors]
+background     = "#002b36"
+surface        = "#073642"
+overlay        = "#586e75"
+text           = "#93a1a1"
+subtext        = "#839496"
+accent         = "#268bd2"
+selection_bg   = "#073642"
+cursor_bg      = "#0a4653"
+directory      = "#268bd2"
+executable     = "#859900"
+symlink        = "#2aa198"
+broken         = "#dc322f"
+archive        = "#cb4b16"
+image          = "#b58900"
+error          = "#dc322f"
+warning        = "#cb4b16"
+success        = "#859900"
+border         = "#073642"
+border_focused = "#268bd2"
+
+[ui]
+font_family       = ""
+font_size         = 10
+row_height        = 24
+border_radius     = 6
+panel_padding     = 8

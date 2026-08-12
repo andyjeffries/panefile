@@ -1,0 +1,29 @@
+name = "Catppuccin Latte"
+
+[colors]
+background     = "#eff1f5"
+surface        = "#e6e9ef"
+overlay        = "#9ca0b0"
+text           = "#4c4f69"
+subtext        = "#6c6f85"
+accent         = "#1e66f5"
+selection_bg   = "#ccd0da"
+cursor_bg      = "#bcc0cc"
+directory      = "#1e66f5"
+executable     = "#40a02b"
+symlink        = "#179299"
+broken         = "#d20f39"
+archive        = "#fe640b"
+image          = "#df8e1d"
+error          = "#d20f39"
+warning        = "#fe640b"
+success        = "#40a02b"
+border         = "#ccd0da"
+border_focused = "#1e66f5"
+
+[ui]
+font_family       = ""
+font_size         = 10
+row_height        = 24
+border_radius     = 6
+panel_padding     = 8

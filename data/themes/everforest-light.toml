@@ -1,0 +1,29 @@
+name = "Everforest Light"
+
+[colors]
+background     = "#fdf6e3"
+surface        = "#f4f0d9"
+overlay        = "#939f91"
+text           = "#5c6a72"
+subtext        = "#829181"
+accent         = "#3a94c5"
+selection_bg   = "#ede8d0"
+cursor_bg      = "#e5e0c7"
+directory      = "#3a94c5"
+executable     = "#8da101"
+symlink        = "#35a77c"
+broken         = "#f85552"
+archive        = "#f57d26"
+image          = "#dfa000"
+error          = "#f85552"
+warning        = "#f57d26"
+success        = "#8da101"
+border         = "#ede8d0"
+border_focused = "#3a94c5"
+
+[ui]
+font_family       = ""
+font_size         = 10
+row_height        = 24
+border_radius     = 6
+panel_padding     = 8

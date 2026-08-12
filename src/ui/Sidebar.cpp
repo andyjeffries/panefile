@@ -36,16 +36,12 @@ Sidebar::Sidebar(QWidget *parent) : QWidget(parent), m_list(new QListWidget(this
     m_list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     layout->addWidget(m_list);
 
-    const ThemePalette &theme = currentPalette();
-    QPalette widgetPalette = palette();
-    widgetPalette.setColor(QPalette::Base, theme.background);
-    widgetPalette.setColor(QPalette::Window, theme.background);
-    widgetPalette.setColor(QPalette::Text, theme.subtext);
-    widgetPalette.setColor(QPalette::Highlight, theme.cursorBackground);
-    widgetPalette.setColor(QPalette::HighlightedText, theme.text);
-    setAutoFillBackground(true);
-    setPalette(widgetPalette);
-    m_list->setPalette(widgetPalette);
+    // Colours come from the stylesheet; only the item-view roles the style
+    // consults directly are set here.
+    QPalette listPalette = m_list->palette();
+    listPalette.setColor(QPalette::Highlight, currentPalette().selectionBackground);
+    listPalette.setColor(QPalette::HighlightedText, currentPalette().text);
+    m_list->setPalette(listPalette);
 
     connect(m_list, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
         if (item == nullptr || item->data(kIsHeadingRole).toBool()) {

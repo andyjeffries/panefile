@@ -1,0 +1,29 @@
+name = "macOS Dark"
+
+[colors]
+background     = "#1e1e1e"
+surface        = "#2c2c2e"
+overlay        = "#8e8e93"
+text           = "#f5f5f7"
+subtext        = "#aeaeb2"
+accent         = "#0a84ff"
+selection_bg   = "#0a84ff"
+cursor_bg      = "#3a3a3c"
+directory      = "#0a84ff"
+executable     = "#32d74b"
+symlink        = "#6ac4dc"
+broken         = "#ff453a"
+archive        = "#ff9f0a"
+image          = "#ffd60a"
+error          = "#ff453a"
+warning        = "#ff9f0a"
+success        = "#32d74b"
+border         = "#3a3a3c"
+border_focused = "#0a84ff"
+
+[ui]
+font_family       = ""
+font_size         = 13
+row_height        = 26
+border_radius     = 6
+panel_padding     = 10

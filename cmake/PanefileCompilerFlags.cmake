@@ -87,7 +87,12 @@ endif()
 #     dependencies of their own — lives in `input` below `ui` instead, so §6.2's
 #     "nothing in the UI may call a behaviour function directly" still holds
 #     without a cycle.
-set(PF_LAYER_ORDER core platform config fs model input ui app)
+#   * `input` sits below `config` rather than beside `ui`. It was placed higher
+#     when it only had to be below `ui`; parsing hotkeys.toml then gave `config`
+#     a reason to depend on it, and the layering check caught the inversion.
+#     Low is where it belongs: chords, the keymap trie and the action registry
+#     are pure lookup with no dependency of their own beyond Qt's containers.
+set(PF_LAYER_ORDER core platform input config fs model ui app)
 
 function(pf_layer_library name)
     cmake_parse_arguments(ARG "" "LAYER" "SOURCES;DEPENDS;PUBLIC_DEPENDS" ${ARGN})

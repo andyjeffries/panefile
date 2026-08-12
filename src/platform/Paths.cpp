@@ -65,7 +65,7 @@ QStringList dataSearchPaths()
     const QString binDir = QCoreApplication::applicationDirPath();
     if (!binDir.isEmpty()) {
         for (const char *relative :
-             {"/../share/" PF_APPLICATION_NAME, "/../Resources", "/../../data"}) {
+             {"/../share/" PF_APPLICATION_NAME, "/../Resources", "/../data", "/../../data"}) {
             const QString candidate = QDir::cleanPath(binDir + QLatin1String(relative));
             if (QFileInfo::exists(candidate)) {
                 paths << candidate;

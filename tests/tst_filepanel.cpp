@@ -9,6 +9,8 @@
 #include "input/ActionRegistry.h"
 #include "input/DefaultKeymap.h"
 #include "input/Keymap.h"
+#include "config/StyleSheetBuilder.h"
+#include "config/Theme.h"
 #include "model/DirectoryModel.h"
 #include "model/FileEntry.h"
 #include "ui/CursorMemory.h"
@@ -16,6 +18,7 @@
 #include "ui/MainWindow.h"
 #include "ui/PanelStrip.h"
 #include "ui/Sidebar.h"
+#include "ui/ThemePalette.h"
 #include "ui/modals/HelpModal.h"
 
 #include <QDir>
@@ -67,6 +70,9 @@ private Q_SLOTS:
     void rendersARecognisableListing();
     void rendersTheWholeWindow();
     void rendersTheHelpModal();
+
+private:
+    void renderWithTheme(const QString &themeName, const QString &outputName);
 };
 
 void TestFilePanel::initTestCase()
@@ -280,9 +286,24 @@ void TestFilePanel::rendersARecognisableListing()
 
 void TestFilePanel::rendersTheWholeWindow()
 {
+    // Renders through the real stylesheet, from a real bundled theme, so what
+    // the image shows is what a user gets rather than what the defaults happen
+    // to be.
+    renderWithTheme(QStringLiteral("macos-light"), QStringLiteral("window-render.png"));
+    renderWithTheme(QStringLiteral("catppuccin-mocha"), QStringLiteral("window-render-mocha.png"));
+    renderWithTheme(QStringLiteral("gruvbox-light"), QStringLiteral("window-render-gruvbox.png"));
+}
+
+void TestFilePanel::renderWithTheme(const QString &themeName, const QString &outputName)
+{
     // The whole application chrome as a user sees it: sidebar, three panels and
     // the footer. Assertions cannot tell you that the sidebar is drawing on top
     // of the first panel; the image can.
+    const config::ThemeLoadResult loaded = config::loadThemeByName(themeName);
+    QVERIFY2(loaded.issues.isEmpty(), qPrintable(themeName));
+    ui::setCurrentPalette(loaded.theme);
+    qApp->setStyleSheet(config::buildStyleSheet(loaded.theme));
+
     ui::MainWindow window;
     window.resize(1200, 520);
     window.sidebar()->populate();
@@ -301,9 +322,9 @@ void TestFilePanel::rendersTheWholeWindow()
     QVERIFY(!shot.isNull());
 
     const QString output =
-        QStringLiteral("%1/window-render.png").arg(QLatin1String(QT_TESTCASE_BUILDDIR));
+        QStringLiteral("%1/%2").arg(QLatin1String(QT_TESTCASE_BUILDDIR), outputName);
     QVERIFY2(shot.save(output), qPrintable(output));
-    qInfo("rendered window written to %s", qPrintable(output));
+    qInfo("rendered %s written to %s", qPrintable(themeName), qPrintable(output));
 }
 
 void TestFilePanel::rendersTheHelpModal()

@@ -1,5 +1,11 @@
 #pragma once
 
+#include "config/Config.h"
+
+namespace pf::config {
+class ConfigWatcher;
+}
+
 #include <QApplication>
 
 #include <cstddef>
@@ -66,15 +72,23 @@ private Q_SLOTS:
     void runNextStartupTask();
 
 private:
+    void loadConfiguration();
+    void loadHotkeys();
+    void startWatchingConfig();
+    void reloadConfiguration(const QStringList &changedFiles);
     void buildInputSystem();
     void registerGlobalActions();
     ui::HelpModal *helpModal();
+
+    config::Settings m_settings;
+    QList<config::ConfigIssue> m_configIssues;
 
     std::unique_ptr<ui::MainWindow> m_mainWindow;
     std::unique_ptr<input::ActionRegistry> m_registry;
     std::unique_ptr<input::Keymap> m_keymap;
     std::unique_ptr<KeyDispatcher> m_dispatcher;
     std::unique_ptr<PanelController> m_panelController;
+    std::unique_ptr<config::ConfigWatcher> m_configWatcher;
 
     /// §3.4: modals are constructed on first invocation, then cached. The help
     /// modal builds a tree of every action, which is not work to do at startup

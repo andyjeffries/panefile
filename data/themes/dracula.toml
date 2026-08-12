@@ -1,0 +1,29 @@
+name = "Dracula"
+
+[colors]
+background     = "#282a36"
+surface        = "#44475a"
+overlay        = "#6272a4"
+text           = "#f8f8f2"
+subtext        = "#bfbfbf"
+accent         = "#bd93f9"
+selection_bg   = "#44475a"
+cursor_bg      = "#565872"
+directory      = "#8be9fd"
+executable     = "#50fa7b"
+symlink        = "#8be9fd"
+broken         = "#ff5555"
+archive        = "#ffb86c"
+image          = "#f1fa8c"
+error          = "#ff5555"
+warning        = "#ffb86c"
+success        = "#50fa7b"
+border         = "#44475a"
+border_focused = "#bd93f9"
+
+[ui]
+font_family       = ""
+font_size         = 10
+row_height        = 24
+border_radius     = 6
+panel_padding     = 8

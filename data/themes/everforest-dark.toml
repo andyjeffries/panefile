@@ -1,0 +1,29 @@
+name = "Everforest Dark"
+
+[colors]
+background     = "#2d353b"
+surface        = "#343f44"
+overlay        = "#859289"
+text           = "#d3c6aa"
+subtext        = "#9da9a0"
+accent         = "#7fbbb3"
+selection_bg   = "#475258"
+cursor_bg      = "#3d484d"
+directory      = "#7fbbb3"
+executable     = "#a7c080"
+symlink        = "#83c092"
+broken         = "#e67e80"
+archive        = "#e69875"
+image          = "#dbbc7f"
+error          = "#e67e80"
+warning        = "#e69875"
+success        = "#a7c080"
+border         = "#475258"
+border_focused = "#7fbbb3"
+
+[ui]
+font_family       = ""
+font_size         = 10
+row_height        = 24
+border_radius     = 6
+panel_padding     = 8

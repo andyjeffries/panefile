@@ -1,0 +1,29 @@
+name = "Kanagawa Wave"
+
+[colors]
+background     = "#1f1f28"
+surface        = "#2a2a37"
+overlay        = "#727169"
+text           = "#dcd7ba"
+subtext        = "#c8c093"
+accent         = "#7e9cd8"
+selection_bg   = "#363646"
+cursor_bg      = "#2d4f67"
+directory      = "#7e9cd8"
+executable     = "#98bb6c"
+symlink        = "#7aa89f"
+broken         = "#e82424"
+archive        = "#ffa066"
+image          = "#e6c384"
+error          = "#e82424"
+warning        = "#ffa066"
+success        = "#98bb6c"
+border         = "#363646"
+border_focused = "#7e9cd8"
+
+[ui]
+font_family       = ""
+font_size         = 10
+row_height        = 24
+border_radius     = 6
+panel_padding     = 8

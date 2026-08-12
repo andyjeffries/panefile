@@ -6,17 +6,25 @@
 #include "app/CommandLine.h"
 #include "app/KeyDispatcher.h"
 #include "app/PanelController.h"
+#include "config/Config.h"
+#include "config/ConfigWatcher.h"
+#include "config/Hotkeys.h"
+#include "config/StyleSheetBuilder.h"
+#include "config/Theme.h"
 #include "core/Logging.h"
 #include "core/StartupTrace.h"
 #include "core/Version.h"
+#include "platform/Paths.h"
 #include "ui/FilePanel.h"
 #include "ui/MainWindow.h"
 #include "ui/PanelStrip.h"
 #include "ui/Sidebar.h"
+#include "ui/ThemePalette.h"
 #include "ui/modals/HelpModal.h"
 
 #include <QDir>
 #include <QFileInfo>
+#include <QFont>
 #include <QKeyEvent>
 #include <QTimer>
 
@@ -124,9 +132,113 @@ ui::HelpModal *Application::helpModal()
     return m_helpModal;
 }
 
+void Application::loadConfiguration()
+{
+    // §3.4 step 3: config.toml and theme.toml, and nothing else. hotkeys.toml
+    // is deferred — the default keymap is already bound, so the first keypress
+    // is never dropped while it loads.
+    const config::ConfigLoadResult configResult =
+        config::loadConfig(platform::configDir() + QStringLiteral("/config.toml"));
+    m_settings = configResult.settings;
+    m_configIssues = configResult.issues;
+
+    const config::ThemeLoadResult themeResult =
+        config::loadActiveTheme(platform::configDir() + QStringLiteral("/theme.toml"));
+    m_configIssues += themeResult.issues;
+
+    ui::setCurrentPalette(themeResult.theme);
+    StartupTrace::mark(StartupPhase::ConfigLoaded);
+
+    // §3.4 step 4: apply the stylesheet *before any widget is constructed*.
+    // "Applying a stylesheet after widgets exist forces a full restyle pass
+    // over the widget tree", and that pass is proportional to how much of the
+    // application is already built.
+    setStyleSheet(config::buildStyleSheet(themeResult.theme));
+
+    if (!themeResult.theme.fontFamily.isEmpty()) {
+        const QFont themeFont(themeResult.theme.fontFamily, themeResult.theme.fontSize);
+        setFont(themeFont);
+    }
+
+    StartupTrace::mark(StartupPhase::StylesheetApplied);
+
+    for (const config::ConfigIssue &issue : std::as_const(m_configIssues)) {
+        qCWarning(pfConfig) << issue.toString();
+    }
+}
+
+void Application::loadHotkeys()
+{
+    const config::HotkeysLoadResult result = config::loadHotkeys(
+        platform::configDir() + QStringLiteral("/hotkeys.toml"), *m_keymap, &m_settings.keys);
+
+    m_configIssues += result.issues;
+    for (const config::ConfigIssue &issue : result.issues) {
+        qCWarning(pfConfig) << issue.toString();
+    }
+
+    m_dispatcher->setSequenceTimeout(m_settings.keys.sequenceTimeoutMs);
+    m_dispatcher->setAmbiguityTimeout(m_settings.keys.ambiguityTimeoutMs);
+
+    // The help modal lists bindings, so a rebuilt keymap makes its contents
+    // stale. Only refreshed if it has been opened — building it here would
+    // undo the point of constructing it lazily.
+    if (m_helpModal != nullptr) {
+        m_helpModal->refresh();
+    }
+}
+
+void Application::startWatchingConfig()
+{
+    m_configWatcher = std::make_unique<config::ConfigWatcher>(this);
+    connect(m_configWatcher.get(), &config::ConfigWatcher::configChanged, this,
+            &Application::reloadConfiguration);
+    m_configWatcher->watchConfigDirectory(platform::configDir());
+}
+
+void Application::reloadConfiguration(const QStringList &changedFiles)
+{
+    // §8.3: hot-reload "including regenerating the stylesheet — without
+    // restarting". Only what changed is reloaded: rebuilding the keymap because
+    // a colour changed would discard a pending chord for no reason.
+    const bool themeChanged = changedFiles.contains(QStringLiteral("theme.toml")) ||
+                              changedFiles.contains(QStringLiteral("themes"));
+    const bool hotkeysChanged = changedFiles.contains(QStringLiteral("hotkeys.toml"));
+    const bool settingsChanged = changedFiles.contains(QStringLiteral("config.toml"));
+
+    m_configIssues.clear();
+
+    if (settingsChanged || themeChanged) {
+        loadConfiguration();
+        // The delegate reads the palette directly, so every panel has to be
+        // told to repaint; a stylesheet change alone would not reach it.
+        if (m_mainWindow != nullptr) {
+            m_mainWindow->update();
+            for (ui::FilePanel *panel : m_mainWindow->panelStrip()->panels()) {
+                panel->refreshTheme();
+            }
+        }
+    }
+
+    if (hotkeysChanged) {
+        m_keymap->clear();
+        input::installDefaultKeymap(*m_keymap);
+        loadHotkeys();
+    }
+
+    if (m_mainWindow != nullptr) {
+        m_mainWindow->showStatusMessage(m_configIssues.isEmpty()
+                                            ? tr("Configuration reloaded")
+                                            : tr("Configuration reloaded, with %n problem(s)",
+                                                 nullptr, static_cast<int>(m_configIssues.size())));
+    }
+}
+
 void Application::startUp(const CommandLineOptions &options)
 {
     m_quitAfterPaint = options.quitAfterPaint;
+
+    loadConfiguration();
 
     m_mainWindow = std::make_unique<ui::MainWindow>();
     StartupTrace::mark(StartupPhase::WindowConstructed);
@@ -157,6 +269,24 @@ void Application::startUp(const CommandLineOptions &options)
     // idle, because resolving XDG user directories reads a config file and none
     // of it is needed to draw the first panel.
     postStartupTask([this] { m_mainWindow->sidebar()->populate(); });
+
+    // §3.4's deferred list, in its order: hotkeys.toml is parsed after the
+    // first paint, over the defaults already bound, so the very first keypress
+    // is never dropped waiting for a file read.
+    postStartupTask([this] { loadHotkeys(); });
+
+    // "Hot reload is not needed in the first 50 ms."
+    postStartupTask([this] { startWatchingConfig(); });
+
+    // §8.3: a malformed config shows "a dismissible banner naming the file,
+    // line and problem". Deferred, because a banner is not worth delaying the
+    // first paint for, and the application is already running on defaults.
+    if (!m_configIssues.isEmpty()) {
+        postStartupTask([this] {
+            m_mainWindow->showStatusMessage(tr("%n problem(s) in your configuration — see the log",
+                                               nullptr, static_cast<int>(m_configIssues.size())));
+        });
+    }
 }
 
 bool Application::notify(QObject *receiver, QEvent *event)

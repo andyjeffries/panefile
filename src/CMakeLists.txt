@@ -37,13 +37,35 @@ pf_layer_library(pf_platform
     PUBLIC_DEPENDS Qt6::Core pf_core)
 
 # ---------------------------------------------------------------------------
+# input — chords, keymap and the action registry.
+#
+# Below ui rather than above it (§3.1's note in PanefileCompilerFlags.cmake):
+# these are pure lookup with no widget dependencies, which is what lets §6.2's
+# "nothing in the UI may call a behaviour function directly" hold without a
+# cycle between ui and app.
+# ---------------------------------------------------------------------------
+pf_layer_library(pf_input
+    LAYER input
+    SOURCES
+        input/ActionRegistry.cpp
+        input/Chord.cpp
+        input/DefaultKeymap.cpp
+        input/Keymap.cpp
+    PUBLIC_DEPENDS Qt6::Core Qt6::Gui pf_core)
+
+# ---------------------------------------------------------------------------
 # config — TOML loading, validation and theming.
 # ---------------------------------------------------------------------------
 pf_layer_library(pf_config
     LAYER config
     SOURCES
+        config/Config.cpp
+        config/ConfigWatcher.cpp
         config/DefaultConfig.cpp
-    PUBLIC_DEPENDS Qt6::Core pf_core pf_platform
+        config/Hotkeys.cpp
+        config/StyleSheetBuilder.cpp
+        config/Theme.cpp
+    PUBLIC_DEPENDS Qt6::Core Qt6::Gui pf_core pf_platform pf_input
     DEPENDS pf::tomlplusplus)
 
 # ---------------------------------------------------------------------------
@@ -83,23 +105,6 @@ qt_add_resources(pf_model "fallback_icons"
         "${PROJECT_SOURCE_DIR}/data/icons/fallback/image.svg"
         "${PROJECT_SOURCE_DIR}/data/icons/fallback/symlink.svg"
         "${PROJECT_SOURCE_DIR}/data/icons/fallback/text.svg")
-
-# ---------------------------------------------------------------------------
-# input — chords, keymap and the action registry.
-#
-# Below ui rather than above it (§3.1's note in PanefileCompilerFlags.cmake):
-# these are pure lookup with no widget dependencies, which is what lets §6.2's
-# "nothing in the UI may call a behaviour function directly" hold without a
-# cycle between ui and app.
-# ---------------------------------------------------------------------------
-pf_layer_library(pf_input
-    LAYER input
-    SOURCES
-        input/ActionRegistry.cpp
-        input/Chord.cpp
-        input/DefaultKeymap.cpp
-        input/Keymap.cpp
-    PUBLIC_DEPENDS Qt6::Core Qt6::Gui pf_core)
 
 # ---------------------------------------------------------------------------
 # ui — widgets, delegates, painting.

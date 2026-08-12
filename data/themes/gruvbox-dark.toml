@@ -1,0 +1,29 @@
+name = "Gruvbox Dark"
+
+[colors]
+background     = "#282828"
+surface        = "#3c3836"
+overlay        = "#928374"
+text           = "#ebdbb2"
+subtext        = "#bdae93"
+accent         = "#83a598"
+selection_bg   = "#504945"
+cursor_bg      = "#665c54"
+directory      = "#83a598"
+executable     = "#b8bb26"
+symlink        = "#8ec07c"
+broken         = "#fb4934"
+archive        = "#fe8019"
+image          = "#fabd2f"
+error          = "#fb4934"
+warning        = "#fe8019"
+success        = "#b8bb26"
+border         = "#504945"
+border_focused = "#83a598"
+
+[ui]
+font_family       = ""
+font_size         = 10
+row_height        = 24
+border_radius     = 6
+panel_padding     = 8

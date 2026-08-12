@@ -1,0 +1,29 @@
+name = "Solarized Light"
+
+[colors]
+background     = "#fdf6e3"
+surface        = "#eee8d5"
+overlay        = "#93a1a1"
+text           = "#586e75"
+subtext        = "#657b83"
+accent         = "#268bd2"
+selection_bg   = "#eee8d5"
+cursor_bg      = "#ded8c5"
+directory      = "#268bd2"
+executable     = "#859900"
+symlink        = "#2aa198"
+broken         = "#dc322f"
+archive        = "#cb4b16"
+image          = "#b58900"
+error          = "#dc322f"
+warning        = "#cb4b16"
+success        = "#859900"
+border         = "#eee8d5"
+border_focused = "#268bd2"
+
+[ui]
+font_family       = ""
+font_size         = 10
+row_height        = 24
+border_radius     = 6
+panel_padding     = 8

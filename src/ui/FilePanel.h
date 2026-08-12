@@ -79,8 +79,12 @@ Q_SIGNALS:
     /// Transient message for the footer — "nothing to go back to", and similar.
     void statusMessage(const QString &message);
 
+protected:
+    void resizeEvent(QResizeEvent *event) override;
+
 private:
     void applyPalette();
+    void applyHeaderElision();
     void onScanFinished(const QString &path, int count);
     void onScanFailed(const QString &path, const QString &reason);
     void updateHeader();
@@ -106,6 +110,11 @@ private:
     /// Cleared when applied — a scan that finds nothing must not leave a stale
     /// target that hijacks the cursor after the next navigation.
     QString m_pendingCursorName;
+
+    /// The header's full text before elision. The label shows an elided copy
+    /// sized to whatever width the panel currently has, so the untruncated
+    /// version has to be kept to re-elide on resize.
+    QString m_headerText;
 
     bool m_active = false;
 };

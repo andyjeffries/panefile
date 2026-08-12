@@ -50,17 +50,35 @@ through `QPalette`, which the stylesheet built in M3 replaces.
 Deferred to M2: `--benchmark <dir>` is parsed but not yet implemented; it wants
 the action registry to report through.
 
-## M2 — Panels and input
+## M2 — Panels and input ✅
 
-- [ ] `ActionRegistry` — the only dispatch path
-- [ ] `Keymap` — chord trie, sequences, ambiguity and sequence timers
-- [ ] Application-level event filter (no `QShortcut`, no `QAction` shortcuts)
-- [ ] `FocusManager`, `PanelStrip`, panel lifecycle
-- [ ] `Sidebar` with XDG user dirs and pinned entries
-- [ ] Help modal generated from the registry
-- [ ] Tests: simultaneous bindings, sequence matching, prefix ambiguity, timeout
-      expiry, mistyped sequence swallows the key, buffer cleared on focus change,
-      `Meta`/`Super` normalisation, conflict detection
+- [x] `ActionRegistry` — the only dispatch path, with per-action enablement
+- [x] `Chord` — two-form model so `j` and `J` stay distinct (see below)
+- [x] `Keymap` — chord trie, layers, sequences, conflict detection
+- [x] `KeyDispatcher` — application-level filter with sequence and ambiguity timers
+- [x] `PanelStrip` — create, split, close, cycle, equalise, compact layout
+- [x] `Sidebar` with XDG user dirs and pinned entries, populated on idle
+- [x] `Modal` base and a help modal generated entirely from the registry
+- [x] `PanelController` as composition root, registering §6.3's actions
+- [x] Tests: every item on §14's list, plus the shipped defaults
+
+Three bugs found while building it, all of which would have shipped:
+
+1. **`QKeySequence` cannot distinguish `j` from `J`** — both parse to `Key_J`,
+   but §6.3 binds them to `list_down` and `select_down`. A chord is therefore
+   stored either as a key code plus modifiers, or as the character a bare key
+   produces. The second form also makes non-US layouts work, where `?` may or
+   may not be Shift+/.
+2. **`Qt::UniqueConnection` asserts with lambdas**, so the footer was stacking a
+   connection per focus change. Connections are now tracked and dropped.
+3. **§6.3's own default table binds `Ctrl+D` twice** — `page_down` in Movement
+   and `delete_items` in File operations. Movement keeps it; see the reasoning
+   in `DefaultKeymap.cpp`. Worth a second opinion.
+
+Two layout bugs a rendered screenshot caught that no assertion would have: a
+third panel appearing as an unreadable sliver (a splitter re-divides by stretch
+factor, and a widget added later defaults to zero), and the panel header's long
+path imposing a minimum width the splitter could not shrink below.
 
 ## M3 — Config and theme
 
@@ -123,6 +141,30 @@ the action registry to report through.
 
 - [ ] Outgoing `QDrag` with `text/uri-list` and a rendered row pixmap
 - [ ] Incoming drops, modifier-selected action, target row highlighting
+
+## M11 — Visual design pass
+
+Added after M2, on the observation that the application looked clunky rather
+than merely unstyled. M3 below builds the *mechanism* — §9's `theme.toml` with
+its `[colors]` and `[ui]` blocks already covers user-writable themes that
+customise colour, font, row height, border radius and padding. What it does not
+cover is choosing values that look right, which is design work rather than
+plumbing, and is why this is separate.
+
+- [ ] A spacing scale, applied consistently, replacing the ad-hoc paddings
+- [ ] A light, Finder-like default theme — §9 ships only dark themes plus a
+      `system` one derived from `QPalette`
+- [ ] Finder-grade row treatment: row height, alternating rows, column alignment
+- [ ] The focused-panel border of §9, which calls it "the single most important
+      visual affordance in the app" and which currently is not drawn at all —
+      only a slightly lighter background distinguishes the focused panel
+- [ ] Typography: font stack and sizes per platform rather than the system default
+- [ ] Expand the bundled set to 10–20 themes, including light variants
+      (Catppuccin Latte, Rose Pine Dawn, Solarized Light, Nord Light,
+      GitHub Light and Dark, One Dark, Everforest, Kanagawa)
+
+Runs after M3 so themes are authored against a real stylesheet rather than
+retrofitted onto one.
 
 ## M10 — Session, CLI routing, packaging
 

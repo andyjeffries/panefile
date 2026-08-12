@@ -7,13 +7,21 @@
 #include <memory>
 #include <vector>
 
+namespace pf::input {
+class ActionRegistry;
+class Keymap;
+} // namespace pf::input
+
+namespace pf::ui {
+class HelpModal;
+class MainWindow;
+} // namespace pf::ui
+
 namespace pf {
 
 struct CommandLineOptions;
-
-namespace ui {
-class MainWindow;
-}
+class KeyDispatcher;
+class PanelController;
 
 /// The QApplication subclass that owns the window and the deferred-startup
 /// queue.
@@ -22,6 +30,10 @@ class MainWindow;
 /// to after the first paint, and lazy. This class is where the second class
 /// lives — postStartupTask() queues work that runs one item per event loop turn
 /// once the window is up, so no single slow item can stall input.
+///
+/// It is also the composition root: the action registry, keymap, dispatcher and
+/// panel controller are wired together here, because that wiring is the one
+/// place that needs to know about every layer.
 class Application : public QApplication
 {
     Q_OBJECT
@@ -44,14 +56,32 @@ public:
     /// Safe to call before the window exists; the queue drains once it does.
     void postStartupTask(std::function<void()> task);
 
+    /// §6.2: a single application-level filter is the entire dispatch path.
+    /// QShortcut and QAction shortcuts are not used — they cap out at four
+    /// elements, resolve ambiguity uncontrollably, and have no notion of mode.
+    bool notify(QObject *receiver, QEvent *event) override;
+
 private Q_SLOTS:
     void onFirstPaint();
     void runNextStartupTask();
 
 private:
-    void scheduleStartupTasks();
+    void buildInputSystem();
+    void registerGlobalActions();
+    ui::HelpModal *helpModal();
 
     std::unique_ptr<ui::MainWindow> m_mainWindow;
+    std::unique_ptr<input::ActionRegistry> m_registry;
+    std::unique_ptr<input::Keymap> m_keymap;
+    std::unique_ptr<KeyDispatcher> m_dispatcher;
+    std::unique_ptr<PanelController> m_panelController;
+
+    /// §3.4: modals are constructed on first invocation, then cached. The help
+    /// modal builds a tree of every action, which is not work to do at startup
+    /// for a user who never presses `?`. Owned by the window through the Qt
+    /// parent-child relationship, so this is a raw observing pointer.
+    ui::HelpModal *m_helpModal = nullptr;
+
     std::vector<std::function<void()>> m_startupTasks;
     std::size_t m_nextStartupTask = 0;
     bool m_quitAfterPaint = false;

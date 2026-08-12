@@ -6,10 +6,17 @@
 // technically correct but paints its columns on top of each other passes every
 // assertion above it, and the image is the only thing that catches that.
 
+#include "input/ActionRegistry.h"
+#include "input/DefaultKeymap.h"
+#include "input/Keymap.h"
 #include "model/DirectoryModel.h"
 #include "model/FileEntry.h"
 #include "ui/CursorMemory.h"
 #include "ui/FilePanel.h"
+#include "ui/MainWindow.h"
+#include "ui/PanelStrip.h"
+#include "ui/Sidebar.h"
+#include "ui/modals/HelpModal.h"
 
 #include <QDir>
 #include <QFile>
@@ -58,6 +65,8 @@ private Q_SLOTS:
     void activatingAFileEmitsItsAbsolutePath();
     void unreadableDirectoryReportsAnError();
     void rendersARecognisableListing();
+    void rendersTheWholeWindow();
+    void rendersTheHelpModal();
 };
 
 void TestFilePanel::initTestCase()
@@ -267,6 +276,78 @@ void TestFilePanel::rendersARecognisableListing()
     QVERIFY2(distinctColours.size() > 8,
              qPrintable(QStringLiteral("only %1 distinct colours — the listing did not paint")
                             .arg(distinctColours.size())));
+}
+
+void TestFilePanel::rendersTheWholeWindow()
+{
+    // The whole application chrome as a user sees it: sidebar, three panels and
+    // the footer. Assertions cannot tell you that the sidebar is drawing on top
+    // of the first panel; the image can.
+    ui::MainWindow window;
+    window.resize(1200, 520);
+    window.sidebar()->populate();
+
+    window.panelStrip()->addPanel(m_root.path());
+    window.panelStrip()->addPanel(path(QStringLiteral("alpha")));
+    window.panelStrip()->addPanel(QDir::homePath());
+    QTest::qWait(400);
+
+    window.panelStrip()->focusPanelAt(0);
+    window.panelStrip()->focusedPanel()->setCursorName(QStringLiteral("readme.md"));
+    window.showPendingKeys(QStringLiteral("g-"));
+    QTest::qWait(150);
+
+    const QPixmap shot = window.grab();
+    QVERIFY(!shot.isNull());
+
+    const QString output =
+        QStringLiteral("%1/window-render.png").arg(QLatin1String(QT_TESTCASE_BUILDDIR));
+    QVERIFY2(shot.save(output), qPrintable(output));
+    qInfo("rendered window written to %s", qPrintable(output));
+}
+
+void TestFilePanel::rendersTheHelpModal()
+{
+    // §6.3's help modal, generated entirely from the registry and keymap.
+    input::ActionRegistry registry;
+    input::Keymap keymap;
+    input::installDefaultKeymap(keymap);
+
+    for (const auto &[id, description, category] :
+         {std::tuple{"list_down", "Move the cursor down", input::ActionCategory::Movement},
+          std::tuple{"list_up", "Move the cursor up", input::ActionCategory::Movement},
+          std::tuple{"go_home", "Go to the home directory", input::ActionCategory::Movement},
+          std::tuple{"list_top", "Move to the first entry", input::ActionCategory::Movement},
+          std::tuple{"create_new_file_panel", "Open a new panel at home",
+                     input::ActionCategory::Panels},
+          std::tuple{"split_file_panel", "Duplicate the focused panel",
+                     input::ActionCategory::Panels},
+          std::tuple{"close_file_panel", "Close the focused panel", input::ActionCategory::Panels},
+          std::tuple{"next_file_panel", "Focus the next panel", input::ActionCategory::Panels},
+          std::tuple{"copy_items", "Copy the selection", input::ActionCategory::FileOperations},
+          std::tuple{"paste_items", "Paste into this directory",
+                     input::ActionCategory::FileOperations},
+          std::tuple{"delete_items", "Move the selection to the trash",
+                     input::ActionCategory::FileOperations},
+          std::tuple{"open_help_menu", "Show every action and its keys",
+                     input::ActionCategory::General}}) {
+        registry.registerAction(QLatin1String(id), QLatin1String(description), category, [] {});
+    }
+
+    ui::MainWindow window;
+    window.resize(1000, 620);
+
+    auto *help = new ui::HelpModal(registry, keymap, &window);
+    help->showModal();
+    QTest::qWait(200);
+
+    const QPixmap shot = window.grab();
+    QVERIFY(!shot.isNull());
+
+    const QString output =
+        QStringLiteral("%1/help-render.png").arg(QLatin1String(QT_TESTCASE_BUILDDIR));
+    QVERIFY2(shot.save(output), qPrintable(output));
+    qInfo("rendered help modal written to %s", qPrintable(output));
 }
 
 QTEST_MAIN(TestFilePanel)

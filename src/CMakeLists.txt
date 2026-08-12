@@ -85,6 +85,23 @@ qt_add_resources(pf_model "fallback_icons"
         "${PROJECT_SOURCE_DIR}/data/icons/fallback/text.svg")
 
 # ---------------------------------------------------------------------------
+# input — chords, keymap and the action registry.
+#
+# Below ui rather than above it (§3.1's note in PanefileCompilerFlags.cmake):
+# these are pure lookup with no widget dependencies, which is what lets §6.2's
+# "nothing in the UI may call a behaviour function directly" hold without a
+# cycle between ui and app.
+# ---------------------------------------------------------------------------
+pf_layer_library(pf_input
+    LAYER input
+    SOURCES
+        input/ActionRegistry.cpp
+        input/Chord.cpp
+        input/DefaultKeymap.cpp
+        input/Keymap.cpp
+    PUBLIC_DEPENDS Qt6::Core Qt6::Gui pf_core)
+
+# ---------------------------------------------------------------------------
 # ui — widgets, delegates, painting.
 # ---------------------------------------------------------------------------
 pf_layer_library(pf_ui
@@ -94,10 +111,14 @@ pf_layer_library(pf_ui
         ui/FileItemDelegate.cpp
         ui/FilePanel.cpp
         ui/MainWindow.cpp
+        ui/PanelStrip.cpp
+        ui/Sidebar.cpp
         ui/ThemePalette.cpp
+        ui/modals/HelpModal.cpp
+        ui/modals/Modal.cpp
     PUBLIC_DEPENDS
         Qt6::Core Qt6::Gui Qt6::Widgets
-        pf_core pf_platform pf_config pf_model)
+        pf_core pf_platform pf_config pf_model pf_input)
 
 # ---------------------------------------------------------------------------
 # app — the composition root: lifecycle, session, panel controller.
@@ -107,12 +128,16 @@ pf_layer_library(pf_app
     SOURCES
         app/Application.cpp
         app/CommandLine.cpp
-    PUBLIC_DEPENDS Qt6::Core Qt6::Gui Qt6::Widgets pf_core pf_platform pf_config)
+        app/KeyDispatcher.cpp
+        app/PanelController.cpp
+    PUBLIC_DEPENDS
+        Qt6::Core Qt6::Gui Qt6::Widgets
+        pf_core pf_platform pf_config pf_input)
 
 # Public rather than private: main.cpp is handed the window through Application.
 target_link_libraries(pf_app PUBLIC pf_ui)
 
-pf_check_layering(pf_core pf_platform pf_config pf_fs pf_model pf_ui pf_app)
+pf_check_layering(pf_core pf_platform pf_config pf_fs pf_model pf_input pf_ui pf_app)
 
 # ---------------------------------------------------------------------------
 # pf — the binary.

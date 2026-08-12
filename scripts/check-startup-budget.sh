@@ -43,8 +43,14 @@ regression_tolerance=1.15
 # is teardown cost and has nothing to do with how quickly a window appears.
 # §11's criterion is "cold start to first painted window", and the trace
 # measures exactly that, from a real paintEvent.
+# QT_QPA_PLATFORM=offscreen matters for more than tidiness: this launches the
+# real application twenty-three times to take a median, and without it that is
+# twenty-three windows opening and closing over whatever the developer is doing.
+# A window that reappears the moment it is closed looks like a bug in Panefile
+# rather than a benchmark in progress. Offscreen still performs a real
+# paintEvent, which is what is being measured.
 measure_once() {
-    "$binary" --startup-trace --quit-after-paint "$fixture" 2>&1 \
+    QT_QPA_PLATFORM=offscreen "$binary" --startup-trace --quit-after-paint "$fixture" 2>&1 \
         | awk '/first-paint/ { print $3 }'
 }
 

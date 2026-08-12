@@ -21,6 +21,9 @@ FilePanel::FilePanel(QWidget *parent)
       m_header(new QLabel(this)), m_status(new QLabel(this))
 {
     setObjectName(QStringLiteral("filePanel"));
+    // Narrow enough that ten panels fit §7.1's maximum on a normal display,
+    // wide enough that a filename column is still worth reading.
+    setMinimumWidth(140);
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -28,6 +31,14 @@ FilePanel::FilePanel(QWidget *parent)
 
     m_header->setObjectName(QStringLiteral("panelHeader"));
     m_header->setTextFormat(Qt::PlainText);
+    // A QLabel's size hint grows with its text, and a header showing a long
+    // path would therefore impose a minimum width on the whole panel that a
+    // QSplitter cannot shrink below — which is what left a third panel as an
+    // unreadable sliver instead of one of three equal columns. Ignoring the
+    // horizontal hint lets the panel be as narrow as the splitter wants, and
+    // the text is elided to fit.
+    m_header->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    m_header->setMinimumWidth(0);
     layout->addWidget(m_header);
 
     m_view->setObjectName(QStringLiteral("panelView"));
@@ -449,7 +460,23 @@ void FilePanel::updateHeader()
         counts = tr("scanning… %1").arg(shown);
     }
 
-    m_header->setText(QStringLiteral("%1    %2").arg(display, counts));
+    m_headerText = QStringLiteral("%1    %2").arg(display, counts);
+    applyHeaderElision();
+}
+
+void FilePanel::applyHeaderElision()
+{
+    // Elided from the left: the tail of a path is what identifies it, so
+    // "…/Developer/panefile/src" is far more useful than "/Users/andy/Deve…".
+    const QFontMetrics metrics(m_header->font());
+    const int available = std::max(0, m_header->width() - (2 * currentPalette().panelPadding));
+    m_header->setText(metrics.elidedText(m_headerText, Qt::ElideLeft, available));
+}
+
+void FilePanel::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    applyHeaderElision();
 }
 
 } // namespace pf::ui

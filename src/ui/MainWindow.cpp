@@ -1,20 +1,38 @@
 #include "ui/MainWindow.h"
 
 #include "core/Format.h"
+#include "core/Logging.h"
 #include "core/StartupTrace.h"
 #include "model/DirectoryModel.h"
 #include "model/FileEntry.h"
 #include "ui/FilePanel.h"
+#include "ui/PanelStrip.h"
+#include "ui/Sidebar.h"
 #include "ui/ThemePalette.h"
 
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QListView>
+#include <QResizeEvent>
+#include <QSplitter>
 #include <QTimer>
 #include <QVBoxLayout>
 
 namespace pf::ui {
+namespace {
 
-MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
+/// §7.1: below this total width the sidebar hides itself.
+constexpr int kSidebarHideThreshold = 600;
+
+/// How long a transient footer message stays before the footer goes back to
+/// describing the cursor item. A message that never clears stops being read.
+constexpr int kStatusMessageMs = 4000;
+
+} // namespace
+
+MainWindow::MainWindow(QWidget *parent)
+    : QMainWindow(parent), m_splitter(new QSplitter(Qt::Horizontal)), m_sidebar(new Sidebar),
+      m_strip(new PanelStrip), m_footer(new QLabel), m_pending(new QLabel)
 {
     setObjectName(QStringLiteral("mainWindow"));
     setWindowTitle(QStringLiteral("Panefile"));
@@ -25,50 +43,138 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
 
-    m_panel = new FilePanel(central);
-    m_panel->setActive(true);
-    layout->addWidget(m_panel, 1);
+    m_splitter->setObjectName(QStringLiteral("mainSplitter"));
+    m_splitter->setChildrenCollapsible(false);
+    m_splitter->setHandleWidth(1);
+    m_splitter->addWidget(m_sidebar);
+    m_splitter->addWidget(m_strip);
+    m_splitter->setStretchFactor(0, 0);
+    m_splitter->setStretchFactor(1, 1);
+    m_splitter->setSizes({180, 1020});
+    layout->addWidget(m_splitter, 1);
 
-    m_footer = new QLabel(central);
+    // The footer row carries both the cursor metadata and the pending-chord
+    // indicator, which sits at the right where it does not shift the metadata
+    // around as it appears and disappears.
+    auto *footerRow = new QWidget(central);
+    auto *footerLayout = new QHBoxLayout(footerRow);
+    footerLayout->setContentsMargins(currentPalette().panelPadding, 3,
+                                     currentPalette().panelPadding, 3);
+    footerLayout->setSpacing(12);
+
     m_footer->setObjectName(QStringLiteral("footer"));
     m_footer->setTextFormat(Qt::PlainText);
-    layout->addWidget(m_footer);
+    footerLayout->addWidget(m_footer, 1);
 
+    m_pending->setObjectName(QStringLiteral("pendingKeys"));
+    m_pending->setTextFormat(Qt::PlainText);
+    footerLayout->addWidget(m_pending, 0);
+
+    const ThemePalette &theme = currentPalette();
+    QPalette windowPalette = palette();
+    windowPalette.setColor(QPalette::Window, theme.background);
+    windowPalette.setColor(QPalette::WindowText, theme.subtext);
+    windowPalette.setColor(QPalette::Base, theme.background);
+    windowPalette.setColor(QPalette::Text, theme.text);
+    setPalette(windowPalette);
+    central->setAutoFillBackground(true);
+    central->setPalette(windowPalette);
+    footerRow->setAutoFillBackground(true);
+    footerRow->setPalette(windowPalette);
+
+    QPalette pendingPalette = windowPalette;
+    pendingPalette.setColor(QPalette::WindowText, theme.accent);
+    m_pending->setPalette(pendingPalette);
+
+    layout->addWidget(footerRow);
     setCentralWidget(central);
 
-    connect(m_panel, &FilePanel::cursorChanged, this, [this](const QString &) { updateFooter(); });
-    connect(m_panel, &FilePanel::statusMessage, this, &MainWindow::showStatusMessage);
-    connect(m_panel, &FilePanel::pathChanged, this, [this](const QString &path) {
-        setWindowTitle(QStringLiteral("%1 — Panefile").arg(path));
+    connect(m_strip, &PanelStrip::focusedPanelChanged, this, [this](FilePanel *panel) {
+        connectPanel(panel);
+        updateFooter();
+        if (panel != nullptr) {
+            setWindowTitle(QStringLiteral("%1 — Panefile").arg(panel->path()));
+        }
     });
-
-    m_panel->view()->setFocus();
+    connect(m_strip, &PanelStrip::statusMessage, this, &MainWindow::showStatusMessage);
 }
 
 MainWindow::~MainWindow() = default;
 
+PanelStrip *MainWindow::panelStrip() const
+{
+    return m_strip;
+}
+
+Sidebar *MainWindow::sidebar() const
+{
+    return m_sidebar;
+}
+
 FilePanel *MainWindow::activePanel() const
 {
-    return m_panel;
+    return m_strip->focusedPanel();
+}
+
+void MainWindow::connectPanel(FilePanel *panel)
+{
+    // The footer follows the *focused* panel, so the previous panel's
+    // connections go first. Qt::UniqueConnection would be the obvious way to
+    // avoid duplicates and does not work with lambdas — it asserts — so the
+    // connections are tracked and dropped explicitly.
+    disconnect(m_panelCursorConnection);
+    disconnect(m_panelPathConnection);
+
+    if (panel == nullptr) {
+        return;
+    }
+
+    m_panelCursorConnection = connect(panel, &FilePanel::cursorChanged, this,
+                                      [this](const QString &) { updateFooter(); });
+    m_panelPathConnection =
+        connect(panel, &FilePanel::pathChanged, this, [this](const QString &path) {
+            setWindowTitle(QStringLiteral("%1 — Panefile").arg(path));
+        });
+}
+
+void MainWindow::showPendingKeys(const QString &text)
+{
+    m_pending->setText(text);
 }
 
 void MainWindow::showStatusMessage(const QString &message)
 {
     m_footer->setText(message);
 
-    // Transient: the message replaces the cursor metadata for a few seconds and
-    // then the footer goes back to describing what the cursor is on. A message
-    // that stays forever stops being read.
-    QTimer::singleShot(4000, this, [this, message] {
+    QTimer::singleShot(kStatusMessageMs, this, [this, message] {
         if (m_footer->text() == message) {
             updateFooter();
         }
     });
 }
 
+void MainWindow::toggleFooter()
+{
+    m_footer->parentWidget()->setVisible(!m_footer->parentWidget()->isVisible());
+}
+
+void MainWindow::toggleSidebar()
+{
+    m_sidebar->setVisible(!m_sidebar->isVisible());
+    // An explicit toggle takes precedence over the width rule, or the sidebar
+    // would reappear the next time the window was resized.
+    m_sidebarHiddenByWidth = false;
+}
+
 void MainWindow::updateFooter()
 {
-    const QModelIndex current = m_panel->view()->currentIndex();
+    const FilePanel *panel = activePanel();
+    if (panel == nullptr) {
+        m_footer->clear();
+        return;
+    }
+
+    const QModelIndex current = panel->view()->currentIndex();
     if (!current.isValid()) {
         m_footer->clear();
         return;
@@ -86,9 +192,9 @@ void MainWindow::updateFooter()
         return;
     }
 
-    // §5.1: permissions, owner, size, mtime. Owner resolution is deliberately
-    // left as numeric ids for now — getpwuid() hits NSS, which on a machine
-    // with a network directory service can block for seconds.
+    // §5.1: permissions, owner, size, mtime. Owner stays numeric for now:
+    // getpwuid() goes through NSS, which on a machine with a network directory
+    // service can block for seconds, and this runs on every cursor movement.
     QString text = QStringLiteral("%1  %2:%3  %4  %5")
                        .arg(formatPermissions(entry.mode))
                        .arg(entry.uid)
@@ -100,6 +206,24 @@ void MainWindow::updateFooter()
     }
 
     m_footer->setText(text);
+}
+
+void MainWindow::resizeEvent(QResizeEvent *event)
+{
+    QMainWindow::resizeEvent(event);
+
+    // §7.1: hide the sidebar below 600 px of total width. Tracked separately
+    // from an explicit toggle so that widening the window restores a sidebar
+    // the width rule hid, but not one the user chose to hide.
+    const bool tooNarrow = event->size().width() < kSidebarHideThreshold;
+
+    if (tooNarrow && m_sidebar->isVisible()) {
+        m_sidebar->hide();
+        m_sidebarHiddenByWidth = true;
+    } else if (!tooNarrow && m_sidebarHiddenByWidth) {
+        m_sidebar->show();
+        m_sidebarHiddenByWidth = false;
+    }
 }
 
 void MainWindow::paintEvent(QPaintEvent *event)

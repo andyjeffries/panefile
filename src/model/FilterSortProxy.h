@@ -69,10 +69,12 @@ private:
     QString m_filterText;
     quint32 m_randomSeed = 1;
 
-    /// §4.4 requires natural, locale-aware name sorting — file2 before file10.
-    /// QCollator is expensive to construct and is consulted once per
-    /// comparison, so it is built once and kept. Mutable because lessThan() is
-    /// const and QCollator::compare() is not.
+    /// Handles the locale-aware half of §4.4's ordering; naturalCompare() drives
+    /// it and handles the numeric half itself, because QCollator's numeric mode
+    /// depends on ICU and is silently ignored without it. Expensive to
+    /// construct and consulted once per comparison, so it is built once and
+    /// kept. Mutable because lessThan() is const and QCollator::compare() is
+    /// not.
     mutable QCollator m_collator;
 };
 

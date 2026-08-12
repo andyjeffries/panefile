@@ -1,5 +1,6 @@
 #include "model/FilterSortProxy.h"
 
+#include "core/NaturalCompare.h"
 #include "model/DirectoryModel.h"
 #include "model/FileEntry.h"
 
@@ -183,7 +184,7 @@ bool FilterSortProxy::lessThan(const QModelIndex &left, const QModelIndex &right
     bool result = false;
     switch (m_sortKey) {
     case SortKey::Name:
-        result = m_collator.compare(leftName, rightName) < 0;
+        result = naturalCompare(leftName, rightName, m_collator) < 0;
         break;
 
     case SortKey::Size: {
@@ -195,7 +196,7 @@ bool FilterSortProxy::lessThan(const QModelIndex &left, const QModelIndex &right
             // Equal sizes are extremely common — every empty file, every
             // directory. Falling back to the name keeps the order stable and
             // predictable instead of readdir-dependent.
-            result = m_collator.compare(leftName, rightName) < 0;
+            result = naturalCompare(leftName, rightName, m_collator) < 0;
         }
         break;
     }
@@ -206,7 +207,7 @@ bool FilterSortProxy::lessThan(const QModelIndex &left, const QModelIndex &right
         if (leftTime != rightTime) {
             result = leftTime < rightTime;
         } else {
-            result = m_collator.compare(leftName, rightName) < 0;
+            result = naturalCompare(leftName, rightName, m_collator) < 0;
         }
         break;
     }
@@ -216,9 +217,9 @@ bool FilterSortProxy::lessThan(const QModelIndex &left, const QModelIndex &right
         const QString rightType = typeKey(rightName);
 
         if (leftType != rightType) {
-            result = m_collator.compare(leftType, rightType) < 0;
+            result = naturalCompare(leftType, rightType, m_collator) < 0;
         } else {
-            result = m_collator.compare(leftName, rightName) < 0;
+            result = naturalCompare(leftName, rightName, m_collator) < 0;
         }
         break;
     }

@@ -45,6 +45,17 @@ jobs:
       - name: Test
         run: ctest --preset release
 
+      # The C locale is not an exotic configuration — it is the default in a
+      # container and in most of CI, and it is what exposed QCollator's numeric
+      # mode silently doing nothing without ICU. Running the suite under it as
+      # well as under the runner's own locale keeps that class of bug from
+      # coming back invisibly.
+      - name: Test under the C locale
+        env:
+          LC_ALL: C
+          LANG: C
+        run: ctest --preset release
+
       - name: Check dynamic dependencies
         run: scripts/check-dependencies.sh build/release/bin/pf docs/dependencies-linux.txt
 

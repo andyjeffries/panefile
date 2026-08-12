@@ -12,6 +12,7 @@ pf_layer_library(pf_core
     SOURCES
         core/Format.cpp
         core/Logging.cpp
+        core/NaturalCompare.cpp
         core/StartupTrace.cpp
     PUBLIC_DEPENDS Qt6::Core)
 

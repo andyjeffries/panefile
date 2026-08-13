@@ -32,6 +32,24 @@ class TestDragDrop : public QObject
 
 private Q_SLOTS:
 
+    /// The panel has to be willing to receive a drop at all.
+    ///
+    /// It was not. QAbstractItemView::setDragDropMode(NoDragDrop) calls
+    /// setAcceptDrops(false) while applying the mode, and the constructor
+    /// accepted drops *before* setting the mode — so the flag was cleared again
+    /// on the next line and no drag event ever reached the panel. Dropping a
+    /// file between panels did nothing at all.
+    ///
+    /// Both the view and its viewport are checked: a QAbstractScrollArea routes
+    /// drag events through the viewport, so the view alone accepting them is
+    /// not enough.
+    void thePanelAcceptsDrops()
+    {
+        QVERIFY2(m_panel->view()->acceptDrops(), "the view must accept drops");
+        QVERIFY2(m_panel->view()->viewport()->acceptDrops(), "so must its viewport");
+    }
+
+
     void initTestCase()
     {
         m_dir = std::make_unique<QTemporaryDir>();

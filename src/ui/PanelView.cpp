@@ -29,12 +29,22 @@ constexpr int kDragPadding = 8;
 
 PanelView::PanelView(QWidget *parent) : QListView(parent)
 {
-    setAcceptDrops(true);
     // QListView's own drag machinery is deliberately left off: it would build
     // the payload from the view's selection model, and §6.1's Selection mode is
     // a separate thing the panel owns.
     setDragEnabled(false);
     setDragDropMode(QAbstractItemView::NoDragDrop);
+
+    // *After* setDragDropMode, which is not a detail.
+    //
+    // QAbstractItemView::setDragDropMode(NoDragDrop) calls setAcceptDrops(false)
+    // as part of applying the mode, so accepting drops first and setting the
+    // mode second — which is how this was written — left acceptDrops false and
+    // the panel deaf to every drag event Qt could have sent it. Dropping a file
+    // between panels did nothing whatsoever, and no test caught it because
+    // synthetic events cannot reach a widget that has not asked for them.
+    setAcceptDrops(true);
+    viewport()->setAcceptDrops(true);
 }
 
 int PanelView::dropTargetRow() const

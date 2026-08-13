@@ -49,7 +49,6 @@ private Q_SLOTS:
         QVERIFY2(m_panel->view()->viewport()->acceptDrops(), "so must its viewport");
     }
 
-
     void initTestCase()
     {
         m_dir = std::make_unique<QTemporaryDir>();
@@ -99,20 +98,41 @@ private Q_SLOTS:
                  m_dir->path());
     }
 
-    /// §7.12: "Default action is copy; Shift forces move, Ctrl forces copy."
-    ///
-    /// Copy is the default because the two fail differently: an unwanted copy
-    /// leaves a file to delete, an unwanted move has already taken the original
-    /// away from where the user expected it.
-    void modifiersChooseTheAction()
+    /// The default follows the filesystem, because the two cases mean
+    /// different things: within one disk a drag is a rename, across two it
+    /// would copy every byte and then delete the original.
+    void theDefaultFollowsTheFilesystem()
     {
-        QCOMPARE(PanelView::actionFor(Qt::NoModifier), Qt::CopyAction);
-        QCOMPARE(PanelView::actionFor(Qt::ControlModifier), Qt::CopyAction);
-        QCOMPARE(PanelView::actionFor(Qt::ShiftModifier), Qt::MoveAction);
+        QCOMPARE(PanelView::actionFor(Qt::NoModifier, true), Qt::MoveAction);
+        QCOMPARE(PanelView::actionFor(Qt::NoModifier, false), Qt::CopyAction);
+    }
+
+    /// A held modifier is a decision, so it wins over the filesystem in both
+    /// directions — otherwise the override would be useless exactly where it
+    /// matters.
+    void modifiersOverrideTheFilesystem()
+    {
+        QCOMPARE(PanelView::actionFor(Qt::ShiftModifier, false), Qt::MoveAction);
+        QCOMPARE(PanelView::actionFor(Qt::ControlModifier, true), Qt::CopyAction);
 
         // Shift wins when both are held: it is the one the user had to reach
         // for deliberately.
-        QCOMPARE(PanelView::actionFor(Qt::ShiftModifier | Qt::ControlModifier), Qt::MoveAction);
+        QCOMPARE(PanelView::actionFor(Qt::ShiftModifier | Qt::ControlModifier, true),
+                 Qt::MoveAction);
+        QCOMPARE(PanelView::actionFor(Qt::ShiftModifier | Qt::ControlModifier, false),
+                 Qt::MoveAction);
+    }
+
+    /// Alt asks rather than decides, and does so whatever else is held — the
+    /// menu still opens with a sensible default action preselected.
+    void altAsksInsteadOfDeciding()
+    {
+        QVERIFY(PanelView::wantsMenu(Qt::AltModifier));
+        QVERIFY(PanelView::wantsMenu(Qt::AltModifier | Qt::ShiftModifier));
+
+        QVERIFY(!PanelView::wantsMenu(Qt::NoModifier));
+        QVERIFY(!PanelView::wantsMenu(Qt::ShiftModifier));
+        QVERIFY(!PanelView::wantsMenu(Qt::ControlModifier));
     }
 
     /// The paths carried by a drag come from the panel's selection (§6.1's

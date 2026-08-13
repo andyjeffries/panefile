@@ -40,8 +40,22 @@ public:
     /// go is.
     QString destinationFor(const QPoint &position) const;
 
-    /// The action the modifiers ask for (§7.12).
-    static Qt::DropAction actionFor(Qt::KeyboardModifiers modifiers);
+    /// The action a drop should perform.
+    ///
+    /// `sameFilesystem` is what makes the default sensible rather than merely
+    /// consistent: within one filesystem a move is a rename — instant, and what
+    /// dragging a file between two views of the same disk plainly means. Across
+    /// filesystems the same gesture would be a full copy followed by deleting
+    /// the original, which is slow and destroys the source, so there the
+    /// default is a copy.
+    ///
+    /// Static and pure so the whole modifier table can be tested without a drag
+    /// manager, which is the part no synthetic event can supply.
+    static Qt::DropAction actionFor(Qt::KeyboardModifiers modifiers, bool sameFilesystem);
+
+    /// Whether the modifiers ask to be shown the choice instead of having one
+    /// picked (Alt, per §7.12's "Alt shows a menu").
+    static bool wantsMenu(Qt::KeyboardModifiers modifiers);
 
 Q_SIGNALS:
     /// Files were dropped. `destinationDirectory` is the directory row under
@@ -56,6 +70,20 @@ Q_SIGNALS:
 
     /// The directory this view is showing, for resolving a drop on empty space.
     void currentDirectoryRequested(QString *path);
+
+private:
+    /// The local file paths in a drag payload, ignoring anything that is not a
+    /// file — a browser's http:// URL is a download request, not a copy.
+    static QStringList localPathsIn(const QMimeData *mime);
+
+    /// `actionFor` with the filesystem question answered from a live drag.
+    Qt::DropAction actionForDrag(const QMimeData *mime, const QPoint &position,
+                                 Qt::KeyboardModifiers modifiers) const;
+
+    /// Shows the copy-or-move menu and emits the answer. Called queued, after
+    /// the drag manager has let go of the pointer.
+    void askAndDrop(const QStringList &paths, const QString &destination, Qt::DropAction suggested,
+                    const QPoint &globalPosition);
 
 protected:
     void mousePressEvent(QMouseEvent *event) override;

@@ -2,6 +2,7 @@
 
 #include "model/DirectoryModel.h"
 #include "model/FileEntry.h"
+#include "platform/FileOps.h"
 #include "ui/ThemePalette.h"
 
 #include <QApplication>
@@ -11,6 +12,7 @@
 #include <QDragMoveEvent>
 #include <QDropEvent>
 #include <QFileInfo>
+#include <QMenu>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
@@ -61,17 +63,31 @@ void PanelView::setDropTargetRow(int row)
     viewport()->update();
 }
 
-Qt::DropAction PanelView::actionFor(Qt::KeyboardModifiers modifiers)
+bool PanelView::wantsMenu(Qt::KeyboardModifiers modifiers)
 {
-    // §7.12: "Default action is copy; Shift forces move, Ctrl forces copy".
-    //
-    // Copy is the default rather than move because the two fail differently: a
-    // copy the user did not want leaves a file to delete, and a move they did
-    // not want has already taken the original away from where they expected it.
+    return (modifiers & Qt::AltModifier) != 0;
+}
+
+Qt::DropAction PanelView::actionFor(Qt::KeyboardModifiers modifiers, bool sameFilesystem)
+{
+    // Shift and Ctrl override, and are absolute: someone holding a modifier has
+    // said what they want, and second-guessing it would make the override
+    // useless exactly when it matters. On macOS Qt maps Qt::ControlModifier to
+    // Command, so this one test reads as Ctrl on Linux and Cmd on a Mac, which
+    // is the shortcut each platform's users already know.
     if ((modifiers & Qt::ShiftModifier) != 0) {
         return Qt::MoveAction;
     }
-    return Qt::CopyAction;
+    if ((modifiers & Qt::ControlModifier) != 0) {
+        return Qt::CopyAction;
+    }
+
+    // Otherwise the filesystem decides. Within one, a move is a rename: instant,
+    // and what dragging a file from one view of a disk to another plainly means.
+    // Across two, that same gesture would copy every byte and then delete the
+    // original — slow, and destructive if it went to the wrong place — so a copy
+    // is the safer reading of an unmodified drag.
+    return sameFilesystem ? Qt::MoveAction : Qt::CopyAction;
 }
 
 void PanelView::mousePressEvent(QMouseEvent *event)
@@ -204,12 +220,43 @@ QString PanelView::destinationFor(const QPoint &position) const
     return directory;
 }
 
+QStringList PanelView::localPathsIn(const QMimeData *mime)
+{
+    QStringList paths;
+    for (const QUrl &url : mime->urls()) {
+        // Only local files. A drop of an http:// URL from a browser is a
+        // download request, which is not something a file manager should
+        // silently reinterpret as a copy.
+        if (url.isLocalFile()) {
+            paths.append(url.toLocalFile());
+        }
+    }
+    return paths;
+}
+
+Qt::DropAction PanelView::actionForDrag(const QMimeData *mime, const QPoint &position,
+                                        Qt::KeyboardModifiers modifiers) const
+{
+    const QStringList paths = localPathsIn(mime);
+    const QString destination = destinationFor(position);
+
+    // The first source stands for all of them. A drag spanning two filesystems
+    // is possible but vanishingly rare, and asking the kernel once per file to
+    // resolve a question the modifiers can override anyway would put a stat
+    // storm inside a handler that runs on every mouse move.
+    const bool same = !paths.isEmpty() && !destination.isEmpty() &&
+                      platform::onSameFilesystem(paths.constFirst(), destination);
+
+    return actionFor(modifiers, same);
+}
+
 void PanelView::dragEnterEvent(QDragEnterEvent *event)
 {
     if (!event->mimeData()->hasUrls()) {
         return;
     }
-    event->setDropAction(actionFor(event->modifiers()));
+    event->setDropAction(
+        actionForDrag(event->mimeData(), event->position().toPoint(), event->modifiers()));
     event->accept();
 }
 
@@ -233,7 +280,8 @@ void PanelView::dragMoveEvent(QDragMoveEvent *event)
     }
     setDropTargetRow(row);
 
-    event->setDropAction(actionFor(event->modifiers()));
+    event->setDropAction(
+        actionForDrag(event->mimeData(), event->position().toPoint(), event->modifiers()));
     event->accept();
 }
 
@@ -251,30 +299,63 @@ void PanelView::dropEvent(QDropEvent *event)
         return;
     }
 
-    QStringList paths;
-    for (const QUrl &url : event->mimeData()->urls()) {
-        // Only local files. A drop of an http:// URL from a browser is a
-        // download request, which is not something a file manager should
-        // silently reinterpret as a copy.
-        if (url.isLocalFile()) {
-            paths.append(url.toLocalFile());
-        }
-    }
-
+    const QStringList paths = localPathsIn(event->mimeData());
     if (paths.isEmpty()) {
         return;
     }
 
-    const QString destination = destinationFor(event->position().toPoint());
+    const QPoint position = event->position().toPoint();
+    const QString destination = destinationFor(position);
     if (destination.isEmpty()) {
         return;
     }
 
-    const Qt::DropAction action = actionFor(event->modifiers());
+    const Qt::DropAction action = actionForDrag(event->mimeData(), position, event->modifiers());
+
+    // The drag has to be answered now, whatever happens next: the platform's
+    // drag manager is still holding the pointer, and it does not get it back
+    // until the event is accepted.
     event->setDropAction(action);
     event->accept();
 
+    if (wantsMenu(event->modifiers())) {
+        // Queued rather than run here, because the menu's own event loop would
+        // otherwise nest inside the drag manager's — on macOS that leaves the
+        // cursor stuck in its drag state until the menu closes. By the time
+        // this runs the drag has ended and the menu is an ordinary popup.
+        const QPoint global = viewport()->mapToGlobal(position);
+        QMetaObject::invokeMethod(
+            this,
+            [this, paths, destination, action, global] {
+                askAndDrop(paths, destination, action, global);
+            },
+            Qt::QueuedConnection);
+        return;
+    }
+
     Q_EMIT filesDropped(paths, destination, action);
+}
+
+void PanelView::askAndDrop(const QStringList &paths, const QString &destination,
+                           Qt::DropAction suggested, const QPoint &globalPosition)
+{
+    QMenu menu(this);
+
+    QAction *copy = menu.addAction(tr("Copy Here"));
+    QAction *move = menu.addAction(tr("Move Here"));
+    menu.addSeparator();
+    menu.addAction(tr("Cancel"));
+
+    // The action the drag was already going to take is the default, so pressing
+    // Return does what letting go without Alt would have done.
+    menu.setDefaultAction(suggested == Qt::MoveAction ? move : copy);
+
+    const QAction *chosen = menu.exec(globalPosition);
+    if (chosen == copy) {
+        Q_EMIT filesDropped(paths, destination, Qt::CopyAction);
+    } else if (chosen == move) {
+        Q_EMIT filesDropped(paths, destination, Qt::MoveAction);
+    }
 }
 
 } // namespace pf::ui

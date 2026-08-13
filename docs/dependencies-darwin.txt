@@ -7,15 +7,15 @@
 # directory watching on macOS without them, and they are in the dyld shared
 # cache, so they cost no page-in.
 #
-# QtNetwork arrived with M10's single-instance socket. §10.3 names QLocalServer
-# and QLocalSocket, and the client half of it is the fastest path through the
-# whole program — the one taken every time a folder is opened from another
-# application. Deferring the library that path is made of would be deferring
-# the wrong thing.
+# QtNetwork is deliberately absent. §10.3 names QLocalServer, and linking
+# QtNetwork for it added twenty-eight shared libraries on Arch — OpenSSL,
+# Kerberos, libcurl, nghttp2, and libproxy, which embeds a JavaScript
+# interpreter — for a Unix domain socket. app/SingleInstance.cpp uses POSIX
+# sockets and QSocketNotifier instead.
 #
-# libarchive is deliberately absent: §3.4 forbids it as a link-time dependency,
-# and fs/LibArchive.cpp resolves its symbols with QLibrary on the first archive
-# the user opens.
+# libarchive is deliberately absent too: §3.4 forbids it as a link-time
+# dependency, and fs/LibArchive.cpp resolves its symbols with QLibrary on the
+# first archive the user opens.
 AppKit
 CoreFoundation
 CoreServices
@@ -28,6 +28,5 @@ Metal
 OpenGL
 QtCore
 QtGui
-QtNetwork
 QtWidgets
 UniformTypeIdentifiers

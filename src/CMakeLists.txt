@@ -209,8 +209,6 @@ pf_layer_library(pf_ui
 # ---------------------------------------------------------------------------
 # app — the composition root: lifecycle, session, panel controller.
 # ---------------------------------------------------------------------------
-find_package(Qt6 REQUIRED COMPONENTS Network)
-
 pf_layer_library(pf_app
     LAYER app
     SOURCES
@@ -228,10 +226,12 @@ pf_layer_library(pf_app
         Qt6::Core Qt6::Gui Qt6::Widgets
         pf_core pf_platform pf_config pf_input pf_fs)
 
-# §10.3's QLocalServer/QLocalSocket live in QtNetwork. Private, because nothing
-# above this layer speaks to the socket — the composition root is the only
-# place that knows single-instance exists.
-target_link_libraries(pf_app PRIVATE Qt6::Network)
+# §10.3's socket deliberately does not use QtNetwork. Linking it added
+# twenty-eight shared libraries to the binary's load-time dependencies on Arch
+# — OpenSSL, Kerberos, libcurl, nghttp2 and libproxy, which embeds a JavaScript
+# interpreter — all mapped and relocated at every launch for a Unix domain
+# socket. app/SingleInstance.cpp uses POSIX sockets and QSocketNotifier, which
+# is QtCore. See the comment at the top of that file.
 
 # Public rather than private: main.cpp is handed the window through Application.
 target_link_libraries(pf_app PUBLIC pf_ui)

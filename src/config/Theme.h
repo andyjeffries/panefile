@@ -39,16 +39,34 @@ struct Theme {
     QColor border{0x45, 0x47, 0x5a};
     QColor borderFocused{0x89, 0xb4, 0xfa};
 
+    /// The banding Finder and every other list view uses to keep the eye on a
+    /// line across a wide row (§9's spirit, if not its letter).
+    ///
+    /// Invalid by default and derived from the background when a theme does not
+    /// name it, so all twenty-three bundled themes get sensible banding without
+    /// twenty-three edits — and any of them can still override it.
+    QColor alternateRowBackground;
+
     QString fontFamily;
     int fontSize = 10;
     int rowHeight = 24;
     int borderRadius = 6;
     int panelPadding = 8;
 
+    /// §9's `[ui]` has no name for this; it is the vertical rhythm the list is
+    /// laid out on, and Finder's is noticeably looser than a terminal's. Kept
+    /// as a metric rather than a constant so a theme can be tight or airy.
+    bool alternatingRows = true;
+
     /// True when the theme's background is lighter than its text, which is what
     /// the application needs to know to pick sensible derived shades — a hover
     /// tint has to go the opposite way on a light theme.
     bool isLight() const;
+
+    /// The row banding colour, derived from the background when the theme does
+    /// not set one. A hard-coded lighter() would be invisible on a light theme
+    /// and washed out on a dark one, so the direction follows isLight().
+    QColor effectiveAlternateRowBackground() const;
 };
 
 struct ThemeLoadResult {

@@ -19,9 +19,29 @@ namespace pf::ui {
 namespace {
 
 constexpr int kIconSize = 16;
-constexpr int kHorizontalPadding = 6;
-constexpr int kColumnGap = 12;
 constexpr int kSelectionMarkerWidth = 3;
+
+/// The row's horizontal rhythm, derived from the theme's panel padding rather
+/// than fixed.
+///
+/// Finder's spacing is not one number: the gutter before the icon, the gap
+/// after it, and the gap between the size and time columns are all different,
+/// and all of them scale together when the density changes. Deriving them from
+/// one theme value keeps that relationship intact, and means a user who wants a
+/// tighter list changes one number instead of recompiling.
+struct Metrics {
+    int gutter;      ///< left edge to icon
+    int afterIcon;   ///< icon to filename
+    int columnGap;   ///< between the size and time columns
+    int rightMargin; ///< time column to right edge
+};
+
+Metrics metricsFor(const ThemePalette &palette)
+{
+    const int base = std::max(4, palette.panelPadding);
+    return Metrics{
+        .gutter = base, .afterIcon = base - 2, .columnGap = base + 4, .rightMargin = base};
+}
 
 /// Width reserved for the right-hand size and time columns. Fixed rather than
 /// measured per row: a column whose width depends on its widest visible value
@@ -120,6 +140,17 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
                           (option.state & QStyle::State_Selected) != 0;
     const bool isSelected = m_selectedNames != nullptr && m_selectedNames->contains(entry.name);
 
+    // Row banding, under everything else. Finder's most quietly useful habit:
+    // across a wide row the eye loses the line between a filename on the left
+    // and a date on the right, and a few percent of tint is enough to keep it.
+    //
+    // Banded on the *view's* row, not the model's, so the stripes stay
+    // alternating through a filter rather than developing gaps where rows were
+    // removed.
+    if (palette.alternatingRows && (index.row() % 2) == 1) {
+        painter->fillRect(row, palette.effectiveAlternateRowBackground());
+    }
+
     // Background. The cursor row and an explicitly selected row are different
     // states and must look different: in Selection mode the cursor moves
     // through rows that are already selected, and a user needs to see both.
@@ -129,7 +160,8 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
         painter->fillRect(row, palette.selectionBackground);
     }
 
-    int x = row.left() + kHorizontalPadding;
+    const Metrics spacing = metricsFor(palette);
+    int x = row.left() + spacing.gutter;
 
     // §7.12: "Highlight the drop target row clearly." Drawn before everything
     // else so the row's own content sits on top of it, and with the focused
@@ -177,13 +209,13 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
                    entry.isBroken ? QIcon::Disabled : QIcon::Normal);
     }
 
-    x += kIconSize + kHorizontalPadding;
+    x += kIconSize + spacing.afterIcon;
 
     // Right-hand columns are laid out first so the name knows how much room it
     // has left, rather than being elided against the full row width and then
     // overdrawn.
-    const int timeLeft = row.right() - kHorizontalPadding - kTimeColumnWidth;
-    const int sizeLeft = timeLeft - kColumnGap - kSizeColumnWidth;
+    const int timeLeft = row.right() - spacing.rightMargin - kTimeColumnWidth;
+    const int sizeLeft = timeLeft - spacing.columnGap - kSizeColumnWidth;
 
     const QFontMetrics metrics = option.fontMetrics;
 
@@ -201,7 +233,7 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
     }
 
     // Name, plus the symlink target if there is room for it.
-    const int nameRight = sizeLeft - kColumnGap;
+    const int nameRight = sizeLeft - spacing.columnGap;
     const QRect nameRect(x, row.top(), nameRight - x, row.height());
 
     QFont nameFont = option.font;
@@ -226,7 +258,7 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
 
     if (entry.isSymlink && !entry.linkTarget.isEmpty()) {
         const int nameWidth = metrics.horizontalAdvance(elidedName);
-        const int targetLeft = nameRect.left() + nameWidth + kHorizontalPadding;
+        const int targetLeft = nameRect.left() + nameWidth + spacing.afterIcon;
         const int available = nameRect.right() - targetLeft;
 
         // Only when it genuinely fits. A symlink target elided down to "…" is

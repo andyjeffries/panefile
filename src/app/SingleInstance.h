@@ -7,7 +7,7 @@
 
 #include <memory>
 
-class QLocalServer;
+class QSocketNotifier;
 
 namespace pf {
 
@@ -23,6 +23,21 @@ namespace pf {
 ///
 ///   * **The server** is a QObject that outlives the process's startup and
 ///     hands each request to the composition root.
+///
+/// Written against POSIX sockets rather than QLocalServer, which §10.3 names.
+///
+/// The measurement decided it. Linking Qt6::Network added twenty-eight shared
+/// libraries to the binary's load-time dependencies on Arch — OpenSSL,
+/// Kerberos, libcurl, nghttp2, and libproxy, which itself embeds a JavaScript
+/// interpreter — every one of them mapped and relocated at every launch, for a
+/// Unix domain socket that never speaks TCP, TLS or HTTP. §3.4 is explicit that
+/// "a silent new DT_NEEDED entry is the most common way startup time
+/// regresses", and the dependency guard caught this one loudly.
+///
+/// What is left needs nothing but libc. The client is four syscalls, which is a
+/// better answer to §10.3's "a couple of milliseconds" than QLocalSocket was,
+/// and the server keeps its event-loop integration through QSocketNotifier,
+/// which lives in QtCore.
 class SingleInstance : public QObject
 {
     Q_OBJECT
@@ -65,10 +80,16 @@ public:
     /// Binds the socket. §10.3: "listen() is two syscalls, so bind it before
     /// show(); only the connection-handling wiring is deferred."
     ///
-    /// Handles the stale-socket case the same way the spec describes: if the
-    /// bind fails, try connecting; if that fails too, the socket is a corpse,
-    /// so unlink it and retry once.
+    /// Handles the stale-socket case the spec describes, in the only order that
+    /// works: probe first, then bind. See the comment in listen().
     bool listen(const QString &socketPath);
+
+    /// The longest socket path this platform accepts.
+    ///
+    /// `sockaddr_un::sun_path` is 104 bytes on macOS and 108 on Linux, and a
+    /// path longer than that is silently truncated by bind(2) — which produces
+    /// a socket at a path nobody will ever connect to. Better to refuse.
+    static int maximumPathLength();
 
     /// Wires up connection handling. Called from the deferred startup queue.
     void startServing();
@@ -83,7 +104,16 @@ Q_SIGNALS:
 private:
     void onNewConnection();
 
-    std::unique_ptr<QLocalServer> m_server;
+    void closeServer();
+
+    /// The listening socket, or -1. A raw descriptor rather than a QObject,
+    /// because that is all it is.
+    int m_listenFd = -1;
+
+    /// Owns nothing but the readiness callback; the descriptor's lifetime is
+    /// this object's.
+    std::unique_ptr<QSocketNotifier> m_notifier;
+
     QString m_socketPath;
     bool m_serving = false;
 };

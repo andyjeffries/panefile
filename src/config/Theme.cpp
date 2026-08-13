@@ -84,6 +84,18 @@ QStringList themeFilesIn(const QString &directory)
 
 } // namespace
 
+QColor Theme::effectiveAlternateRowBackground() const
+{
+    if (alternateRowBackground.isValid()) {
+        return alternateRowBackground;
+    }
+
+    // Deliberately slight. Banding that announces itself is a distraction; the
+    // job is to keep the eye on one line across a wide row, which takes a few
+    // percent, not a stripe.
+    return isLight() ? background.darker(103) : background.lighter(112);
+}
+
 bool Theme::isLight() const
 {
     // Perceived lightness rather than a naive average: green contributes far
@@ -126,6 +138,10 @@ void applyThemeTable(const toml::table &table, Theme &theme, const QString &file
     readColour(table, "border", theme.border, fileNameForIssues, issues);
     readColour(table, "border_focused", theme.borderFocused, fileNameForIssues, issues);
 
+    // Optional: left invalid when absent so that
+    // effectiveAlternateRowBackground() can derive one from the background.
+    readColour(table, "alternate_row_bg", theme.alternateRowBackground, fileNameForIssues, issues);
+
     if (const auto family = table["ui"]["font_family"].value<std::string>()) {
         theme.fontFamily = QString::fromStdString(*family);
     }
@@ -133,6 +149,10 @@ void applyThemeTable(const toml::table &table, Theme &theme, const QString &file
     readUiInt(table, "row_height", theme.rowHeight, 14, 64, fileNameForIssues, issues);
     readUiInt(table, "border_radius", theme.borderRadius, 0, 24, fileNameForIssues, issues);
     readUiInt(table, "panel_padding", theme.panelPadding, 0, 32, fileNameForIssues, issues);
+
+    if (const auto alternating = table["ui"]["alternating_rows"].value<bool>()) {
+        theme.alternatingRows = *alternating;
+    }
 }
 
 /// Parses TOML, reporting a syntax error as an issue rather than throwing.

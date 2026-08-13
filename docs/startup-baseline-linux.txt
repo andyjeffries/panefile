@@ -11,4 +11,20 @@
 # trip a real Wayland session pays; and a CI runner is not a desktop. Both push
 # the number in the same direction, so the real figure is higher — but not by
 # the factor that would put it near the budget.
+#
+# Still 11.8 at M12, deliberately. The measured figure has moved twice since M3
+# and is 10.7 ms as of the last run — better than this baseline, because M11's
+# work removed more from the critical path than M6–M10 added. Tightening the
+# threshold to match would leave roughly a millisecond of headroom on a runner
+# whose own variance is close to that, and a guard that fails on noise gets
+# ignored, which is the one thing it must not be.
+#
+# The two regressions it caught along the way, for the record:
+#
+#   M9  13.8 ms — reading state.ini, constructing the thumbnail cache, and
+#                 wiring each model to it had all crept onto the critical path
+#                 across M6–M8. All three are now lazy.
+#   M11 63.8 ms — the single-instance client retried its connect after 50 ms
+#                 unconditionally, which put that sleep in front of every cold
+#                 start. The retry is now conditional on the socket existing.
 11.8

@@ -2,13 +2,30 @@
 
 #include "core/Logging.h"
 
+#include <QPointer>
 #include <QThread>
 
 namespace pf::fs {
 
 struct JobEngine::Entry {
     std::unique_ptr<Job> job;
-    QThread *thread = nullptr;
+
+    /// QPointer, not a raw pointer, because the thread deletes itself.
+    ///
+    /// startEntry connects QThread::finished to deleteLater, so a job that has
+    /// run to completion leaves this entry pointing at freed memory — and the
+    /// entry outlives it, because an entry is only erased by forget(). Calling
+    /// quit() on that corpse is not a crash so much as a hang: QThread::quit
+    /// locks the thread's own mutex, and locking a mutex in freed memory parks
+    /// the caller in __ulock_wait2 forever. On the GUI thread, that is the
+    /// whole application beachballing.
+    ///
+    /// A QPointer reads as null the moment the QThread is destroyed, so every
+    /// null check below starts telling the truth. It is safe here because the
+    /// thread object lives in this object's thread — `new QThread(this)` — and
+    /// deleteLater is delivered there too.
+    QPointer<QThread> thread;
+
     QString description;
 
     quint64 bytesDone = 0;
@@ -26,7 +43,7 @@ JobEngine::~JobEngine()
     cancelAll();
 
     for (const auto &[id, entry] : m_entries) {
-        if (entry->thread != nullptr) {
+        if (!entry->thread.isNull()) {
             entry->thread->quit();
             entry->thread->wait(5000);
         }
@@ -108,7 +125,7 @@ void JobEngine::onJobFinished(int jobId, const JobResult &result)
 {
     if (const auto found = m_entries.find(jobId); found != m_entries.end()) {
         found->second->finished = true;
-        if (found->second->thread != nullptr) {
+        if (!found->second->thread.isNull()) {
             found->second->thread->quit();
         }
     }
@@ -201,7 +218,7 @@ void JobEngine::forget(int jobId)
         return;
     }
 
-    if (found->second->thread != nullptr) {
+    if (!found->second->thread.isNull()) {
         found->second->thread->quit();
         found->second->thread->wait(5000);
     }

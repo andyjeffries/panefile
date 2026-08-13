@@ -10,6 +10,7 @@
 // behind, no symlink followed, no directory copied into itself, no restore over
 // a file the user has since created.
 
+#include "fs/JobEngine.h"
 #include "fs/Trash.h"
 #include "fs/UndoStack.h"
 #include "fs/jobs/DeleteJob.h"
@@ -61,6 +62,53 @@ private:
     }
 
 private Q_SLOTS:
+
+    /// forget() after a job has finished must return, not hang.
+    ///
+    /// It did not. startEntry connects QThread::finished to deleteLater, so the
+    /// thread destroys itself once the job is done, while the entry holding a
+    /// raw pointer to it lives on until forget() erases it. forget() then called
+    /// quit() on freed memory — and QThread::quit locks the thread's own mutex,
+    /// so locking one that no longer exists parked the caller in __ulock_wait2
+    /// forever. Since forget() is driven from the progress bar's timer on the
+    /// GUI thread, the whole application beachballed: deleting three files was
+    /// enough to do it, with the progress panel frozen at 100%.
+    ///
+    /// The event loop pass between finishing and forgetting is essential — it
+    /// is what lets the queued deleteLater actually run, and without it the
+    /// pointer is still valid and the bug stays hidden.
+    void forgettingAFinishedJobDoesNotHang()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+
+        QStringList paths;
+        for (int n = 0; n < 3; ++n) {
+            const QString path = dir.filePath(QStringLiteral("gone%1.txt").arg(n));
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write("x");
+            file.close();
+            paths << path;
+        }
+
+        JobEngine engine;
+        QSignalSpy finished(&engine, &JobEngine::jobFinished);
+
+        const int id =
+            engine.submit(std::make_unique<DeleteJob>(DeleteJob::Mode::Permanent, paths));
+        QVERIFY(finished.wait(5000));
+
+        // Let the queued deleteLater run, which is what frees the thread.
+        QTest::qWait(50);
+
+        engine.forget(id);
+
+        // Reaching this line is the assertion; with the bug the test never gets
+        // here and ctest kills it on the timeout.
+        QCOMPARE(engine.activeCount(), 0);
+    }
+
     void init();
 
     // Copy

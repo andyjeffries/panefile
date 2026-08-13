@@ -48,6 +48,8 @@ constexpr DefaultBinding kDefaults[] = {
     {KeymapLayer::Global, "quick_look_fullscreen", "Ctrl+Shift+Space"},
     {KeymapLayer::Normal, "toggle_footer", "F"},
     {KeymapLayer::Normal, "focus_on_sidebar", "s"},
+    // §7.11: "`u` on a mounted device unmounts."
+    {KeymapLayer::Normal, "unmount_device", "u"},
     {KeymapLayer::Normal, "focus_on_process_bar", "p"},
     {KeymapLayer::Normal, "open_sort_options_menu", "o"},
     {KeymapLayer::Normal, "toggle_reverse_sort", "R"},

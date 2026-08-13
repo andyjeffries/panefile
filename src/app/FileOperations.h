@@ -19,6 +19,7 @@ class ActionRegistry;
 }
 
 namespace pf::ui {
+class CompressModal;
 class ConflictModal;
 class InputModal;
 class RenameModal;
@@ -71,6 +72,10 @@ private:
     /// Runs a planned rename as one undoable job (§7.9 step 6).
     void runRenamePlan(const QString &directory, const fs::RenamePlan &plan);
 
+    /// §7.10's `Ctrl+A` and `Ctrl+E`.
+    void compressSelection();
+    void extractCursorItem();
+
     /// The clipboard's paths, whether they were put there by Panefile or by
     /// another application.
     ///
@@ -84,6 +89,7 @@ private:
     ui::ConflictModal *conflictModal();
 
     /// §3.4: modals are built on first invocation, then cached.
+    ui::CompressModal *compressModal();
     ui::InputModal *inputModal();
     ui::RenameModal *renameModal();
 
@@ -94,6 +100,7 @@ private:
     fs::UndoStack *m_undoStack = nullptr;
 
     ui::ConflictModal *m_conflictModal = nullptr;
+    ui::CompressModal *m_compressModal = nullptr;
     ui::InputModal *m_inputModal = nullptr;
     ui::RenameModal *m_renameModal = nullptr;
     config::Settings m_settings;

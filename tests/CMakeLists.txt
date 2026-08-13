@@ -37,6 +37,8 @@ pf_add_test(tst_search      SOURCES tst_search.cpp      LIBS pf_fs pf_model)
 pf_add_test(tst_rename      SOURCES tst_rename.cpp      LIBS pf_fs)
 pf_add_test(tst_quicklook  SOURCES tst_quicklook.cpp  LIBS pf_ui)
 pf_add_test(tst_thumbnails SOURCES tst_thumbnails.cpp LIBS pf_model)
+pf_add_test(tst_archives    SOURCES tst_archives.cpp    LIBS pf_fs)
+pf_add_test(tst_mounts      SOURCES tst_mounts.cpp      LIBS pf_platform)
 pf_add_test(tst_paths       SOURCES tst_paths.cpp       LIBS pf_platform)
 pf_add_test(tst_startuptrace SOURCES tst_startuptrace.cpp LIBS pf_core)
 # toml++ is a private dependency of pf_config — DefaultConfig.h does not expose

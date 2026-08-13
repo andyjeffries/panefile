@@ -189,6 +189,9 @@ void Application::registerGlobalActions()
     // the same placement rules as a path from the command line.
     connect(m_mainWindow->sidebar(), &ui::Sidebar::placeActivated, this,
             [this](const QString &path) { m_panelController->openPath(path, false); });
+
+    connect(m_mainWindow->sidebar(), &ui::Sidebar::statusMessage, m_mainWindow.get(),
+            &ui::MainWindow::showStatusMessage);
 }
 
 ui::ProcessBar *Application::processBar()

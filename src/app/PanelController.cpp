@@ -139,9 +139,20 @@ void PanelController::registerActions()
 
     reg("focus_on_sidebar", tr("Focus the sidebar"), ActionCategory::Panels, [this] {
         if (m_sidebar != nullptr && m_sidebar->isVisible()) {
+            // §3.4 and §7.11: "Connect to udisks2 the first time the sidebar's
+            // Devices section becomes visible." Focusing it is that moment —
+            // the section is drawn, so the bus connection is finally earned.
+            m_sidebar->startWatchingDevices();
             m_sidebar->setFocus(Qt::OtherFocusReason);
         }
     });
+
+    reg("unmount_device", tr("Unmount the device under the sidebar cursor"), ActionCategory::Panels,
+        [this] {
+            if (m_sidebar != nullptr) {
+                m_sidebar->unmountCurrentVolume();
+            }
+        });
 
     reg("pinned_directory", tr("Pin or unpin this directory in the sidebar"),
         ActionCategory::Panels, onPanel([this](ui::FilePanel *panel) {

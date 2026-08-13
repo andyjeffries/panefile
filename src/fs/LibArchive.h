@@ -35,6 +35,36 @@ struct LibArchive {
     int (*readClose)(archive *) = nullptr;
     int (*readFree)(archive *) = nullptr;
 
+    /// Reading an entry's bytes, for extraction.
+    long (*readDataBlock)(archive *, const void **, size_t *, long long *) = nullptr;
+
+    // ------------------------------------------------------------- writing
+    archive *(*writeNew)() = nullptr;
+    int (*writeSetFormatFilterByExt)(archive *, const char *) = nullptr;
+    int (*writeSetFormat)(archive *, int) = nullptr;
+    int (*writeAddFilter)(archive *, int) = nullptr;
+    int (*writeOpenFilename)(archive *, const char *) = nullptr;
+    int (*writeHeader)(archive *, archive_entry *) = nullptr;
+    long (*writeData)(archive *, const void *, size_t) = nullptr;
+    int (*writeFinishEntry)(archive *) = nullptr;
+    int (*writeClose)(archive *) = nullptr;
+    int (*writeFree)(archive *) = nullptr;
+
+    // ------------------------------------------------- writing to the disk
+    archive *(*writeDiskNew)() = nullptr;
+    int (*writeDiskSetOptions)(archive *, int) = nullptr;
+    int (*writeDiskSetStandardLookup)(archive *) = nullptr;
+
+    // ---------------------------------------------------- entry construction
+    archive_entry *(*entryNew)() = nullptr;
+    void (*entryFree)(archive_entry *) = nullptr;
+    void (*entrySetPathname)(archive_entry *, const char *) = nullptr;
+    void (*entrySetSize)(archive_entry *, qint64) = nullptr;
+    void (*entrySetFiletype)(archive_entry *, unsigned int) = nullptr;
+    void (*entrySetPerm)(archive_entry *, int) = nullptr;
+    void (*entrySetMtime)(archive_entry *, qint64, long) = nullptr;
+    void (*entrySetSymlink)(archive_entry *, const char *) = nullptr;
+
     // ---------------------------------------------------------- diagnostics
     const char *(*errorString)(archive *) = nullptr;
     int (*errnoOf)(archive *) = nullptr;

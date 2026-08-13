@@ -4,13 +4,16 @@
 #include "core/Logging.h"
 #include "fs/JobEngine.h"
 #include "fs/UndoStack.h"
+#include "fs/jobs/ArchiveJob.h"
 #include "fs/jobs/DeleteJob.h"
+#include "fs/jobs/ExtractJob.h"
 #include "fs/jobs/RenameJob.h"
 #include "fs/jobs/TransferJob.h"
 #include "ui/FilePanel.h"
 #include "ui/MainWindow.h"
 #include "ui/PanelStrip.h"
 
+#include "ui/modals/CompressModal.h"
 #include "ui/modals/ConflictModal.h"
 #include "ui/modals/InputModal.h"
 #include "ui/modals/RenameModal.h"
@@ -63,6 +66,105 @@ ui::ConflictModal *FileOperations::conflictModal()
         m_conflictModal = new ui::ConflictModal(m_window);
     }
     return m_conflictModal;
+}
+
+ui::CompressModal *FileOperations::compressModal()
+{
+    if (m_compressModal == nullptr) {
+        m_compressModal = new ui::CompressModal(m_window);
+
+        connect(m_compressModal, &ui::CompressModal::compressRequested, this,
+                [this](const QStringList &sources, const QString &destination,
+                       fs::ArchiveFormat format) {
+                    auto job = std::make_unique<fs::ArchiveJob>(sources, destination, format);
+                    auto *raw = job.get();
+
+                    m_window->showProcessBar(nullptr);
+                    const int jobId = m_engine->submit(std::move(job));
+
+                    connect(m_engine, &fs::JobEngine::jobFinished, this,
+                            [this, jobId, raw](int id, const fs::JobResult &result) {
+                                if (id != jobId) {
+                                    return;
+                                }
+                                if (!result.errors.isEmpty()) {
+                                    Q_EMIT statusMessage(result.errors.first().reason);
+                                    return;
+                                }
+                                if (result.cancelled) {
+                                    return;
+                                }
+                                // §7.13 does not make archive creation undoable
+                                // — it creates a file rather than changing one —
+                                // so the cursor landing on the result is the
+                                // whole of the follow-through.
+                                if (ui::FilePanel *panel = m_strip->focusedPanel();
+                                    panel != nullptr) {
+                                    panel->setCursorName(QFileInfo(raw->destination()).fileName());
+                                }
+                                Q_EMIT statusMessage(
+                                    tr("Created %1").arg(QFileInfo(raw->destination()).fileName()));
+                            });
+                });
+    }
+    return m_compressModal;
+}
+
+void FileOperations::compressSelection()
+{
+    const ui::FilePanel *panel = m_strip->focusedPanel();
+    if (panel == nullptr) {
+        return;
+    }
+
+    const QStringList sources = panel->selectedPaths();
+    if (sources.isEmpty()) {
+        Q_EMIT statusMessage(tr("Nothing selected to archive"));
+        return;
+    }
+
+    compressModal()->start(sources, panel->path());
+}
+
+void FileOperations::extractCursorItem()
+{
+    const ui::FilePanel *panel = m_strip->focusedPanel();
+    if (panel == nullptr) {
+        return;
+    }
+
+    const QString archivePath = panel->cursorPath();
+    if (archivePath.isEmpty() || QFileInfo(archivePath).isDir()) {
+        Q_EMIT statusMessage(tr("Put the cursor on an archive to extract it"));
+        return;
+    }
+
+    // §7.10: "extracts into <archive-basename>/ in the panel's cwd", with the
+    // tarbomb rule deciding whether that nesting actually happens.
+    auto job = std::make_unique<fs::ExtractJob>(archivePath, panel->path());
+    auto *raw = job.get();
+
+    m_window->showProcessBar(nullptr);
+    const int jobId = m_engine->submit(std::move(job));
+
+    connect(m_engine, &fs::JobEngine::jobFinished, this,
+            [this, jobId, raw](int id, const fs::JobResult &result) {
+                if (id != jobId) {
+                    return;
+                }
+                if (!result.errors.isEmpty()) {
+                    // §7.10: "fail with a clear message rather than partially
+                    // extracting". The message is the job's own, which names
+                    // what it refused and why.
+                    Q_EMIT statusMessage(result.errors.first().reason);
+                    return;
+                }
+                if (result.cancelled) {
+                    return;
+                }
+                Q_EMIT statusMessage(
+                    tr("Extracted to %1").arg(QFileInfo(raw->extractedTo()).fileName()));
+            });
 }
 
 ui::InputModal *FileOperations::inputModal()

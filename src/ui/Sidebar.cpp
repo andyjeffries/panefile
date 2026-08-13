@@ -18,6 +18,9 @@ namespace {
 constexpr int kIsHeadingRole = Qt::UserRole + 1;
 constexpr int kPathRole = Qt::UserRole + 2;
 
+/// §7.11's Devices rows carry a volume id as well as (when mounted) a path.
+constexpr int kVolumeIdRole = Qt::UserRole + 3;
+
 } // namespace
 
 Sidebar::Sidebar(QWidget *parent) : QWidget(parent), m_list(new QListWidget(this))
@@ -50,6 +53,16 @@ Sidebar::Sidebar(QWidget *parent) : QWidget(parent), m_list(new QListWidget(this
         const QString path = item->data(kPathRole).toString();
         if (!path.isEmpty()) {
             Q_EMIT placeActivated(path);
+            return;
+        }
+
+        // §7.11: "Enter mounts … and navigates." A device row with no path is
+        // an unmounted volume; mounting is asynchronous, and the navigation
+        // happens when it reports where it landed.
+        const QString volumeId = item->data(kVolumeIdRole).toString();
+        if (!volumeId.isEmpty() && m_volumes != nullptr) {
+            Q_EMIT statusMessage(tr("Mounting…"));
+            m_volumes->mount(volumeId);
         }
     });
 }
@@ -114,12 +127,89 @@ void Sidebar::populate()
         }
     }
 
-    // Devices are deliberately absent until M8. §3.4 is emphatic that a D-Bus
-    // connection must never be opened at startup — udisks2 plus
-    // GetManagedObjects is 20–40 ms of pure waste for a user who never touches
-    // removable media — so the section appears when it first becomes visible.
+    addDevices();
 
     m_populated = true;
+}
+
+void Sidebar::addDevices()
+{
+    // §3.4: nothing here until startWatchingDevices() has been called, which is
+    // what keeps a D-Bus connection off the startup path.
+    if (m_volumes == nullptr) {
+        return;
+    }
+
+    const QList<platform::Volume> volumes = m_volumes->volumes();
+    if (volumes.isEmpty()) {
+        return;
+    }
+
+    addHeading(tr("Devices"));
+
+    for (const platform::Volume &volume : volumes) {
+        // §7.11: "a mount state indicator". A bullet for mounted, a hollow ring
+        // for not — legible at a glance and, unlike colour alone, legible to
+        // someone who cannot distinguish the two colours.
+        const QString marker = volume.isMounted ? QStringLiteral("●") : QStringLiteral("○");
+
+        auto *item = new QListWidgetItem(marker + QLatin1Char(' ') + volume.name, m_list);
+        item->setData(kIsHeadingRole, false);
+        item->setData(kVolumeIdRole, volume.id);
+        item->setData(kPathRole, volume.mountPoint);
+        item->setToolTip(volume.isMounted
+                             ? tr("%1 — mounted at %2").arg(volume.device, volume.mountPoint)
+                             : tr("%1 — not mounted").arg(volume.device));
+
+        if (!volume.isMounted) {
+            item->setForeground(currentPalette().subtext);
+        }
+    }
+}
+
+void Sidebar::startWatchingDevices()
+{
+    if (m_volumes != nullptr) {
+        return;
+    }
+
+    m_volumes = platform::VolumeMonitor::create(this);
+
+    connect(m_volumes.get(), &platform::VolumeMonitor::volumesChanged, this, [this] {
+        if (m_populated) {
+            populate();
+        }
+    });
+
+    connect(m_volumes.get(), &platform::VolumeMonitor::mounted, this,
+            [this](const QString &, const QString &mountPoint) {
+                // §7.11: "Enter mounts … and navigates."
+                if (!mountPoint.isEmpty()) {
+                    Q_EMIT placeActivated(mountPoint);
+                }
+            });
+
+    connect(m_volumes.get(), &platform::VolumeMonitor::operationFailed, this,
+            [this](const QString &, const QString &reason) { Q_EMIT statusMessage(reason); });
+
+    m_volumes->start();
+}
+
+void Sidebar::unmountCurrentVolume()
+{
+    const QString volumeId = currentVolumeId();
+    if (volumeId.isEmpty() || m_volumes == nullptr) {
+        return;
+    }
+
+    Q_EMIT statusMessage(tr("Unmounting…"));
+    m_volumes->unmount(volumeId);
+}
+
+QString Sidebar::currentVolumeId() const
+{
+    const QListWidgetItem *item = m_list->currentItem();
+    return item == nullptr ? QString() : item->data(kVolumeIdRole).toString();
 }
 
 bool Sidebar::togglePin(const QString &path)

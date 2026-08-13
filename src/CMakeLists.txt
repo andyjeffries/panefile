@@ -25,18 +25,28 @@ target_include_directories(pf_core PUBLIC "${CMAKE_CURRENT_BINARY_DIR}")
 # ---------------------------------------------------------------------------
 set(PF_PLATFORM_SOURCES
     platform/FileOpsCommon.cpp
+    platform/MountTable.cpp
     platform/Paths.cpp
-    platform/WatchBackend.cpp)
+    platform/WatchBackend.cpp
+    # AUTOMOC only scans a header when a source of the same basename is in the
+    # target. VolumeMonitor's implementations are per platform and named
+    # accordingly, so the interface has to be listed itself or its vtable is
+    # never generated.
+    platform/VolumeMonitor.h)
 
 if(PF_PLATFORM_LINUX)
     list(APPEND PF_PLATFORM_SOURCES
         platform/linux/FileOps_linux.cpp
+        platform/linux/MountTable_linux.cpp
         platform/linux/Paths_linux.cpp
+        platform/linux/VolumeMonitor_linux.cpp
         platform/linux/WatchBackend_linux.cpp)
 elseif(PF_PLATFORM_DARWIN)
     list(APPEND PF_PLATFORM_SOURCES
         platform/darwin/FileOps_darwin.cpp
+        platform/darwin/MountTable_darwin.cpp
         platform/darwin/Paths_darwin.cpp
+        platform/darwin/VolumeMonitor_darwin.cpp
         platform/darwin/WatchBackend_darwin.cpp)
 endif()
 
@@ -44,6 +54,21 @@ pf_layer_library(pf_platform
     LAYER platform
     SOURCES ${PF_PLATFORM_SOURCES}
     PUBLIC_DEPENDS Qt6::Core pf_core)
+
+# §7.11's volume monitors. Neither is optional in §3.4's sense — there is no
+# removable-media support on either platform without them, and both are system
+# libraries already in the loader's cache.
+if(PF_PLATFORM_LINUX)
+    find_package(Qt6 REQUIRED COMPONENTS DBus)
+    target_link_libraries(pf_platform PRIVATE Qt6::DBus)
+elseif(PF_PLATFORM_DARWIN)
+    # CoreFoundation comes with DiskArbitration; Foundation deliberately does
+    # not, because using it would add libobjc to the binary's load-time
+    # dependencies for the sake of two string conversions (§3.4).
+    target_link_libraries(pf_platform PRIVATE
+        "-framework DiskArbitration"
+        "-framework CoreFoundation")
+endif()
 
 # ---------------------------------------------------------------------------
 # input — chords, keymap and the action registry.
@@ -96,7 +121,9 @@ pf_layer_library(pf_fs
         fs/RenameRule.cpp
         fs/Trash.cpp
         fs/UndoStack.cpp
+        fs/jobs/ArchiveJob.cpp
         fs/jobs/DeleteJob.cpp
+        fs/jobs/ExtractJob.cpp
         fs/jobs/RenameJob.cpp
         fs/jobs/TransferJob.cpp
     PUBLIC_DEPENDS Qt6::Core pf_core pf_platform)
@@ -155,6 +182,7 @@ pf_layer_library(pf_ui
         ui/ProcessBar.cpp
         ui/Sidebar.cpp
         ui/ThemePalette.cpp
+        ui/modals/CompressModal.cpp
         ui/modals/ConflictModal.cpp
         ui/quicklook/QuickLookDock.cpp
         ui/quicklook/QuickLookLoader.cpp

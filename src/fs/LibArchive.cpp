@@ -74,6 +74,35 @@ LibArchive load()
     ok &= resolve(library, table.readClose, "archive_read_close", table.error);
     ok &= resolve(library, table.readFree, "archive_read_free", table.error);
 
+    ok &= resolve(library, table.readDataBlock, "archive_read_data_block", table.error);
+
+    ok &= resolve(library, table.writeNew, "archive_write_new", table.error);
+    ok &= resolve(library, table.writeSetFormatFilterByExt,
+                  "archive_write_set_format_filter_by_ext", table.error);
+    ok &= resolve(library, table.writeSetFormat, "archive_write_set_format", table.error);
+    ok &= resolve(library, table.writeAddFilter, "archive_write_add_filter", table.error);
+    ok &= resolve(library, table.writeOpenFilename, "archive_write_open_filename", table.error);
+    ok &= resolve(library, table.writeHeader, "archive_write_header", table.error);
+    ok &= resolve(library, table.writeData, "archive_write_data", table.error);
+    ok &= resolve(library, table.writeFinishEntry, "archive_write_finish_entry", table.error);
+    ok &= resolve(library, table.writeClose, "archive_write_close", table.error);
+    ok &= resolve(library, table.writeFree, "archive_write_free", table.error);
+
+    ok &= resolve(library, table.writeDiskNew, "archive_write_disk_new", table.error);
+    ok &=
+        resolve(library, table.writeDiskSetOptions, "archive_write_disk_set_options", table.error);
+    ok &= resolve(library, table.writeDiskSetStandardLookup,
+                  "archive_write_disk_set_standard_lookup", table.error);
+
+    ok &= resolve(library, table.entryNew, "archive_entry_new", table.error);
+    ok &= resolve(library, table.entryFree, "archive_entry_free", table.error);
+    ok &= resolve(library, table.entrySetPathname, "archive_entry_set_pathname", table.error);
+    ok &= resolve(library, table.entrySetSize, "archive_entry_set_size", table.error);
+    ok &= resolve(library, table.entrySetFiletype, "archive_entry_set_filetype", table.error);
+    ok &= resolve(library, table.entrySetPerm, "archive_entry_set_perm", table.error);
+    ok &= resolve(library, table.entrySetMtime, "archive_entry_set_mtime", table.error);
+    ok &= resolve(library, table.entrySetSymlink, "archive_entry_set_symlink", table.error);
+
     ok &= resolve(library, table.errorString, "archive_error_string", table.error);
     ok &= resolve(library, table.errnoOf, "archive_errno", table.error);
     ok &= resolve(library, table.formatName, "archive_format_name", table.error);

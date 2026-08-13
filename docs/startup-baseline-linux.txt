@@ -1,0 +1,14 @@
+# Time to first paint, in ms, for:
+#   QT_QPA_PLATFORM=offscreen pf --startup-trace --quit-after-paint <fixture>
+# Median of 20 runs after 3 warmups, Release build, against the 2,200-entry
+# fixture that scripts/make-fixture.sh generates.
+#
+# Arch Linux, GCC, in a container on a GitHub Actions runner. Recorded at M3.
+#
+# 11.8 ms, against §11's 80 ms target — met with a wide margin on the platform
+# the target is actually about. Two caveats worth stating rather than leaving
+# implied: this is the offscreen plugin, so it excludes the compositor round
+# trip a real Wayland session pays; and a CI runner is not a desktop. Both push
+# the number in the same direction, so the real figure is higher — but not by
+# the factor that would put it near the budget.
+11.8

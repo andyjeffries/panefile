@@ -1,0 +1,52 @@
+# Dynamic dependencies of the pf binary on Linux (Arch, GCC, Release).
+# Regenerate: scripts/check-dependencies.sh build/release/bin/pf > docs/dependencies-linux.txt
+#
+# §3.4: every optional feature must arrive as a plugin opened on first use, not
+# as a DT_NEEDED entry. Nothing for syntax highlighting, media, PDF or video
+# thumbnails appears below, which is the property this file exists to protect.
+#
+# libQt6DBus and libdbus-1 are pulled in transitively by Qt itself rather than
+# by anything Panefile links; udisks2 (§7.11) is still to come in M8 and must
+# arrive lazily, not by adding Qt6::DBus to a link line.
+ld-linux-x86-64.so
+libEGL.so
+libGLX.so
+libGLdispatch.so
+libOpenGL.so
+libQt6Core.so
+libQt6DBus.so
+libQt6Gui.so
+libQt6Widgets.so
+libX11.so
+libXau.so
+libXdmcp.so
+libb2.so
+libbrotlicommon.so
+libbrotlidec.so
+libbz2.so
+libc.so
+libdbus-1.so
+libdouble-conversion.so
+libexpat.so
+libfontconfig.so
+libfreetype.so
+libgcc_s.so
+libglib-2.0.so
+libgomp.so
+libgraphite2.so
+libharfbuzz.so
+libicudata.so
+libicui18n.so
+libicuuc.so
+libm.so
+libmd4c.so
+libpcre2-16.so
+libpcre2-8.so
+libpng16.so
+libstdc++.so
+libsystemd.so
+liburing.so
+libxcb.so
+libxkbcommon.so
+libz.so
+libzstd.so

@@ -104,11 +104,23 @@ both platforms to one absolute number would either make the target meaningless
 on Linux or unreachable on macOS. The delta as milestones land is the thing
 worth guarding, and it is what the baseline comparison measures.
 
-### Linux
+### Arch Linux, GCC, Release, in CI
 
-Not yet recorded. Populated from the M10 verification pass and from CI, both of
-which run on Arch with a Release build. Until then the Linux figures in §11
-stand unverified, and this file says so rather than implying otherwise.
+| Milestone | First paint | Plugin |
+| --- | --- | --- |
+| M3 | 11.8 ms | offscreen |
+
+Against §11's 80 ms target, so the budget is met with a wide margin on the
+platform the target is about — and by a factor large enough that the two
+caveats do not threaten it. Those caveats: the offscreen plugin excludes the
+compositor round trip a real Wayland session pays, and a CI runner is not a
+desktop.
+
+The contrast with macOS is the whole reason this file separates them. The same
+code reaches first paint in 11.8 ms on Linux and 648 ms on macOS under the same
+plugin, because a `.app` launch pays for dyld, `NSApplication` and Qt's font
+database before anything of ours runs. Holding both to one number would either
+make the Linux target meaningless or the macOS one unreachable.
 
 ## Dynamic dependencies
 

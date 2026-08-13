@@ -7,3 +7,4 @@ target_link_libraries(pf-screenshot PRIVATE Qt6::Widgets pf_ui pf_config)
 target_include_directories(pf-screenshot PRIVATE "${PROJECT_SOURCE_DIR}/src")
 set_target_properties(pf-screenshot PROPERTIES MACOSX_BUNDLE OFF)
 
+

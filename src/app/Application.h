@@ -98,6 +98,14 @@ private:
     /// Applies `[panels]` and `[thumbnails]` to a newly created panel.
     void configurePanel(ui::FilePanel *panel) const;
 
+    /// Puts the dispatcher on the layers §6.2's precedence rules call for.
+    ///
+    /// Nothing called this before, so the dispatcher sat on {Normal, Global}
+    /// for the life of the process and the entire Selection layer was
+    /// unreachable: `v` set the mode, the header said [SELECT], and not one of
+    /// the bindings that mode exists for could fire.
+    void updateActiveLayers();
+
     /// §10.4: raises and activates the window, using a forwarded activation
     /// token when one is available.
     void raiseWindow(const QString &activationToken);

@@ -142,7 +142,29 @@ void Application::buildInputSystem()
     connect(m_mainWindow->panelStrip(), &ui::PanelStrip::panelCreated, this,
             &Application::configurePanel);
 
+    connect(m_mainWindow->panelStrip(), &ui::PanelStrip::focusedPanelChanged, this,
+            [this](ui::FilePanel *) { updateActiveLayers(); });
+
     registerGlobalActions();
+}
+
+void Application::updateActiveLayers()
+{
+    if (m_dispatcher == nullptr || m_mainWindow == nullptr) {
+        return;
+    }
+
+    const ui::FilePanel *panel = m_mainWindow->panelStrip()->focusedPanel();
+    const bool selecting = panel != nullptr && panel->isSelectionMode();
+
+    // §6.2's precedence: "Current panel mode (Selection before Normal)", then
+    // global. The mode is per panel, so this is re-evaluated on every panel
+    // switch as well as on every mode change.
+    m_dispatcher->setActiveLayers(
+        selecting
+            ? QList<input::KeymapLayer>{input::KeymapLayer::Selection, input::KeymapLayer::Normal,
+                                        input::KeymapLayer::Global}
+            : QList<input::KeymapLayer>{input::KeymapLayer::Normal, input::KeymapLayer::Global});
 }
 
 void Application::configurePanel(ui::FilePanel *panel) const
@@ -150,6 +172,11 @@ void Application::configurePanel(ui::FilePanel *panel) const
     if (panel == nullptr) {
         return;
     }
+
+    // Every panel's mode feeds the dispatcher, because §6.1 makes the mode a
+    // property of the panel rather than of the application.
+    connect(panel, &ui::FilePanel::modeChanged, this,
+            [this] { const_cast<Application *>(this)->updateActiveLayers(); });
 
     // §7.12: a drop is a copy or a move, which is FileOperations' business —
     // the panel neither knows about conflicts nor about the undo stack.

@@ -93,6 +93,17 @@ constexpr DefaultBinding kDefaults[] = {
     {KeymapLayer::Normal, "change_panel_mode", "v"},
     {KeymapLayer::Selection, "change_panel_mode", "v"},
     {KeymapLayer::Selection, "select_all", "A"},
+    // §6.1: in Selection mode "movement extends the selection" — so the
+    // ordinary movement keys do, not only the shifted ones. The Selection layer
+    // is consulted before Normal and Global, so these take `j`, `k` and the
+    // arrows away from plain movement for as long as the mode is on.
+    {KeymapLayer::Selection, "select_down", "j"},
+    {KeymapLayer::Selection, "select_down", "Down"},
+    {KeymapLayer::Selection, "select_up", "k"},
+    {KeymapLayer::Selection, "select_up", "Up"},
+
+    // And the shifted forms keep working, so the habit transfers from a file
+    // manager where they are the only way to do it.
     {KeymapLayer::Selection, "select_up", "K"},
     {KeymapLayer::Selection, "select_up", "Shift+Up"},
     {KeymapLayer::Selection, "select_down", "J"},

@@ -660,11 +660,17 @@ void FilePanel::setSelectionMode(bool on)
     }
     m_selectionMode = on;
 
-    // Leaving Selection mode clears the selection. Keeping it would leave the
-    // user with an invisible selection that the next Ctrl+C acts on.
-    if (!on) {
-        clearSelection();
-    }
+    // Leaving Selection mode keeps the selection.
+    //
+    // It used to clear it, on the argument that the user would otherwise be
+    // left with an invisible selection that the next Ctrl+C acted on. That is
+    // no longer true — selected rows carry an accent bar and a tinted
+    // background, and the header says "n selected" whether the mode is on or
+    // not — and clearing made the mode close to useless: building a selection
+    // and then acting on it is the entire purpose, and dropping it the moment
+    // you leave meant you could never leave.
+    //
+    // Esc still clears it, one step after it clears the mode.
     updateHeader();
     Q_EMIT modeChanged();
 }

@@ -50,6 +50,12 @@ public:
     /// The settings that govern confirmations and conflict defaults (§8.1).
     void setSettings(const config::Settings &settings);
 
+    /// Drops the accumulated copy list. Esc does this, at the end of its chain.
+    void clearClipboard();
+
+    /// Whether anything is waiting to be pasted.
+    bool hasPendingClipboard() const;
+
 Q_SIGNALS:
     void statusMessage(const QString &message);
 
@@ -119,6 +125,15 @@ private:
     /// Whether the last copy_items/cut_items was a cut. The clipboard carries
     /// the paths; this carries what to do with them.
     bool m_clipboardIsCut = false;
+
+    /// The set being accumulated by repeated copy_items, in the order it was
+    /// built. Mirrored onto the system clipboard after every change, so another
+    /// application sees the same set.
+    QStringList m_pendingPaths;
+
+    /// True once the set has been pasted, which makes the next copy start a new
+    /// one instead of adding to a set the user has finished with.
+    bool m_pastedSinceCopy = true;
 };
 
 } // namespace pf

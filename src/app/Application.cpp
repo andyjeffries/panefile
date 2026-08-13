@@ -256,6 +256,13 @@ void Application::registerGlobalActions()
             if (panel->selectionCount() > 0) {
                 panel->clearSelection();
                 m_mainWindow->showStatusMessage(tr("Selection cleared"));
+                return;
+            }
+
+            // And last, the copy list, so a set gathered by mistake can be
+            // abandoned without pasting it somewhere to get rid of it.
+            if (m_fileOperations != nullptr && m_fileOperations->hasPendingClipboard()) {
+                m_fileOperations->clearClipboard();
             }
         });
 

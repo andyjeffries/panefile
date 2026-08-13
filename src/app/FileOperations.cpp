@@ -427,9 +427,57 @@ void FileOperations::copySelection(bool cut)
         return;
     }
 
-    setClipboardPaths(paths, cut);
-    Q_EMIT statusMessage(cut ? tr("Cut %n item(s)", nullptr, static_cast<int>(paths.size()))
-                             : tr("Copied %n item(s)", nullptr, static_cast<int>(paths.size())));
+    // Copying accumulates, the way superfile does it: walk the list pressing
+    // Ctrl+C on each file you want and they gather into one set, then paste
+    // them together. That removes the need to enter Selection mode for the
+    // common case of picking a handful of files that are not adjacent.
+    //
+    // Three things end the accumulation, and between them they stop the list
+    // growing when nobody meant it to:
+    //
+    //   * a paste — the set has been used, so the next copy starts a new one;
+    //   * switching between copy and cut, which are not mixable;
+    //   * an explicit multi-file selection, which plainly means "these, and
+    //     only these".
+    const bool replaces =
+        m_pastedSinceCopy || cut != m_clipboardIsCut || panel->selectionCount() > 1;
+
+    if (replaces) {
+        m_pendingPaths.clear();
+    }
+
+    for (const QString &path : paths) {
+        // Pressing it twice on the same file is a repeat, not a second copy.
+        if (!m_pendingPaths.contains(path)) {
+            m_pendingPaths.append(path);
+        }
+    }
+
+    m_pastedSinceCopy = false;
+
+    setClipboardPaths(m_pendingPaths, cut);
+
+    const int count = static_cast<int>(m_pendingPaths.size());
+    Q_EMIT statusMessage(cut ? tr("Cut %n item(s) — Ctrl+V to move them", nullptr, count)
+                             : tr("Copied %n item(s) — Ctrl+V to paste them", nullptr, count));
+}
+
+void FileOperations::clearClipboard()
+{
+    if (m_pendingPaths.isEmpty()) {
+        return;
+    }
+
+    m_pendingPaths.clear();
+    m_pastedSinceCopy = false;
+    setClipboardPaths({}, false);
+
+    Q_EMIT statusMessage(tr("Copy list cleared"));
+}
+
+bool FileOperations::hasPendingClipboard() const
+{
+    return !m_pendingPaths.isEmpty();
 }
 
 void FileOperations::pasteIntoFocusedPanel()
@@ -441,11 +489,18 @@ void FileOperations::pasteIntoFocusedPanel()
 
     const QStringList paths = clipboardPaths();
     if (paths.isEmpty()) {
-        Q_EMIT statusMessage(tr("The clipboard has no files"));
+        Q_EMIT statusMessage(tr("Nothing copied yet — Ctrl+C on a file adds it to the list"));
         return;
     }
 
-    runTransfer(paths, panel->path(), clipboardIsCut());
+    const bool cut = clipboardIsCut();
+    runTransfer(paths, panel->path(), cut);
+
+    // Pasting empties the list. It has been used, and leaving it filled is how
+    // a copy made an hour later quietly drags along everything from before it.
+    m_pendingPaths.clear();
+    m_pastedSinceCopy = true;
+    setClipboardPaths({}, cut);
 }
 
 void FileOperations::onFilesDropped(const QStringList &paths, const QString &destination,

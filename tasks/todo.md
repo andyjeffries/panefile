@@ -108,17 +108,29 @@ measured under. Switching the benchmark to `offscreen` — so it stops opening
 windows over the developer's work — made every cocoa-measured baseline report a
 2.5× regression that did not exist.
 
-## M4 — File operations
+## M4 — File operations ✅
 
-- [ ] `JobEngine`, two-phase enumerate-then-execute
-- [ ] Copy, move, delete, rename, create
-- [ ] `copy_file_range`/`FICLONE` and `clonefile` acceleration
-- [ ] Conflict modal with apply-to-all
-- [ ] `ProcessBar`
-- [ ] Trash: XDG spec on Linux, `NSFileManager` on macOS, plus a trash browser
-- [ ] Undo stack
-- [ ] Tests: cross-device, conflicts, cancellation leaving no partial file,
-      `.trashinfo` round-trip including URL encoding
+- [x] `Job` — two-phase enumerate-then-execute, cooperative cancellation,
+      blocking conflict resolution across the thread boundary
+- [x] `JobEngine` — a thread per job, four at once, the rest queued
+- [x] `TransferJob` — copy and move, partial files, symlinks recreated not
+      followed, metadata preserved, self-containment guard
+- [x] `DeleteJob` — trash and permanent, neither following symlinks
+- [x] Platform acceleration: `copy_file_range` + `FICLONE`, `fcopyfile`
+- [x] `Trash` — XDG spec with an injectable root, plus restore and empty
+- [x] `UndoStack` — bounded at 50, refusing to overwrite
+- [x] `ConflictModal` and `ProcessBar`
+- [x] Selection mode in `FilePanel`, and the clipboard interop that lets a cut
+      in Panefile be understood as a cut by Nautilus and Dolphin
+- [x] Tests: 29 covering conflicts, cancellation, symlinks, the trash round trip
+      with awkward filenames, and undo
+
+Rename and create are deferred to M7, where the Finder-style rename sheet
+replaces §7.9's `$EDITOR` flow; the two share their confirmation and their
+undo entry, so building them apart would mean building them twice.
+
+The trash browser of §7.5 is deferred to M6, which brings the virtual panel
+mode it needs.
 
 ## M5 — Directory watching
 

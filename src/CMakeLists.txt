@@ -23,12 +23,17 @@ target_include_directories(pf_core PUBLIC "${CMAKE_CURRENT_BINARY_DIR}")
 # chosen here so that shared translation units stay free of #ifdef.
 # ---------------------------------------------------------------------------
 set(PF_PLATFORM_SOURCES
+    platform/FileOpsCommon.cpp
     platform/Paths.cpp)
 
 if(PF_PLATFORM_LINUX)
-    list(APPEND PF_PLATFORM_SOURCES platform/linux/Paths_linux.cpp)
+    list(APPEND PF_PLATFORM_SOURCES
+        platform/linux/FileOps_linux.cpp
+        platform/linux/Paths_linux.cpp)
 elseif(PF_PLATFORM_DARWIN)
-    list(APPEND PF_PLATFORM_SOURCES platform/darwin/Paths_darwin.cpp)
+    list(APPEND PF_PLATFORM_SOURCES
+        platform/darwin/FileOps_darwin.cpp
+        platform/darwin/Paths_darwin.cpp)
 endif()
 
 pf_layer_library(pf_platform
@@ -76,6 +81,12 @@ pf_layer_library(pf_fs
     SOURCES
         fs/DirectoryScanner.cpp
         fs/FsError.cpp
+        fs/Job.cpp
+        fs/JobEngine.cpp
+        fs/Trash.cpp
+        fs/UndoStack.cpp
+        fs/jobs/DeleteJob.cpp
+        fs/jobs/TransferJob.cpp
     PUBLIC_DEPENDS Qt6::Core pf_core pf_platform)
 
 # ---------------------------------------------------------------------------
@@ -117,13 +128,15 @@ pf_layer_library(pf_ui
         ui/FilePanel.cpp
         ui/MainWindow.cpp
         ui/PanelStrip.cpp
+        ui/ProcessBar.cpp
         ui/Sidebar.cpp
         ui/ThemePalette.cpp
+        ui/modals/ConflictModal.cpp
         ui/modals/HelpModal.cpp
         ui/modals/Modal.cpp
     PUBLIC_DEPENDS
         Qt6::Core Qt6::Gui Qt6::Widgets
-        pf_core pf_platform pf_config pf_model pf_input)
+        pf_core pf_platform pf_config pf_model pf_input pf_fs)
 
 # ---------------------------------------------------------------------------
 # app — the composition root: lifecycle, session, panel controller.
@@ -133,11 +146,12 @@ pf_layer_library(pf_app
     SOURCES
         app/Application.cpp
         app/CommandLine.cpp
+        app/FileOperations.cpp
         app/KeyDispatcher.cpp
         app/PanelController.cpp
     PUBLIC_DEPENDS
         Qt6::Core Qt6::Gui Qt6::Widgets
-        pf_core pf_platform pf_config pf_input)
+        pf_core pf_platform pf_config pf_input pf_fs)
 
 # Public rather than private: main.cpp is handed the window through Application.
 target_link_libraries(pf_app PUBLIC pf_ui)

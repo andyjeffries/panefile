@@ -63,6 +63,24 @@ public:
 
     void setFilterText(const QString &text);
 
+    /// §6.1's Selection mode. Movement extends the selection while it is on.
+    void setSelectionMode(bool on);
+    bool isSelectionMode() const;
+    void toggleSelectionMode();
+
+    void toggleSelectionAt(const QString &name);
+    void selectAll();
+    void clearSelection();
+
+    /// Absolute paths of the selected entries, or of the cursor item when
+    /// nothing is selected.
+    ///
+    /// Falling back to the cursor is what makes every file operation work
+    /// without a selection first — §6.3's bindings act on "the selection", and
+    /// a user who has not made one means the thing under the cursor.
+    QStringList selectedPaths() const;
+    int selectionCount() const;
+
     /// True when this panel is the focused one. Drives the border and
     /// background treatment that §9 calls the single most important visual
     /// affordance in the application.
@@ -78,6 +96,8 @@ public:
 Q_SIGNALS:
     void pathChanged(const QString &path);
     void cursorChanged(const QString &name);
+    void selectionChanged(int count);
+    void modeChanged();
     void fileActivated(const QString &absolutePath);
 
     /// Transient message for the footer — "nothing to go back to", and similar.
@@ -125,6 +145,7 @@ private:
     QString m_headerText;
 
     bool m_active = false;
+    bool m_selectionMode = false;
 };
 
 } // namespace pf::ui

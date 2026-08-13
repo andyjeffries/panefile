@@ -151,6 +151,8 @@ void FilePanel::setPathInternal(const QString &path, bool pushHistory)
     }
 
     m_path = cleaned;
+    // A selection names entries in the directory being left. Carrying it into
+    // the next one would leave names selected that mean different files.
     m_selection.clear();
 
     // §5.2: the cursor lands on the remembered entry for this directory, which
@@ -397,6 +399,99 @@ void FilePanel::refreshTheme()
     update();
 }
 
+void FilePanel::setSelectionMode(bool on)
+{
+    if (m_selectionMode == on) {
+        return;
+    }
+    m_selectionMode = on;
+
+    // Leaving Selection mode clears the selection. Keeping it would leave the
+    // user with an invisible selection that the next Ctrl+C acts on.
+    if (!on) {
+        clearSelection();
+    }
+    updateHeader();
+    Q_EMIT modeChanged();
+}
+
+bool FilePanel::isSelectionMode() const
+{
+    return m_selectionMode;
+}
+
+void FilePanel::toggleSelectionMode()
+{
+    setSelectionMode(!m_selectionMode);
+}
+
+void FilePanel::toggleSelectionAt(const QString &name)
+{
+    if (name.isEmpty()) {
+        return;
+    }
+    if (m_selection.contains(name)) {
+        m_selection.remove(name);
+    } else {
+        m_selection.insert(name);
+    }
+    m_view->viewport()->update();
+    updateHeader();
+    Q_EMIT selectionChanged(static_cast<int>(m_selection.size()));
+}
+
+void FilePanel::selectAll()
+{
+    // Everything *visible*: a filter is a statement about what the user is
+    // working with, and selecting entries they have filtered out would act on
+    // files they cannot see.
+    for (int row = 0; row < m_proxy->rowCount(); ++row) {
+        m_selection.insert(m_proxy->index(row, 0).data(DirectoryModel::NameRole).toString());
+    }
+    m_view->viewport()->update();
+    updateHeader();
+    Q_EMIT selectionChanged(static_cast<int>(m_selection.size()));
+}
+
+void FilePanel::clearSelection()
+{
+    if (m_selection.isEmpty()) {
+        return;
+    }
+    m_selection.clear();
+    m_view->viewport()->update();
+    updateHeader();
+    Q_EMIT selectionChanged(0);
+}
+
+QStringList FilePanel::selectedPaths() const
+{
+    QStringList paths;
+
+    if (!m_selection.isEmpty()) {
+        // In the proxy's order rather than the set's, so an operation on a
+        // multi-selection proceeds in the order the user sees.
+        for (int row = 0; row < m_proxy->rowCount(); ++row) {
+            const QString name = m_proxy->index(row, 0).data(DirectoryModel::NameRole).toString();
+            if (m_selection.contains(name)) {
+                paths << m_path + QLatin1Char('/') + name;
+            }
+        }
+        return paths;
+    }
+
+    const QString cursor = cursorName();
+    if (!cursor.isEmpty()) {
+        paths << m_path + QLatin1Char('/') + cursor;
+    }
+    return paths;
+}
+
+int FilePanel::selectionCount() const
+{
+    return static_cast<int>(m_selection.size());
+}
+
 void FilePanel::setActive(bool active)
 {
     if (m_active == active) {
@@ -455,6 +550,15 @@ void FilePanel::updateHeader()
 
     if (m_model->isScanning()) {
         counts = tr("scanning… %1").arg(shown);
+    }
+
+    // §6.1: "a badge shows in the panel header" while Selection mode is on.
+    if (m_selectionMode) {
+        counts += m_selection.isEmpty()
+                      ? tr("   [SELECT]")
+                      : tr("   [SELECT %n]", nullptr, static_cast<int>(m_selection.size()));
+    } else if (!m_selection.isEmpty()) {
+        counts += tr("   %n selected", nullptr, static_cast<int>(m_selection.size()));
     }
 
     m_headerText = QStringLiteral("%1    %2").arg(display, counts);

@@ -4,6 +4,7 @@
 #include "input/DefaultKeymap.h"
 #include "input/Keymap.h"
 #include "app/CommandLine.h"
+#include "app/FileOperations.h"
 #include "app/KeyDispatcher.h"
 #include "app/PanelController.h"
 #include "config/Config.h"
@@ -14,10 +15,13 @@
 #include "core/Logging.h"
 #include "core/StartupTrace.h"
 #include "core/Version.h"
+#include "fs/JobEngine.h"
+#include "fs/UndoStack.h"
 #include "platform/Paths.h"
 #include "ui/FilePanel.h"
 #include "ui/MainWindow.h"
 #include "ui/PanelStrip.h"
+#include "ui/ProcessBar.h"
 #include "ui/Sidebar.h"
 #include "ui/ThemePalette.h"
 #include "ui/modals/HelpModal.h"
@@ -90,7 +94,25 @@ void Application::buildInputSystem()
     connect(m_dispatcher.get(), &KeyDispatcher::pendingChanged, m_mainWindow.get(),
             &ui::MainWindow::showPendingKeys);
 
+    m_jobEngine = std::make_unique<fs::JobEngine>(this);
+    m_undoStack = std::make_unique<fs::UndoStack>(this);
+
+    m_fileOperations = std::make_unique<FileOperations>(
+        m_mainWindow.get(), m_mainWindow->panelStrip(), m_registry.get(), m_jobEngine.get(),
+        m_undoStack.get(), this);
+    m_fileOperations->setSettings(m_settings);
+    connect(m_fileOperations.get(), &FileOperations::statusMessage, m_mainWindow.get(),
+            &ui::MainWindow::showStatusMessage);
+
+    // §5.1: the process bar "auto-shows when jobs active". Constructing it on
+    // the first submission rather than at startup keeps it off the critical
+    // path (§3.4) — and the connection has to be made before any job can be
+    // submitted, which is why it is wired here rather than lazily.
+    connect(m_jobEngine.get(), &fs::JobEngine::jobSubmitted, this,
+            [this](int, const QString &) { m_mainWindow->showProcessBar(processBar()); });
+
     m_panelController->registerActions();
+    m_fileOperations->registerActions();
     registerGlobalActions();
 }
 
@@ -120,6 +142,16 @@ void Application::registerGlobalActions()
     // the same placement rules as a path from the command line.
     connect(m_mainWindow->sidebar(), &ui::Sidebar::placeActivated, this,
             [this](const QString &path) { m_panelController->openPath(path, false); });
+}
+
+ui::ProcessBar *Application::processBar()
+{
+    if (m_processBar == nullptr) {
+        m_processBar = new ui::ProcessBar(m_jobEngine.get(), m_mainWindow.get());
+        connect(m_processBar, &ui::ProcessBar::becameIdle, m_mainWindow.get(),
+                &ui::MainWindow::hideProcessBar);
+    }
+    return m_processBar;
 }
 
 ui::HelpModal *Application::helpModal()

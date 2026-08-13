@@ -37,6 +37,11 @@ public:
     void toggleFooter();
     void toggleSidebar();
 
+    /// Adopts the process bar and shows it. Called when the first job starts;
+    /// §3.4 keeps the widget from existing until then.
+    void showProcessBar(QWidget *processBar);
+    void hideProcessBar();
+
 Q_SIGNALS:
     /// Emitted once, after the window's first paint completes. Drives
     /// --quit-after-paint and the startup measurements of §3.4, which are taken
@@ -56,6 +61,8 @@ private:
     PanelStrip *m_strip = nullptr;
     QLabel *m_footer = nullptr;
     QLabel *m_pending = nullptr;
+    QWidget *m_processBar = nullptr;
+    QWidget *m_footerRow = nullptr;
 
     /// Connections to whichever panel currently has focus. Kept so they can be
     /// dropped when focus moves: Qt::UniqueConnection cannot be used with

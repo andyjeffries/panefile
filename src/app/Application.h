@@ -6,6 +6,11 @@ namespace pf::config {
 class ConfigWatcher;
 }
 
+namespace pf::fs {
+class JobEngine;
+class UndoStack;
+} // namespace pf::fs
+
 #include <QApplication>
 
 #include <cstddef>
@@ -21,11 +26,13 @@ class Keymap;
 namespace pf::ui {
 class HelpModal;
 class MainWindow;
+class ProcessBar;
 } // namespace pf::ui
 
 namespace pf {
 
 struct CommandLineOptions;
+class FileOperations;
 class KeyDispatcher;
 class PanelController;
 
@@ -79,6 +86,7 @@ private:
     void buildInputSystem();
     void registerGlobalActions();
     ui::HelpModal *helpModal();
+    ui::ProcessBar *processBar();
 
     config::Settings m_settings;
     QList<config::ConfigIssue> m_configIssues;
@@ -88,7 +96,14 @@ private:
     std::unique_ptr<input::Keymap> m_keymap;
     std::unique_ptr<KeyDispatcher> m_dispatcher;
     std::unique_ptr<PanelController> m_panelController;
+    std::unique_ptr<FileOperations> m_fileOperations;
     std::unique_ptr<config::ConfigWatcher> m_configWatcher;
+    std::unique_ptr<fs::JobEngine> m_jobEngine;
+    std::unique_ptr<fs::UndoStack> m_undoStack;
+
+    /// §3.4: created when the first job starts, not at startup. A user who
+    /// copies nothing never pays for it.
+    ui::ProcessBar *m_processBar = nullptr;
 
     /// §3.4: modals are constructed on first invocation, then cached. The help
     /// modal builds a tree of every action, which is not work to do at startup

@@ -73,6 +73,11 @@ MainWindow::MainWindow(QWidget *parent)
     layout->addWidget(footerRow);
     setCentralWidget(central);
 
+    // The process bar is inserted above the footer when it first appears, so
+    // §5.1's ordering — panels, footer, process bar — holds without the widget
+    // existing before there is a job to report.
+    m_footerRow = footerRow;
+
     connect(m_strip, &PanelStrip::focusedPanelChanged, this, [this](FilePanel *panel) {
         connectPanel(panel);
         updateFooter();
@@ -135,6 +140,29 @@ void MainWindow::showStatusMessage(const QString &message)
             updateFooter();
         }
     });
+}
+
+void MainWindow::showProcessBar(QWidget *processBar)
+{
+    if (processBar == nullptr) {
+        return;
+    }
+
+    if (m_processBar != processBar) {
+        m_processBar = processBar;
+        auto *layout = qobject_cast<QVBoxLayout *>(centralWidget()->layout());
+        if (layout != nullptr) {
+            layout->insertWidget(layout->indexOf(m_footerRow) + 1, m_processBar);
+        }
+    }
+    m_processBar->show();
+}
+
+void MainWindow::hideProcessBar()
+{
+    if (m_processBar != nullptr) {
+        m_processBar->hide();
+    }
 }
 
 void MainWindow::toggleFooter()

@@ -37,6 +37,7 @@ class FileOperations;
 class KeyDispatcher;
 class PanelController;
 class QuickLookController;
+class SearchController;
 
 /// The QApplication subclass that owns the window and the deferred-startup
 /// queue.
@@ -102,6 +103,7 @@ private:
     std::unique_ptr<KeyDispatcher> m_dispatcher;
     std::unique_ptr<PanelController> m_panelController;
     std::unique_ptr<QuickLookController> m_quickLook;
+    std::unique_ptr<SearchController> m_search;
     std::unique_ptr<FileOperations> m_fileOperations;
     std::unique_ptr<config::ConfigWatcher> m_configWatcher;
     std::unique_ptr<fs::JobEngine> m_jobEngine;

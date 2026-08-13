@@ -187,18 +187,74 @@ bool FilterSortProxy::filterAcceptsRow(int sourceRow, const QModelIndex &sourceP
         return false;
     }
 
-    // 2. Search filter.
-    if (!m_filterText.isEmpty() && !name.contains(m_filterText, Qt::CaseInsensitive)) {
+    // 2. Search filter (§7.8).
+    if (!m_filterText.isEmpty() && !matchFor(name).matched) {
         return false;
     }
 
     return true;
 }
 
+QVariant FilterSortProxy::data(const QModelIndex &index, int role) const
+{
+    if (role != DirectoryModel::MatchSpansRole) {
+        return QSortFilterProxyModel::data(index, role);
+    }
+
+    if (m_filterText.isEmpty()) {
+        return {};
+    }
+
+    const QString name = QSortFilterProxyModel::data(index, DirectoryModel::NameRole).toString();
+    return QVariant::fromValue(matchFor(name).spans);
+}
+
+FuzzyMatch FilterSortProxy::matchFor(const QString &name) const
+{
+    if (m_filterText.isEmpty()) {
+        return {};
+    }
+    return m_fuzzy ? FuzzyMatcher::match(m_filterText, name)
+                   : FuzzyMatcher::matchSubstring(m_filterText, name);
+}
+
+void FilterSortProxy::setFuzzyMatching(bool fuzzy)
+{
+    if (m_fuzzy == fuzzy) {
+        return;
+    }
+    m_fuzzy = fuzzy;
+    if (!m_filterText.isEmpty()) {
+        refilter();
+    }
+}
+
+bool FilterSortProxy::fuzzyMatching() const
+{
+    return m_fuzzy;
+}
+
+bool FilterSortProxy::isRankingByScore() const
+{
+    return m_fuzzy && !m_filterText.isEmpty();
+}
+
 bool FilterSortProxy::lessThan(const QModelIndex &left, const QModelIndex &right) const
 {
     const QString leftName = left.data(DirectoryModel::NameRole).toString();
     const QString rightName = right.data(DirectoryModel::NameRole).toString();
+
+    // §7.8: a fuzzy filter ranks by score. Best first, which is descending, and
+    // ties fall through to the ordinary ordering below so the result is stable
+    // rather than arbitrary.
+    if (isRankingByScore()) {
+        const int leftScore = matchFor(leftName).score;
+        const int rightScore = matchFor(rightName).score;
+        if (leftScore != rightScore) {
+            return leftScore > rightScore;
+        }
+    }
+
     const bool leftIsDir = left.data(DirectoryModel::IsDirRole).toBool();
     const bool rightIsDir = right.data(DirectoryModel::IsDirRole).toBool();
 

@@ -9,6 +9,7 @@
 #include <QWidget>
 
 class QLabel;
+class QLineEdit;
 class QListView;
 
 namespace pf {
@@ -74,6 +75,19 @@ public:
     bool reverseSort() const;
 
     void setFilterText(const QString &text);
+    QString filterText() const;
+
+    /// §7.8's `config.search.fuzzy`.
+    void setFuzzyMatching(bool fuzzy);
+
+    /// §7.8's in-panel filter: `/` opens the box, `Enter` keeps the filter and
+    /// returns focus to the list, `Esc` clears it and closes.
+    void openFilterBar();
+    void closeFilterBar(bool keepFilter);
+    bool isFilterBarOpen() const;
+
+    /// Handles Esc in the filter box. Public because QObject declares it so.
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
     /// §6.1's Selection mode. Movement extends the selection while it is on.
     void setSelectionMode(bool on);
@@ -149,6 +163,10 @@ private:
     FileItemDelegate *m_delegate = nullptr;
     QLabel *m_header = nullptr;
     QLabel *m_status = nullptr;
+
+    /// §3.4: built on the first `/`, not at startup. A user who never filters
+    /// never pays for it.
+    QLineEdit *m_filterBar = nullptr;
 
     QString m_path;
     QSet<QString> m_selection;

@@ -8,7 +8,9 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QKeyEvent>
 #include <QLabel>
+#include <QLineEdit>
 #include <QListView>
 #include <QPainter>
 #include <QScrollBar>
@@ -380,6 +382,90 @@ void FilePanel::movePage(int direction)
     // One row of overlap, so a page down leaves a line of context rather than
     // making the reader work out whether anything was skipped.
     moveCursor(direction * std::max(1, visibleRows - 1));
+}
+
+QString FilePanel::filterText() const
+{
+    return m_proxy->filterText();
+}
+
+void FilePanel::setFuzzyMatching(bool fuzzy)
+{
+    m_proxy->setFuzzyMatching(fuzzy);
+}
+
+void FilePanel::openFilterBar()
+{
+    if (m_filterBar == nullptr) {
+        // §3.4: constructed on first use. Inserted above the status label so a
+        // scan error and a filter can be visible at the same time.
+        m_filterBar = new QLineEdit(this);
+        m_filterBar->setObjectName(QStringLiteral("panelFilter"));
+        m_filterBar->setPlaceholderText(tr("Filter…"));
+        m_filterBar->setClearButtonEnabled(true);
+
+        auto *layout = qobject_cast<QVBoxLayout *>(this->layout());
+        layout->insertWidget(layout->indexOf(m_status), m_filterBar);
+
+        // Live, per §7.8: "filters the current directory's model live via the
+        // proxy". The cursor follows to the best remaining row, or the list
+        // would show a filtered set with the cursor on nothing.
+        connect(m_filterBar, &QLineEdit::textChanged, this, [this](const QString &text) {
+            setFilterText(text);
+            if (m_proxy->rowCount() > 0 && !m_view->currentIndex().isValid()) {
+                m_view->setCurrentIndex(m_proxy->index(0, 0));
+            }
+        });
+        connect(m_filterBar, &QLineEdit::returnPressed, this, [this] { closeFilterBar(true); });
+
+        // Esc is handled here rather than through the registry because §6.1
+        // puts the application in Typing mode while this has focus: single-key
+        // bindings are suspended, and routing Esc back through the dispatcher
+        // would take it away from whatever modal is also listening for it.
+        m_filterBar->installEventFilter(this);
+    }
+
+    m_filterBar->show();
+    m_filterBar->setFocus(Qt::ShortcutFocusReason);
+    m_filterBar->selectAll();
+    Q_EMIT modeChanged();
+}
+
+void FilePanel::closeFilterBar(bool keepFilter)
+{
+    if (m_filterBar == nullptr) {
+        return;
+    }
+
+    if (!keepFilter) {
+        // §7.8: "Esc clears it". Clearing the box rather than only hiding it,
+        // because a hidden box still holding a filter would leave the listing
+        // mysteriously incomplete.
+        m_filterBar->clear();
+        setFilterText(QString());
+    }
+
+    m_filterBar->hide();
+    m_view->setFocus(Qt::ShortcutFocusReason);
+    Q_EMIT modeChanged();
+}
+
+bool FilePanel::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == m_filterBar && event->type() == QEvent::KeyPress) {
+        auto *keyEvent = static_cast<QKeyEvent *>(event);
+        if (keyEvent->key() == Qt::Key_Escape) {
+            // §7.8: "Esc clears it".
+            closeFilterBar(false);
+            return true;
+        }
+    }
+    return QWidget::eventFilter(watched, event);
+}
+
+bool FilePanel::isFilterBarOpen() const
+{
+    return m_filterBar != nullptr && m_filterBar->isVisible();
 }
 
 void FilePanel::setThumbnailsEnabled(bool enabled)

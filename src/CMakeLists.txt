@@ -12,6 +12,7 @@ pf_layer_library(pf_core
     SOURCES
         core/Format.cpp
         core/Logging.cpp
+        core/FuzzyMatcher.cpp
         core/NaturalCompare.cpp
         core/StartupTrace.cpp
     PUBLIC_DEPENDS Qt6::Core)
@@ -90,9 +91,13 @@ pf_layer_library(pf_fs
         fs/Job.cpp
         fs/JobEngine.cpp
         fs/LibArchive.cpp
+        fs/RecursiveFinder.cpp
+        fs/RenamePlan.cpp
+        fs/RenameRule.cpp
         fs/Trash.cpp
         fs/UndoStack.cpp
         fs/jobs/DeleteJob.cpp
+        fs/jobs/RenameJob.cpp
         fs/jobs/TransferJob.cpp
     PUBLIC_DEPENDS Qt6::Core pf_core pf_platform)
 
@@ -163,7 +168,10 @@ pf_layer_library(pf_ui
         ui/quicklook/renderers/MediaRenderer.cpp
         ui/quicklook/renderers/PdfRenderer.cpp
         ui/quicklook/renderers/TextRenderer.cpp
+        ui/modals/FindModal.cpp
+        ui/modals/InputModal.cpp
         ui/modals/HelpModal.cpp
+        ui/modals/RenameModal.cpp
         ui/modals/Modal.cpp
     PUBLIC_DEPENDS
         Qt6::Core Qt6::Gui Qt6::Widgets
@@ -181,6 +189,7 @@ pf_layer_library(pf_app
         app/KeyDispatcher.cpp
         app/PanelController.cpp
         app/QuickLookController.cpp
+        app/SearchController.cpp
     PUBLIC_DEPENDS
         Qt6::Core Qt6::Gui Qt6::Widgets
         pf_core pf_platform pf_config pf_input pf_fs)

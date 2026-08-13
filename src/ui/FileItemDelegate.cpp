@@ -1,6 +1,7 @@
 #include "ui/FileItemDelegate.h"
 
 #include "core/Format.h"
+#include "core/FuzzyMatcher.h"
 #include "model/DirectoryModel.h"
 #include "model/FileEntry.h"
 #include "model/IconProvider.h"
@@ -200,6 +201,11 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
     const QString elidedName = metrics.elidedText(name, Qt::ElideMiddle, nameRect.width());
     painter->drawText(nameRect, Qt::AlignLeft | Qt::AlignVCenter, elidedName);
 
+    // §7.8: the matched characters, in the accent colour. Drawn over the name
+    // rather than instead of it, so the elision above still governs the layout
+    // and a highlight can never make a row wider than its column.
+    paintMatchSpans(painter, nameRect, elidedName, name, index, metrics, palette);
+
     if (entry.isSymlink && !entry.linkTarget.isEmpty()) {
         const int nameWidth = metrics.horizontalAdvance(elidedName);
         const int targetLeft = nameRect.left() + nameWidth + kHorizontalPadding;
@@ -218,6 +224,45 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
     }
 
     painter->restore();
+}
+
+void FileItemDelegate::paintMatchSpans(QPainter *painter, const QRect &nameRect,
+                                       const QString &elidedName, const QString &fullName,
+                                       const QModelIndex &index, const QFontMetrics &metrics,
+                                       const ThemePalette &palette)
+{
+    // Only when the name was not elided. Mapping a span through Qt's elision —
+    // which removes an unknown run from the middle — would need the elision
+    // algorithm reimplemented to stay correct, and a highlight one character
+    // off is worse than no highlight.
+    if (elidedName != fullName) {
+        return;
+    }
+
+    const QVariant value = index.data(DirectoryModel::MatchSpansRole);
+    if (!value.canConvert<QList<MatchSpan>>()) {
+        return;
+    }
+
+    const auto spans = value.value<QList<MatchSpan>>();
+    if (spans.isEmpty()) {
+        return;
+    }
+
+    painter->setPen(palette.accent);
+
+    for (const MatchSpan &span : spans) {
+        if (span.start < 0 || span.start + span.length > fullName.size()) {
+            continue;
+        }
+
+        const int left = nameRect.left() + metrics.horizontalAdvance(fullName.left(span.start));
+        const QString text = fullName.mid(span.start, span.length);
+        const QRect spanRect(left, nameRect.top(), metrics.horizontalAdvance(text),
+                             nameRect.height());
+
+        painter->drawText(spanRect, Qt::AlignLeft | Qt::AlignVCenter, text);
+    }
 }
 
 } // namespace pf::ui

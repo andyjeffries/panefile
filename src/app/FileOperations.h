@@ -1,6 +1,7 @@
 #pragma once
 
 #include "config/Config.h"
+#include "fs/RenamePlan.h"
 
 #include <QObject>
 #include <QString>
@@ -19,6 +20,8 @@ class ActionRegistry;
 
 namespace pf::ui {
 class ConflictModal;
+class InputModal;
+class RenameModal;
 class MainWindow;
 class PanelStrip;
 class ProcessBar;
@@ -55,6 +58,19 @@ private:
     void deleteSelection(bool permanent);
     void undoLast();
 
+    /// §6.3's `file_panel_item_create` (`Ctrl+N`): "Trailing `/` creates a
+    /// directory".
+    void createItem();
+
+    /// §6.3's `file_panel_item_rename` (`Ctrl+R`).
+    void renameCursorItem();
+
+    /// §7.9's bulk rename, through the sheet rather than $EDITOR.
+    void bulkRenameSelection();
+
+    /// Runs a planned rename as one undoable job (§7.9 step 6).
+    void runRenamePlan(const QString &directory, const fs::RenamePlan &plan);
+
     /// The clipboard's paths, whether they were put there by Panefile or by
     /// another application.
     ///
@@ -67,6 +83,10 @@ private:
 
     ui::ConflictModal *conflictModal();
 
+    /// §3.4: modals are built on first invocation, then cached.
+    ui::InputModal *inputModal();
+    ui::RenameModal *renameModal();
+
     ui::MainWindow *m_window = nullptr;
     ui::PanelStrip *m_strip = nullptr;
     input::ActionRegistry *m_registry = nullptr;
@@ -74,6 +94,8 @@ private:
     fs::UndoStack *m_undoStack = nullptr;
 
     ui::ConflictModal *m_conflictModal = nullptr;
+    ui::InputModal *m_inputModal = nullptr;
+    ui::RenameModal *m_renameModal = nullptr;
     config::Settings m_settings;
 
     /// Whether the last copy_items/cut_items was a cut. The clipboard carries

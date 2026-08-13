@@ -8,6 +8,7 @@
 #include "app/KeyDispatcher.h"
 #include "app/PanelController.h"
 #include "app/QuickLookController.h"
+#include "app/SearchController.h"
 #include "config/Config.h"
 #include "config/ConfigWatcher.h"
 #include "config/Hotkeys.h"
@@ -119,6 +120,13 @@ void Application::buildInputSystem()
     m_quickLook->applySettings(m_settings.quicklook);
     m_quickLook->registerActions();
 
+    m_search = std::make_unique<SearchController>(m_mainWindow.get(), m_mainWindow->panelStrip(),
+                                                  m_registry.get());
+    m_search->setSettings(m_settings);
+    m_search->registerActions();
+    connect(m_search.get(), &SearchController::statusMessage, m_mainWindow.get(),
+            &ui::MainWindow::showStatusMessage);
+
     connect(m_mainWindow->panelStrip(), &ui::PanelStrip::panelCreated, this,
             &Application::configurePanel);
 
@@ -137,6 +145,10 @@ void Application::configurePanel(ui::FilePanel *panel) const
     // §7.7: thumbnails are a panel-level facility, so a build with them
     // disabled never constructs the cache's memory tier at all.
     panel->setThumbnailsEnabled(m_settings.thumbnails.enabled);
+
+    if (m_search != nullptr) {
+        m_search->configurePanel(panel);
+    }
 
     ThumbnailCache::instance().setEnabled(m_settings.thumbnails.enabled);
     ThumbnailCache::instance().setMaxFileSizeMb(m_settings.thumbnails.maxFileSizeMb);
@@ -286,6 +298,9 @@ void Application::reloadConfiguration(const QStringList &changedFiles)
             }
             if (m_quickLook != nullptr) {
                 m_quickLook->applySettings(m_settings.quicklook);
+            }
+            if (m_search != nullptr) {
+                m_search->setSettings(m_settings);
             }
         }
     }

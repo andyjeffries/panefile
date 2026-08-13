@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/FuzzyMatcher.h"
+
 #include <QCollator>
 #include <QSortFilterProxyModel>
 #include <QString>
@@ -45,16 +47,38 @@ public:
     void setReverseSort(bool reverse);
     bool reverseSort() const;
 
-    /// Substring filter over the current directory (§7.8's in-panel filter).
-    /// Fuzzy matching arrives in M7 and replaces the matching rule, not the
-    /// plumbing.
+    /// §7.8's in-panel filter. Substring by default, fuzzy when enabled.
     void setFilterText(const QString &text);
     QString filterText() const;
+
+    /// §7.8's `config.search.fuzzy`. Changing it refilters, because the two
+    /// rules accept different sets and a stale filter would show the wrong one.
+    void setFuzzyMatching(bool fuzzy);
+    bool fuzzyMatching() const;
+
+    /// The match for one source row, so the delegate can highlight the spans
+    /// §7.8 asks it to. Empty when there is no filter.
+    ///
+    /// Recomputed rather than cached: the alternative is a parallel map keyed
+    /// on row that has to be invalidated on every model change, and the matcher
+    /// is cheap enough that a visible row costing one match per paint is not
+    /// where §11's frame budget goes.
+    FuzzyMatch matchFor(const QString &name) const;
+
+    /// §7.8: fuzzy results are ranked by score, not by name. Only while a
+    /// fuzzy filter is active — an unfiltered listing keeps §4.4's ordering.
+    bool isRankingByScore() const;
 
     /// Re-seeds the ordering used by SortKey::Random. Without this a random
     /// sort would reshuffle on every filter change, which is disorienting
     /// rather than random.
     void reshuffle();
+
+    /// Serves MatchSpansRole (§4.2) from the active filter. The spans belong to
+    /// the proxy rather than the model because the model has no idea a filter
+    /// exists, and two panels showing the same directory can be filtering
+    /// differently.
+    QVariant data(const QModelIndex &index, int role) const override;
 
 protected:
     bool filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const override;
@@ -73,6 +97,7 @@ private:
     bool m_reverseSort = false;
     SortKey m_sortKey = SortKey::Name;
     QString m_filterText;
+    bool m_fuzzy = false;
     quint32 m_randomSeed = 1;
 
     /// Handles the locale-aware half of §4.4's ordering; naturalCompare() drives

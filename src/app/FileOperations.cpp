@@ -5,11 +5,17 @@
 #include "fs/JobEngine.h"
 #include "fs/UndoStack.h"
 #include "fs/jobs/DeleteJob.h"
+#include "fs/jobs/RenameJob.h"
 #include "fs/jobs/TransferJob.h"
 #include "ui/FilePanel.h"
 #include "ui/MainWindow.h"
 #include "ui/PanelStrip.h"
+
 #include "ui/modals/ConflictModal.h"
+#include "ui/modals/InputModal.h"
+#include "ui/modals/RenameModal.h"
+#include <QDir>
+#include <QFile>
 
 #include <QApplication>
 #include <QClipboard>
@@ -57,6 +63,195 @@ ui::ConflictModal *FileOperations::conflictModal()
         m_conflictModal = new ui::ConflictModal(m_window);
     }
     return m_conflictModal;
+}
+
+ui::InputModal *FileOperations::inputModal()
+{
+    if (m_inputModal == nullptr) {
+        m_inputModal = new ui::InputModal(m_window);
+    }
+    return m_inputModal;
+}
+
+ui::RenameModal *FileOperations::renameModal()
+{
+    if (m_renameModal == nullptr) {
+        m_renameModal = new ui::RenameModal(m_window);
+    }
+    return m_renameModal;
+}
+
+void FileOperations::createItem()
+{
+    const ui::FilePanel *panel = m_strip->focusedPanel();
+    if (panel == nullptr) {
+        return;
+    }
+
+    const QString directory = panel->path();
+    ui::InputModal *modal = inputModal();
+
+    // Disconnected first: the modal is cached and reused, so a previous
+    // invocation's handler would still be attached and would create the file in
+    // whichever directory that one was for.
+    disconnect(modal, &ui::InputModal::submitted, nullptr, nullptr);
+
+    connect(modal, &ui::InputModal::submitted, this, [this, modal, directory](const QString &name) {
+        // §6.3: "Trailing / creates a directory".
+        const bool wantsDirectory = name.endsWith(QLatin1Char('/'));
+        QString basename = name;
+        if (wantsDirectory) {
+            basename.chop(1);
+        }
+
+        if (basename.isEmpty() || basename.contains(QLatin1Char('/'))) {
+            modal->setProblem(tr("A name cannot contain “/”"));
+            return;
+        }
+
+        const QString target = QDir(directory).absoluteFilePath(basename);
+        if (QFileInfo::exists(target)) {
+            modal->setProblem(tr("“%1” already exists").arg(basename));
+            return;
+        }
+
+        bool created = false;
+        if (wantsDirectory) {
+            created = QDir(directory).mkpath(basename);
+        } else {
+            QFile file(target);
+            created = file.open(QIODevice::WriteOnly);
+            file.close();
+        }
+
+        if (!created) {
+            modal->setProblem(tr("Could not create “%1”").arg(basename));
+            return;
+        }
+
+        modal->dismiss();
+
+        // The watcher will bring the row in; putting the cursor on it is what
+        // makes creating a file and immediately doing something to it work.
+        if (ui::FilePanel *panel = m_strip->focusedPanel(); panel != nullptr) {
+            panel->setCursorName(basename);
+        }
+        Q_EMIT statusMessage(wantsDirectory ? tr("Created %1/").arg(basename)
+                                            : tr("Created %1").arg(basename));
+    });
+
+    modal->ask(tr("New item"), tr("End the name with “/” to create a directory."), QString());
+}
+
+void FileOperations::renameCursorItem()
+{
+    const ui::FilePanel *panel = m_strip->focusedPanel();
+    if (panel == nullptr || panel->cursorName().isEmpty()) {
+        return;
+    }
+
+    const QString directory = panel->path();
+    const QString original = panel->cursorName();
+
+    ui::InputModal *modal = inputModal();
+    disconnect(modal, &ui::InputModal::submitted, nullptr, nullptr);
+
+    connect(
+        modal, &ui::InputModal::submitted, this,
+        [this, modal, directory, original](const QString &name) {
+            if (name == original) {
+                modal->dismiss();
+                return;
+            }
+
+            const fs::RenamePlan plan = fs::RenamePlanner::plan(
+                {fs::RenamePair{.from = original, .to = name}},
+                QDir(directory).entryList(QDir::AllEntries | QDir::Hidden | QDir::NoDotAndDotDot));
+
+            if (!plan.isValid()) {
+                modal->setProblem(plan.problemText());
+                return;
+            }
+
+            modal->dismiss();
+            runRenamePlan(directory, plan);
+        });
+
+    // The stem is preselected so typing replaces the name and keeps the
+    // extension, which is what every file manager does and what a user renaming
+    // "photo.jpg" almost always wants.
+    const qsizetype dot = original.lastIndexOf(QLatin1Char('.'));
+    const int stemLength = dot > 0 ? static_cast<int>(dot) : static_cast<int>(original.size());
+
+    modal->ask(tr("Rename"), QString(), original, 0, stemLength);
+}
+
+void FileOperations::bulkRenameSelection()
+{
+    const ui::FilePanel *panel = m_strip->focusedPanel();
+    if (panel == nullptr) {
+        return;
+    }
+
+    const QString directory = panel->path();
+
+    QList<QString> names;
+    for (const QString &path : panel->selectedPaths()) {
+        names.append(QFileInfo(path).fileName());
+    }
+
+    if (names.isEmpty()) {
+        Q_EMIT statusMessage(tr("Nothing selected to rename"));
+        return;
+    }
+
+    ui::RenameModal *modal = renameModal();
+    disconnect(modal, &ui::RenameModal::renameRequested, nullptr, nullptr);
+
+    connect(modal, &ui::RenameModal::renameRequested, this,
+            [this, directory](const fs::RenamePlan &plan) { runRenamePlan(directory, plan); });
+
+    modal->setNames(names);
+    modal->setExistingNames(
+        QDir(directory).entryList(QDir::AllEntries | QDir::Hidden | QDir::NoDotAndDotDot));
+    modal->start();
+}
+
+void FileOperations::runRenamePlan(const QString &directory, const fs::RenamePlan &plan)
+{
+    auto job = std::make_unique<fs::RenameJob>(directory, plan);
+    auto *raw = job.get();
+
+    m_window->showProcessBar(nullptr);
+    const int jobId = m_engine->submit(std::move(job));
+
+    connect(m_engine, &fs::JobEngine::jobFinished, this,
+            [this, jobId, raw](int id, const fs::JobResult &result) {
+                if (id != jobId) {
+                    return;
+                }
+
+                if (!result.cancelled && !raw->completedRenames().isEmpty()) {
+                    // §7.9 step 6, and §7.13's Rename/BulkRename kinds: one
+                    // entry for the whole thing, so Ctrl+Z reverses the rename
+                    // the user made rather than one file of it.
+                    const bool bulk = raw->requestedChanges().size() > 1;
+                    m_undoStack->push(
+                        fs::UndoEntry{.kind = bulk ? fs::UndoEntry::Kind::BulkRename
+                                                   : fs::UndoEntry::Kind::Rename,
+                                      .description = bulk ? tr("Bulk rename") : tr("Rename"),
+                                      .movedPairs = raw->completedRenames(),
+                                      .trashedItems = {}});
+                }
+
+                if (!result.errors.isEmpty()) {
+                    Q_EMIT statusMessage(tr("Rename failed: %1").arg(result.errors.first().reason));
+                    return;
+                }
+
+                Q_EMIT statusMessage(tr("Renamed %n item(s)", nullptr,
+                                        static_cast<int>(raw->requestedChanges().size())));
+            });
 }
 
 QStringList FileOperations::clipboardPaths()
@@ -311,6 +506,11 @@ void FileOperations::registerActions()
     reg(
         "undo", tr("Undo the last move, rename or trash"), [this] { undoLast(); },
         [this] { return m_undoStack->canUndo(); });
+
+    reg("file_panel_item_create", tr("Create a file, or a directory with a trailing “/”"),
+        [this] { createItem(); });
+    reg("file_panel_item_rename", tr("Rename the cursor item"), [this] { renameCursorItem(); });
+    reg("bulk_rename", tr("Rename the selection with a rule"), [this] { bulkRenameSelection(); });
 
     // Selection mode and its movement bindings (§6.1, §6.3).
     const auto onPanel = [strip = m_strip](auto action) {

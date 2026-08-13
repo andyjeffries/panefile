@@ -1,5 +1,8 @@
 #pragma once
 
+#include "core/FuzzyMatcher.h"
+#include "ui/ThemePalette.h"
+
 #include <QStyledItemDelegate>
 
 namespace pf {
@@ -38,6 +41,12 @@ public:
 
 private:
     static QColor colourFor(const FileEntry &entry);
+
+    /// §7.8: "Return both the score and the matched character spans so the
+    /// delegate can highlight them."
+    static void paintMatchSpans(QPainter *painter, const QRect &nameRect, const QString &elidedName,
+                                const QString &fullName, const QModelIndex &index,
+                                const QFontMetrics &metrics, const ThemePalette &palette);
 
     const QSet<QString> *m_selectedNames = nullptr;
 };

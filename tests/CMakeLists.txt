@@ -20,6 +20,7 @@ function(pf_add_test name)
         TIMEOUT 120)
 endfunction()
 
+pf_add_test(tst_instance    SOURCES tst_instance.cpp    LIBS pf_app)
 pf_add_test(tst_commandline SOURCES tst_commandline.cpp LIBS pf_app)
 pf_add_test(tst_format      SOURCES tst_format.cpp      LIBS pf_core)
 pf_add_test(tst_naturalcompare SOURCES tst_naturalcompare.cpp LIBS pf_core)

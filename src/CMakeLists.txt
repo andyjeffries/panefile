@@ -209,19 +209,29 @@ pf_layer_library(pf_ui
 # ---------------------------------------------------------------------------
 # app — the composition root: lifecycle, session, panel controller.
 # ---------------------------------------------------------------------------
+find_package(Qt6 REQUIRED COMPONENTS Network)
+
 pf_layer_library(pf_app
     LAYER app
     SOURCES
         app/Application.cpp
         app/CommandLine.cpp
+        app/InstanceMessage.cpp
         app/FileOperations.cpp
         app/KeyDispatcher.cpp
         app/PanelController.cpp
         app/QuickLookController.cpp
         app/SearchController.cpp
+        app/Session.cpp
+        app/SingleInstance.cpp
     PUBLIC_DEPENDS
         Qt6::Core Qt6::Gui Qt6::Widgets
         pf_core pf_platform pf_config pf_input pf_fs)
+
+# §10.3's QLocalServer/QLocalSocket live in QtNetwork. Private, because nothing
+# above this layer speaks to the socket — the composition root is the only
+# place that knows single-instance exists.
+target_link_libraries(pf_app PRIVATE Qt6::Network)
 
 # Public rather than private: main.cpp is handed the window through Application.
 target_link_libraries(pf_app PUBLIC pf_ui)

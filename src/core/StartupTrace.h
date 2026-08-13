@@ -19,6 +19,7 @@ enum class StartupPhase {
     Shown,          ///< show() returned
     FirstPaint,     ///< paintEvent on the panel, not show() returning
     ScanFirstBatch, ///< first batch of entries reached the model
+    HandedOff,      ///< §10.3: a running instance took the request; we exit here
     Count
 };
 

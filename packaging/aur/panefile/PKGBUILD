@@ -1,0 +1,59 @@
+# Maintainer: Andy Jeffries <andy@andyjeffries.co.uk>
+
+pkgname=panefile
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Keyboard-driven, multi-panel file manager for Wayland"
+arch=('x86_64' 'aarch64')
+url="https://github.com/andyjeffries/panefile"
+license=('MIT')
+
+# The optional dependencies are hard dependencies of the *package*, not of the
+# binary. §3.4 keeps every one of them out of the load-time dependency list —
+# they are opened on first use and the application runs without any of them —
+# but a package that relegates them to optdepends hands most people a build
+# with no syntax highlighting, no PDF preview and no video thumbnails, and
+# nothing to tell them why. A few megabytes once is cheaper than that.
+depends=(
+  'qt6-base'
+  'libarchive'
+  'shared-mime-info'
+  'hicolor-icon-theme'
+  'syntax-highlighting'
+  'poppler-qt6'
+  'qt6-multimedia'
+  'ffmpegthumbnailer'
+  'udisks2'
+)
+makedepends=('cmake' 'ninja' 'gcc')
+
+# Kept for documentation: this is what each one actually buys, for anyone
+# trimming the install by hand.
+optdepends=(
+  'syntax-highlighting: syntax highlighting in Quick Look'
+  'poppler-qt6: PDF previews in Quick Look'
+  'qt6-multimedia: audio and video playback in Quick Look'
+  'ffmpegthumbnailer: video thumbnails in the file list'
+  'udisks2: mounting and unmounting removable media from the sidebar'
+)
+
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')   # replaced at release time with the tarball's real hash
+
+build() {
+  cmake -S "$srcdir/$pkgname-$pkgver" -B build -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
+  cmake --build build
+}
+
+check() {
+  QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
+}
+
+package() {
+  DESTDIR="$pkgdir" cmake --install build
+  install -Dm644 "$srcdir/$pkgname-$pkgver/LICENSE" \
+    "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

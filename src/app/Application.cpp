@@ -9,6 +9,8 @@
 #include "app/PanelController.h"
 #include "app/QuickLookController.h"
 #include "app/SearchController.h"
+#include "app/Session.h"
+#include "app/SingleInstance.h"
 #include "config/Config.h"
 #include "config/ConfigWatcher.h"
 #include "config/Hotkeys.h"
@@ -19,6 +21,7 @@
 #include "core/Version.h"
 #include "fs/JobEngine.h"
 #include "fs/UndoStack.h"
+#include "model/FilterSortProxy.h"
 #include "model/ThumbnailCache.h"
 #include "platform/Paths.h"
 #include "ui/FilePanel.h"
@@ -34,6 +37,7 @@
 #include <QFont>
 #include <QKeyEvent>
 #include <QTimer>
+#include <QWindow>
 
 namespace pf {
 
@@ -186,6 +190,11 @@ void Application::registerGlobalActions()
                                    }
                                    quit();
                                });
+
+    // §8: the session is written on the way out. Connected to aboutToQuit
+    // rather than called from the quit action, so a window closed with the
+    // compositor's own control saves just as well as one closed with `q`.
+    connect(this, &QCoreApplication::aboutToQuit, this, [this] { saveSession(); });
 
     m_registry->registerAction(QStringLiteral("toggle_sidebar"), tr("Show or hide the sidebar"),
                                ActionCategory::View, [this] { m_mainWindow->toggleSidebar(); });
@@ -344,16 +353,8 @@ void Application::startUp(const CommandLineOptions &options)
     // §3.4 step 6: start the scan before show(). It runs on a worker thread, so
     // dispatching it first overlaps enumeration with window realisation instead
     // of starting after it.
-    const QString path = initialPath(options);
-    ui::FilePanel *panel = m_mainWindow->panelStrip()->addPanel(path);
+    restoreSessionOrOpenInitialPanel(options);
     StartupTrace::mark(StartupPhase::ScanStarted);
-
-    if (panel != nullptr && !options.paths.isEmpty()) {
-        const QFileInfo info(QDir::current().absoluteFilePath(options.paths.constFirst()));
-        if (info.exists() && !info.isDir()) {
-            panel->setCursorName(info.fileName());
-        }
-    }
 
     m_mainWindow->show();
     StartupTrace::mark(StartupPhase::Shown);
@@ -366,6 +367,20 @@ void Application::startUp(const CommandLineOptions &options)
         ThumbnailCache::instance().setMaxFileSizeMb(m_settings.thumbnails.maxFileSizeMb);
         ThumbnailCache::instance().setVideoEnabled(m_settings.thumbnails.video);
     });
+
+    // §10.3: "listen() is two syscalls, so bind it before show(); only the
+    // connection-handling wiring is deferred." The bind has to happen early
+    // enough that a second launch during startup finds a socket to talk to.
+    if (m_settings.general.singleInstance && !options.newInstance) {
+        m_instance = std::make_unique<SingleInstance>(this);
+        if (m_instance->listen(platform::singleInstanceSocketPath())) {
+            connect(m_instance.get(), &SingleInstance::messageReceived, this,
+                    &Application::openRequest);
+            postStartupTask([this] { m_instance->startServing(); });
+        } else {
+            m_instance.reset();
+        }
+    }
 
     // §3.4's deferred list: the sidebar is constructed empty and populated on
     // idle, because resolving XDG user directories reads a config file and none
@@ -388,6 +403,211 @@ void Application::startUp(const CommandLineOptions &options)
             m_mainWindow->showStatusMessage(tr("%n problem(s) in your configuration — see the log",
                                                nullptr, static_cast<int>(m_configIssues.size())));
         });
+    }
+}
+
+void Application::restoreSessionOrOpenInitialPanel(const CommandLineOptions &options)
+{
+    ui::PanelStrip *strip = m_mainWindow->panelStrip();
+
+    // A path on the command line is an instruction, and it outranks whatever
+    // the last session happened to be showing.
+    const bool hasPathArguments = !options.paths.isEmpty();
+
+    if (m_settings.general.restoreSession && !hasPathArguments) {
+        // §3.4: "Session restore of panels 2..N — panel 1 is enough to start
+        // working; the rest fill in." Panel one is opened now; the others are
+        // queued, so the first paint waits for one scan rather than for six.
+        const Session session = Session::load().pruned();
+
+        if (!session.isEmpty()) {
+            const SessionPanel &first = session.panels.constFirst();
+            if (ui::FilePanel *panel = strip->addPanel(first.path); panel != nullptr) {
+                panel->setSortKey(sortKeyFromName(first.sortKey));
+                panel->setReverseSort(first.reverseSort);
+                panel->setShowHidden(first.showHidden);
+                panel->setCursorName(first.cursorName);
+            }
+
+            if (!session.windowGeometry.isEmpty()) {
+                m_mainWindow->setGeometry(session.windowGeometry);
+            }
+            if (session.windowMaximised) {
+                m_mainWindow->showMaximized();
+            }
+
+            postStartupTask([this, session] {
+                ui::PanelStrip *strip = m_mainWindow->panelStrip();
+                for (qsizetype i = 1; i < session.panels.size(); ++i) {
+                    const SessionPanel &saved = session.panels.at(i);
+                    if (ui::FilePanel *panel = strip->addPanel(saved.path); panel != nullptr) {
+                        panel->setSortKey(sortKeyFromName(saved.sortKey));
+                        panel->setReverseSort(saved.reverseSort);
+                        panel->setShowHidden(saved.showHidden);
+                        panel->setCursorName(saved.cursorName);
+                    }
+                }
+                strip->focusPanelAt(session.focusedPanel);
+                m_mainWindow->sidebar()->setPinnedPaths(session.pinnedPaths);
+            });
+            return;
+        }
+    }
+
+    ui::FilePanel *panel = strip->addPanel(initialPath(options));
+
+    if (panel != nullptr && hasPathArguments) {
+        // §10.2: "A path that is a file, not a directory, navigates to its
+        // parent and places the cursor on it."
+        const QFileInfo info(QDir::current().absoluteFilePath(options.paths.constFirst()));
+        if (info.exists() && !info.isDir()) {
+            panel->setCursorName(info.fileName());
+        }
+    }
+}
+
+void Application::saveSession() const
+{
+    if (!m_settings.general.restoreSession || m_mainWindow == nullptr) {
+        return;
+    }
+
+    Session session;
+    session.windowGeometry = m_mainWindow->geometry();
+    session.windowMaximised = m_mainWindow->isMaximized();
+    session.focusedPanel = m_mainWindow->panelStrip()->focusedIndex();
+    session.pinnedPaths = m_mainWindow->sidebar()->pinnedPaths();
+
+    for (const ui::FilePanel *panel : m_mainWindow->panelStrip()->panels()) {
+        session.panels.append(SessionPanel{.path = panel->path(),
+                                           .cursorName = panel->cursorName(),
+                                           .sortKey = sortKeyName(panel->sortKey()),
+                                           .reverseSort = panel->reverseSort(),
+                                           .showHidden = panel->showHidden()});
+    }
+
+    session.save();
+}
+
+void Application::raiseWindow(const QString &activationToken)
+{
+    if (m_mainWindow == nullptr) {
+        return;
+    }
+
+    // §10.4: "The running instance sets that value into its own environment
+    // with qputenv immediately before calling requestActivate(); Qt's Wayland
+    // platform plugin picks it up from there."
+    if (!activationToken.isEmpty()) {
+        qputenv("XDG_ACTIVATION_TOKEN", activationToken.toUtf8());
+    }
+
+    m_mainWindow->show();
+    m_mainWindow->raise();
+
+    if (QWindow *window = m_mainWindow->windowHandle(); window != nullptr) {
+        window->requestActivate();
+    }
+
+    // §10.4: "If no token is available, degrade gracefully: update the window's
+    // state so the compositor shows an attention hint, and do not attempt to
+    // force focus. Never treat failure to raise as a fatal error."
+    if (activationToken.isEmpty()) {
+        alert(m_mainWindow.get());
+    }
+
+    if (!activationToken.isEmpty()) {
+        // Single-use: leaving it set would have the next activation present a
+        // token the compositor has already spent, which it rejects silently.
+        qunsetenv("XDG_ACTIVATION_TOKEN");
+    }
+}
+
+void Application::openRequest(const InstanceMessage &message)
+{
+    if (m_mainWindow == nullptr) {
+        return;
+    }
+
+    const QStringList paths = message.absolutePaths();
+
+    QStringList missing;
+    QStringList usable;
+    for (const QString &path : paths) {
+        if (QFileInfo::exists(path)) {
+            usable.append(path);
+        } else {
+            missing.append(path);
+        }
+    }
+
+    // §10.2: "the running instance's own window is active". The instance
+    // decides; the client never tries to inspect focus, which is not possible
+    // on Wayland anyway.
+    const bool windowFocused =
+        applicationState() == Qt::ApplicationActive && m_mainWindow->isActiveWindow();
+
+    bool useFocusedPanel = windowFocused;
+    switch (message.placement) {
+    case PlacementOverride::Here:
+        useFocusedPanel = true;
+        break;
+    case PlacementOverride::NewPanel:
+    case PlacementOverride::NewWindow:
+        useFocusedPanel = false;
+        break;
+    case PlacementOverride::None:
+        break;
+    }
+
+    ui::PanelStrip *strip = m_mainWindow->panelStrip();
+
+    for (qsizetype i = 0; i < usable.size(); ++i) {
+        const QFileInfo info(usable.at(i));
+        const QString directory = info.isDir() ? info.absoluteFilePath() : info.absolutePath();
+
+        // §10.2: "With multiple paths, the first follows the table above and
+        // each subsequent one always opens a new panel."
+        ui::FilePanel *panel = nullptr;
+        if (i == 0 && useFocusedPanel) {
+            panel = strip->focusedPanel();
+            if (panel != nullptr) {
+                // §10.2: "Navigating the focused panel pushes history, so
+                // go_back returns to where the user was. It never discards
+                // their selection silently."
+                if (panel->selectionCount() > 0) {
+                    panel->clearSelection();
+                    m_mainWindow->showStatusMessage(tr("Selection cleared"));
+                }
+                panel->navigateTo(directory);
+            }
+        } else {
+            panel = strip->addPanel(directory);
+            if (panel == nullptr) {
+                // §10.2: "beyond that, extra paths are dropped with a footer
+                // warning."
+                m_mainWindow->showStatusMessage(tr("At most %1 panels — %n path(s) not opened",
+                                                   nullptr, static_cast<int>(usable.size() - i))
+                                                    .arg(ui::PanelStrip::kMaxPanels));
+                break;
+            }
+        }
+
+        if (panel != nullptr && !info.isDir()) {
+            panel->setCursorName(info.fileName());
+        }
+    }
+
+    if (!missing.isEmpty()) {
+        // §10.2: "If some of several paths are bad, open the good ones and
+        // report the rest."
+        m_mainWindow->showStatusMessage(
+            tr("%1 does not exist").arg(QDir::toNativeSeparators(missing.constFirst())));
+    }
+
+    // §10.2: the window is raised when the request did not come from it.
+    if (!windowFocused) {
+        raiseWindow(message.activationToken);
     }
 }
 

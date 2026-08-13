@@ -103,6 +103,8 @@ const char *StartupTrace::phaseName(StartupPhase phase)
         return "first-paint";
     case StartupPhase::ScanFirstBatch:
         return "scan-first-batch";
+    case StartupPhase::HandedOff:
+        return "handed-off";
     case StartupPhase::Count:
         break;
     }

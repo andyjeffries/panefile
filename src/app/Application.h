@@ -38,6 +38,8 @@ class KeyDispatcher;
 class PanelController;
 class QuickLookController;
 class SearchController;
+class SingleInstance;
+struct InstanceMessage;
 
 /// The QApplication subclass that owns the window and the deferred-startup
 /// queue.
@@ -72,6 +74,10 @@ public:
     /// Safe to call before the window exists; the queue drains once it does.
     void postStartupTask(std::function<void()> task);
 
+    /// §10.2's routing. Public because main() hands the first request to it,
+    /// and because §14 drives the rules directly.
+    void openRequest(const InstanceMessage &message);
+
     /// §6.2: a single application-level filter is the entire dispatch path.
     /// QShortcut and QAction shortcuts are not used — they cap out at four
     /// elements, resolve ambiguity uncontrollably, and have no notion of mode.
@@ -91,6 +97,16 @@ private:
 
     /// Applies `[panels]` and `[thumbnails]` to a newly created panel.
     void configurePanel(ui::FilePanel *panel) const;
+
+    /// §10.4: raises and activates the window, using a forwarded activation
+    /// token when one is available.
+    void raiseWindow(const QString &activationToken);
+
+    /// §8: restores the previous session, or opens one panel at the configured
+    /// path when there is nothing to restore.
+    void restoreSessionOrOpenInitialPanel(const CommandLineOptions &options);
+
+    void saveSession() const;
     ui::HelpModal *helpModal();
     ui::ProcessBar *processBar();
 
@@ -104,6 +120,7 @@ private:
     std::unique_ptr<PanelController> m_panelController;
     std::unique_ptr<QuickLookController> m_quickLook;
     std::unique_ptr<SearchController> m_search;
+    std::unique_ptr<SingleInstance> m_instance;
     std::unique_ptr<FileOperations> m_fileOperations;
     std::unique_ptr<config::ConfigWatcher> m_configWatcher;
     std::unique_ptr<fs::JobEngine> m_jobEngine;

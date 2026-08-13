@@ -44,8 +44,7 @@ QString decodeByteString(const QByteArray &bytes)
 
 QString firstMountPoint(const QVariantMap &filesystem)
 {
-    const QDBusArgument argument =
-        filesystem.value(QStringLiteral("MountPoints")).value<QDBusArgument>();
+    const auto argument = filesystem.value(QStringLiteral("MountPoints")).value<QDBusArgument>();
     QList<QByteArray> points;
     argument >> points;
 
@@ -143,7 +142,7 @@ private:
     /// crash.
     template<typename Handler>
     void callAsync(const QString &objectPath, const QString &interface, const QString &method,
-                   Handler onSuccess)
+                   const Handler &onSuccess)
     {
         QDBusMessage message =
             QDBusMessage::createMethodCall(QLatin1String(kService), objectPath, interface, method);

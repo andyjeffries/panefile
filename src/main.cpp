@@ -8,12 +8,16 @@
 
 #include "app/Application.h"
 #include "app/CommandLine.h"
+#include "app/InstanceMessage.h"
+#include "app/SingleInstance.h"
+#include "config/Config.h"
 #include "config/DefaultConfig.h"
 #include "core/Logging.h"
 #include "core/StartupTrace.h"
 #include "core/Version.h"
 #include "platform/Paths.h"
 
+#include <QDir>
 #include <QTextStream>
 
 #include <cstdio>
@@ -68,6 +72,47 @@ int handleEarlyExit(const pf::CommandLineOptions &options)
     return 0;
 }
 
+/// §10.3's client half: hand the request to a running instance, if there is one.
+///
+/// "Client side is on the startup critical path and comes first: attempt
+/// connectToServer with a 0 ms timeout. On success, send the request, wait for
+/// a short ack (50 ms cap), exit 0 — **without ever constructing a
+/// MainWindow**. This is by far the fastest path through the program and should
+/// complete in a couple of milliseconds."
+///
+/// It goes further than the spec requires and constructs no QApplication
+/// either: QLocalSocket needs only a QCoreApplication's event machinery, and on
+/// Wayland a QApplication means a connection to the compositor before we have
+/// decided whether to draw anything.
+///
+/// Returns true when a running instance took the request and this process
+/// should exit 0.
+bool handOffToRunningInstance(const pf::CommandLineOptions &options)
+{
+    if (options.newInstance) {
+        // §10.2: "--new-instance: separate process entirely; skips the socket."
+        return false;
+    }
+
+    pf::InstanceMessage message;
+    message.cwd = QDir::currentPath();
+    message.paths = options.paths;
+    message.placement = options.placement;
+
+    // §10.4: "The client must forward it in the IPC message and then unset it
+    // locally, since a token is single-use." Unset before the send, not after:
+    // if the send fails and this process goes on to start its own window, it
+    // must not then present a token it has already handed over.
+    message.activationToken = QString::fromLocal8Bit(qgetenv("XDG_ACTIVATION_TOKEN"));
+    message.desktopStartupId = QString::fromLocal8Bit(qgetenv("DESKTOP_STARTUP_ID"));
+    if (!message.activationToken.isEmpty()) {
+        qunsetenv("XDG_ACTIVATION_TOKEN");
+    }
+
+    return pf::SingleInstance::sendToRunningInstance(pf::platform::singleInstanceSocketPath(),
+                                                     message);
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -88,10 +133,24 @@ int main(int argc, char **argv)
         pf::enableVerboseLogging();
     }
 
-    // 2. Construct the application and set its metadata.
+    // 2. §10.3: try to hand off to a running instance before anything else.
+    //    This is the fastest path through the program — no QApplication, no
+    //    window, no config read — and the one taken every time somebody opens a
+    //    folder from another application.
+    //
+    //    The configuration is not consulted here on purpose. Reading
+    //    config.toml to find out whether single_instance is on would cost more
+    //    than the hand-off itself; a user who has turned it off simply has no
+    //    socket to connect to, and the attempt fails in microseconds.
+    if (options.action == pf::CommandLineAction::Run && handOffToRunningInstance(options)) {
+        pf::StartupTrace::mark(pf::StartupPhase::HandedOff);
+        return 0;
+    }
+
+    // 3. Construct the application and set its metadata.
     pf::Application app(argc, argv);
 
-    // 3. Build the window, start the scan, show.
+    // 4. Build the window, start the scan, show.
     app.startUp(options);
 
     return pf::Application::exec();

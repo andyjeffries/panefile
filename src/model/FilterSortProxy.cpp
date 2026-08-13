@@ -173,6 +173,30 @@ void FilterSortProxy::reshuffle()
     }
 }
 
+int FilterSortProxy::countPassingHiddenRule() const
+{
+    const QAbstractItemModel *model = sourceModel();
+    if (model == nullptr) {
+        return 0;
+    }
+
+    const int rows = model->rowCount();
+    if (m_showHidden) {
+        return rows;
+    }
+
+    int count = 0;
+    for (int row = 0; row < rows; ++row) {
+        if (!model->index(row, 0)
+                 .data(DirectoryModel::NameRole)
+                 .toString()
+                 .startsWith(QLatin1Char('.'))) {
+            ++count;
+        }
+    }
+    return count;
+}
+
 bool FilterSortProxy::filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const
 {
     const QModelIndex index = sourceModel()->index(sourceRow, 0, sourceParent);

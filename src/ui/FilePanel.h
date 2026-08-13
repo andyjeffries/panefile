@@ -118,6 +118,10 @@ public:
     /// Falling back to the cursor is what makes every file operation work
     /// without a selection first — §6.3's bindings act on "the selection", and
     /// a user who has not made one means the thing under the cursor.
+    /// The panel header's full text, before elision. For the tests, and for
+    /// anything that needs to know what the panel is claiming about itself.
+    QString headerText() const;
+
     QStringList selectedPaths() const;
     int selectionCount() const;
 

@@ -58,6 +58,57 @@ private:
 
 private Q_SLOTS:
 
+    /// A dotfile in the directory must not turn the header into "2 of 3".
+    ///
+    /// It did, because the count compared the proxy's rows against the model's
+    /// and the model holds hidden entries. A directory with a .claude in it
+    /// announced that one of its three items was being withheld — which reads
+    /// as a warning, and the header never says what or why. Hidden files are a
+    /// standing preference, not an exclusion worth reporting.
+    void hiddenFilesDoNotShowAsAShortfall()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        for (const char *name : {"one.txt", "two.txt", ".claude"}) {
+            QFile file(dir.filePath(QString::fromLatin1(name)));
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.close();
+        }
+
+        ui::FilePanel panel;
+        panel.navigateTo(dir.path());
+        QTRY_COMPARE_WITH_TIMEOUT(panel.view()->model()->rowCount(), 2, 5000);
+
+        QVERIFY2(!panel.headerText().contains(QStringLiteral(" of ")),
+                 qPrintable(panel.headerText()));
+        QVERIFY2(panel.headerText().contains(QStringLiteral("2")), qPrintable(panel.headerText()));
+    }
+
+    /// But a filter genuinely withholding something still says so, and counts
+    /// against what the user could otherwise see rather than against the
+    /// dotfiles too.
+    void aFilterStillReportsWhatItIsHiding()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        for (const char *name : {"alpha.txt", "beta.txt", "gamma.txt", ".claude"}) {
+            QFile file(dir.filePath(QString::fromLatin1(name)));
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.close();
+        }
+
+        ui::FilePanel panel;
+        panel.navigateTo(dir.path());
+        QTRY_COMPARE_WITH_TIMEOUT(panel.view()->model()->rowCount(), 3, 5000);
+
+        panel.setFilterText(QStringLiteral("alpha"));
+        QTRY_COMPARE_WITH_TIMEOUT(panel.view()->model()->rowCount(), 1, 5000);
+
+        // One of three, not one of four: the dotfile was never on offer.
+        QVERIFY2(panel.headerText().contains(QStringLiteral("1 of 3")),
+                 qPrintable(panel.headerText()));
+    }
+
     /// Navigating clears the filter.
     ///
     /// A filter describes what you wanted to see in the directory you were in.

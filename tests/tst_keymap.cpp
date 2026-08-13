@@ -62,6 +62,39 @@ private:
     }
 
 private Q_SLOTS:
+
+    /// §7.13: "Ctrl+Z undoes the last."
+    ///
+    /// The action was registered and reachable from the command palette, but no
+    /// key was ever bound to it — so the one keystroke standing between a
+    /// mistaken move and losing track of where the files went did nothing.
+    /// That mattered most for drag and drop, where a drag within a filesystem
+    /// moves by default.
+    void undoIsBound()
+    {
+        Keymap keymap;
+        installDefaultKeymap(keymap);
+
+        const auto binding = parseBinding(QStringLiteral("Ctrl+Z"));
+        QVERIFY(binding.has_value());
+        QCOMPARE(keymap.lookup(KeymapLayer::Global, *binding).actionId, QStringLiteral("undo"));
+    }
+
+    /// Selecting everything should not require entering a mode first.
+    void selectAllWorksOutsideSelectionMode()
+    {
+        Keymap keymap;
+        installDefaultKeymap(keymap);
+
+        const auto binding = parseBinding(QStringLiteral("A"));
+        QVERIFY(binding.has_value());
+
+        QCOMPARE(keymap.lookup(KeymapLayer::Normal, *binding).actionId,
+                 QStringLiteral("select_all"));
+        QCOMPARE(keymap.lookup(KeymapLayer::Selection, *binding).actionId,
+                 QStringLiteral("select_all"));
+    }
+
     void init();
 
     // Trie behaviour

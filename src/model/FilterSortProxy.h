@@ -38,6 +38,16 @@ public:
     void setShowHidden(bool show);
     bool showHidden() const;
 
+    /// How many rows the filter is choosing between: everything the hidden-file
+    /// rule allows, whether or not the text filter accepts it.
+    ///
+    /// This is the honest denominator for "n of m" in the panel header. Using
+    /// the source model's row count instead counted dotfiles, so a directory
+    /// with three entries one of which was .claude read as "2 of 3" — which
+    /// tells the user something is being withheld without saying what, when in
+    /// fact nothing they asked to see is missing at all.
+    int countPassingHiddenRule() const;
+
     void setDirectoriesFirst(bool first);
     bool directoriesFirst() const;
 

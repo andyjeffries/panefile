@@ -722,6 +722,15 @@ void FileOperations::registerActions()
         "undo", tr("Undo the last move, rename or trash"), [this] { undoLast(); },
         [this] { return m_undoStack->canUndo(); });
 
+    // §7.10's archive support was built — CompressModal, ArchiveJob, ExtractJob,
+    // the tarbomb rule, all of it tested — and then never registered as an
+    // action, so no key reached any of it and the entire feature was
+    // unreachable from the running application.
+    reg("compress_file", tr("Compress the selection into an archive"),
+        [this] { compressSelection(); });
+    reg("extract_file", tr("Extract the archive under the cursor"),
+        [this] { extractCursorItem(); });
+
     reg("file_panel_item_create", tr("Create a file, or a directory with a trailing “/”"),
         [this] { createItem(); });
     reg("file_panel_item_rename", tr("Rename the cursor item"), [this] { renameCursorItem(); });

@@ -824,6 +824,11 @@ void FilePanel::clearSelection()
     Q_EMIT selectionChanged(0);
 }
 
+QString FilePanel::headerText() const
+{
+    return m_headerText;
+}
+
 QStringList FilePanel::selectedPaths() const
 {
     QStringList paths;
@@ -905,10 +910,28 @@ void FilePanel::updateHeader()
     }
 
     const int shown = m_proxy->rowCount();
-    const int total = m_model->rowCount();
 
-    QString counts =
-        shown == total ? tr("%n item(s)", nullptr, shown) : tr("%1 of %2").arg(shown).arg(total);
+    // "n of m" only when a filter is hiding something the user would otherwise
+    // be looking at.
+    //
+    // It used to appear whenever the proxy showed fewer rows than the model
+    // held, which included every directory containing a dotfile: ~/tmp with a
+    // .claude in it read as "2 of 3". That reads as a warning — something is
+    // being withheld, and the header will not say what — when nothing is
+    // missing except files the user has asked not to see. Hidden files are a
+    // standing preference, not an exclusion worth reporting.
+    //
+    // The count is only walked when a filter is actually active. Without one
+    // the proxy shows everything the hidden rule allows, so `shown` is already
+    // the whole story.
+    QString counts;
+    if (filterText().isEmpty()) {
+        counts = tr("%n item(s)", nullptr, shown);
+    } else {
+        const int total = m_proxy->countPassingHiddenRule();
+        counts = shown == total ? tr("%n item(s)", nullptr, shown)
+                                : tr("%1 of %2").arg(shown).arg(total);
+    }
 
     if (m_model->isScanning()) {
         counts = tr("scanning… %1").arg(shown);

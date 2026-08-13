@@ -322,7 +322,7 @@ twenty-eight libraries including a JavaScript interpreter.
 
 ### Departures from the specification
 
-Four, each because following the letter would have broken something the spec
+Seven, each because following the letter would have broken something the spec
 asks for elsewhere.
 
 1. **Bulk rename is a Finder-style sheet, not §7.9's `$EDITOR` round trip.**
@@ -342,6 +342,23 @@ asks for elsewhere.
    `QLocalServer::listen` unlinks an existing socket and succeeds, and `bind(2)`
    cannot tell a live socket from a corpse. Binding first steals a running
    instance's socket.
+
+5. **Escape never quits.** §6.3 binds `quit` to `q` and `Esc`. Requested
+   explicitly, and right: Escape is the key you press when you are unsure, and
+   the one key you press by reflex must not be the one that ends the session.
+   `Ctrl+Q` quits, `Ctrl+W` closes a panel, and Escape backs out one step at a
+   time.
+
+6. **`Ctrl+D` pages down; it does not delete.** §6.3 gives `Ctrl+D` to
+   `page_down` on line 461 and to `delete_items` on line 486 — the spec
+   contradicts itself. Only one can win, and a key that a vim user presses to
+   scroll must not be the key that trashes the selection. `Delete` and
+   `Shift+Delete` remain bound as specified.
+
+7. **`A` selects everything outside Selection mode too.** §6.3 marks
+   `select_all` "Selection mode only". Selecting everything in order to rename
+   or move it does not need a mode first, and `Ctrl+A` is unavailable because
+   §7.10 spends it on compress.
 
 Three deviations were made for testability and are noted in their commits: the
 `WatchCoalescer` split, injectable roots on `Trash` and `ThumbnailCache`, and

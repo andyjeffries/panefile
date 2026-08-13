@@ -55,6 +55,11 @@ constexpr DefaultBinding kDefaults[] = {
     {KeymapLayer::Global, "quick_look_fullscreen", "Ctrl+Shift+Space"},
     {KeymapLayer::Normal, "toggle_footer", "F"},
     {KeymapLayer::Normal, "focus_on_sidebar", "s"},
+
+    // §4's component table: "`s` focuses, `Ctrl+S` toggles visibility". The
+    // toggle was registered but never bound, so the sidebar could be hidden
+    // only by shrinking the window past 600 px.
+    {KeymapLayer::Global, "toggle_sidebar", "Ctrl+S"},
     // §7.11: "`u` on a mounted device unmounts."
     {KeymapLayer::Normal, "unmount_device", "u"},
     {KeymapLayer::Normal, "focus_on_process_bar", "p"},
@@ -93,6 +98,11 @@ constexpr DefaultBinding kDefaults[] = {
     {KeymapLayer::Normal, "change_panel_mode", "v"},
     {KeymapLayer::Selection, "change_panel_mode", "v"},
     {KeymapLayer::Selection, "select_all", "A"},
+
+    // Also outside Selection mode, where it is just as useful — selecting
+    // everything in order to rename or move it does not need a mode first, and
+    // Ctrl+A is not available for it because §7.10 spends that on compress.
+    {KeymapLayer::Normal, "select_all", "A"},
     // §6.1: in Selection mode "movement extends the selection" — so the
     // ordinary movement keys do, not only the shifted ones. The Selection layer
     // is consulted before Normal and Global, so these take `j`, `k` and the
@@ -116,6 +126,12 @@ constexpr DefaultBinding kDefaults[] = {
     {KeymapLayer::Global, "bulk_rename", "Ctrl+B"},
     {KeymapLayer::Global, "copy_items", "Ctrl+C"},
     {KeymapLayer::Global, "cut_items", "Ctrl+X"},
+
+    // §7.13: "Ctrl+Z undoes the last." The action was registered and reachable
+    // from the command palette, but never bound — so the one keystroke standing
+    // between a mistaken move and losing track of the files did nothing at all.
+    // It is Cmd+Z on macOS, as Qt maps Qt::ControlModifier there.
+    {KeymapLayer::Global, "undo", "Ctrl+Z"},
     {KeymapLayer::Global, "paste_items", "Ctrl+V"},
     // §6.3 lists Ctrl+D twice: for page_down in the Movement table and for
     // delete_items in the File operations table. Only one of them can have it.

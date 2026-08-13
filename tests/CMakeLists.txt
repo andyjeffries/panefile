@@ -31,6 +31,7 @@ pf_add_test(tst_sorting     SOURCES tst_sorting.cpp     LIBS pf_model)
 pf_add_test(tst_chord       SOURCES tst_chord.cpp       LIBS pf_input)
 pf_add_test(tst_keymap      SOURCES tst_keymap.cpp      LIBS pf_input pf_app)
 pf_add_test(tst_cursormemory SOURCES tst_cursormemory.cpp LIBS pf_ui)
+pf_add_test(tst_actions    SOURCES tst_actions.cpp    LIBS pf_ui pf_app)
 pf_add_test(tst_clipboard   SOURCES tst_clipboard.cpp   LIBS pf_ui pf_app)
 pf_add_test(tst_mouseselection SOURCES tst_mouseselection.cpp LIBS pf_ui)
 pf_add_test(tst_selectionmode SOURCES tst_selectionmode.cpp LIBS pf_ui pf_app)
@@ -38,6 +39,9 @@ pf_add_test(tst_sidebar     SOURCES tst_sidebar.cpp     LIBS pf_ui)
 pf_add_test(tst_appearance  SOURCES tst_appearance.cpp  LIBS pf_ui)
 # The bundled themes are read from the source tree: the test asserts a property
 # of the palettes as shipped, not of whatever happens to be installed.
+target_compile_definitions(tst_actions PRIVATE
+    PF_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+
 target_compile_definitions(tst_appearance PRIVATE
     PF_THEMES_DIR="${PROJECT_SOURCE_DIR}/data/themes")
 pf_add_test(tst_dragdrop    SOURCES tst_dragdrop.cpp    LIBS pf_ui)

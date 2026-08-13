@@ -68,19 +68,31 @@ void QuickLookController::applySettings(const config::Settings::QuickLook &setti
 {
     m_settings = settings;
 
+    if (m_view != nullptr) {
+        // Only once Quick Look exists. Before that there is nothing to apply
+        // the dock to, and resolving it would mean reading state.ini on the
+        // startup path for a user who may never press Space.
+        m_view->applySettings(settings);
+        resolveDock();
+        applyDock();
+    }
+}
+
+void QuickLookController::resolveDock()
+{
+    if (m_dockResolved) {
+        return;
+    }
+    m_dockResolved = true;
+
     // The persisted runtime choice wins over the configured default: a user who
     // pressed Ctrl+Space last session meant it, and re-reading config.toml on a
     // hot reload must not silently undo it.
     const QString persisted = readPersistedDock();
-    m_dock = ui::parseDock(persisted.isEmpty() ? settings.dock : persisted);
+    m_dock = ui::parseDock(persisted.isEmpty() ? m_settings.dock : persisted);
 
     if (m_dock != QuickLookDock::Full) {
         m_dockBeforeFullscreen = m_dock;
-    }
-
-    if (m_view != nullptr) {
-        m_view->applySettings(settings);
-        applyDock();
     }
 }
 
@@ -97,6 +109,8 @@ ui::QuickLookView *QuickLookController::ensureView()
 
     // §3.4: "no renderer is instantiated until Quick Look is first opened".
     // This is that moment, and it is deliberately not at startup.
+    resolveDock();
+
     m_view = new ui::QuickLookView;
     m_view->applySettings(m_settings);
 
@@ -224,6 +238,8 @@ void QuickLookController::toggle()
 
 void QuickLookController::cycleDock()
 {
+    resolveDock();
+
     m_dock = ui::nextDock(m_dock);
     m_dockBeforeFullscreen = m_dock;
     persistDock(m_dock);
@@ -243,6 +259,8 @@ void QuickLookController::cycleDock()
 
 void QuickLookController::toggleFullscreen()
 {
+    resolveDock();
+
     if (m_dock == QuickLookDock::Full) {
         m_dock = m_dockBeforeFullscreen;
     } else {

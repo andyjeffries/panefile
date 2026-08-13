@@ -71,6 +71,11 @@ private:
     void connectPanel(ui::FilePanel *panel);
     void applyDock();
 
+    /// Resolves the dock from the persisted choice and the configuration, once.
+    /// §3.4: reading state.ini is a file open and an INI parse, and doing it
+    /// before the first paint bought nothing — Quick Look is not on screen yet.
+    void resolveDock();
+
     ui::MainWindow *m_window = nullptr;
     input::ActionRegistry *m_registry = nullptr;
     ui::QuickLookView *m_view = nullptr;
@@ -82,6 +87,9 @@ private:
     ui::QuickLookDock m_dockBeforeFullscreen = ui::QuickLookDock::Float;
 
     bool m_open = false;
+
+    /// False until resolveDock() has read the persisted choice.
+    bool m_dockResolved = false;
 
     QMetaObject::Connection m_cursorConnection;
     QMetaObject::Connection m_pathConnection;

@@ -445,15 +445,39 @@ void FileOperations::pasteIntoFocusedPanel()
         return;
     }
 
-    const bool cut = clipboardIsCut();
+    runTransfer(paths, panel->path(), clipboardIsCut());
+}
+
+void FileOperations::onFilesDropped(const QStringList &paths, const QString &destination,
+                                    Qt::DropAction action)
+{
+    // A drop of a file onto the directory it already lives in is a gesture that
+    // slipped, not an instruction. Acting on it would either duplicate the file
+    // as "x (2)" or, worse for a move, ask about a conflict with itself.
+    QStringList transferable;
+    for (const QString &path : paths) {
+        if (QFileInfo(path).absolutePath() != QDir(destination).absolutePath()) {
+            transferable.append(path);
+        }
+    }
+
+    if (transferable.isEmpty()) {
+        return;
+    }
+
+    runTransfer(transferable, destination, action == Qt::MoveAction);
+}
+
+void FileOperations::runTransfer(const QStringList &paths, const QString &destination, bool move)
+{
     auto job = std::make_unique<fs::TransferJob>(
-        cut ? fs::TransferJob::Mode::Move : fs::TransferJob::Mode::Copy, paths, panel->path());
+        move ? fs::TransferJob::Mode::Move : fs::TransferJob::Mode::Copy, paths, destination);
 
     const fs::TransferJob *raw = job.get();
     const int jobId = m_engine->submit(std::move(job));
 
     connect(m_engine, &fs::JobEngine::jobConflict, this,
-            [this, jobId](int id, const QString &source, const QString &destination,
+            [this, jobId](int id, const QString &source, const QString &conflictDestination,
                           const fs::ConflictInfo &info) {
                 if (id != jobId) {
                     return;
@@ -473,11 +497,11 @@ void FileOperations::pasteIntoFocusedPanel()
                                     job->resolveConflict(resolution);
                                 }
                             });
-                modal->present(source, destination, info);
+                modal->present(source, conflictDestination, info);
             });
 
     connect(m_engine, &fs::JobEngine::jobFinished, this,
-            [this, jobId, raw, cut](int id, const fs::JobResult &result) {
+            [this, jobId, raw, move](int id, const fs::JobResult &result) {
                 if (id != jobId) {
                     return;
                 }
@@ -486,7 +510,7 @@ void FileOperations::pasteIntoFocusedPanel()
                 // move is, because putting the files back is exactly the
                 // inverse; undoing a copy would mean deleting files, which is a
                 // more destructive operation than the one being reversed.
-                if (cut && !result.cancelled && !raw->removedSources().isEmpty()) {
+                if (move && !result.cancelled && !raw->removedSources().isEmpty()) {
                     QList<QPair<QString, QString>> pairs;
                     const QStringList created = raw->createdPaths();
                     const QStringList removed = raw->removedSources();

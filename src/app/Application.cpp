@@ -139,6 +139,11 @@ void Application::configurePanel(ui::FilePanel *panel) const
         return;
     }
 
+    // §7.12: a drop is a copy or a move, which is FileOperations' business —
+    // the panel neither knows about conflicts nor about the undo stack.
+    connect(panel, &ui::FilePanel::filesDropped, m_fileOperations.get(),
+            &FileOperations::onFilesDropped);
+
     panel->setShowHidden(m_settings.panels.showHidden);
     panel->setSortKey(sortKeyFromName(m_settings.panels.defaultSort));
 
@@ -352,6 +357,15 @@ void Application::startUp(const CommandLineOptions &options)
 
     m_mainWindow->show();
     StartupTrace::mark(StartupPhase::Shown);
+
+    // §7.7's cache settings, deferred for the same reason the cache itself is:
+    // constructing it resolves the thumbnail directory, which reads XDG
+    // configuration, and no thumbnail can be wanted before the first scan.
+    postStartupTask([this] {
+        ThumbnailCache::instance().setEnabled(m_settings.thumbnails.enabled);
+        ThumbnailCache::instance().setMaxFileSizeMb(m_settings.thumbnails.maxFileSizeMb);
+        ThumbnailCache::instance().setVideoEnabled(m_settings.thumbnails.video);
+    });
 
     // §3.4's deferred list: the sidebar is constructed empty and populated on
     // idle, because resolving XDG user directories reads a config file and none

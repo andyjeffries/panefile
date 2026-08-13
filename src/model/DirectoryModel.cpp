@@ -98,13 +98,20 @@ void DirectoryModel::setThumbnailsEnabled(bool enabled)
     }
     m_thumbnailsEnabled = enabled;
 
-    if (!enabled) {
+    if (!enabled && m_thumbnailsConnected) {
         for (const QString &path : std::as_const(m_thumbnailWindow)) {
             ThumbnailCache::instance().cancel(path);
         }
         m_thumbnailWindow.clear();
+    }
+}
+
+void DirectoryModel::connectThumbnailCache()
+{
+    if (m_thumbnailsConnected) {
         return;
     }
+    m_thumbnailsConnected = true;
 
     // One connection, not one per request: a generated thumbnail arrives by
     // path, and the model turns that back into a row.
@@ -129,6 +136,8 @@ void DirectoryModel::requestThumbnailRange(int firstVisibleRow, int lastVisibleR
     if (!m_thumbnailsEnabled) {
         return;
     }
+
+    connectThumbnailCache();
 
     // §7.7: "rows in or within 20 rows of the viewport".
     const int first = std::max(0, firstVisibleRow - kThumbnailOvershoot);
@@ -341,7 +350,7 @@ QVariant DirectoryModel::data(const QModelIndex &index, int role) const
     case IsDirRole:
         return entry->isDir;
     case ThumbnailRole: {
-        if (!m_thumbnailsEnabled || entry->isDir) {
+        if (!m_thumbnailsEnabled || !m_thumbnailsConnected || entry->isDir) {
             return {};
         }
         // A memory-tier hit or nothing: §5.3 forbids IO in the paint path, and

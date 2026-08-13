@@ -5,6 +5,7 @@
 #include "model/DirectoryModel.h"
 #include "model/FileEntry.h"
 #include "model/IconProvider.h"
+#include "ui/PanelView.h"
 #include "ui/ThemePalette.h"
 
 #include <QApplication>
@@ -129,6 +130,23 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
     }
 
     int x = row.left() + kHorizontalPadding;
+
+    // §7.12: "Highlight the drop target row clearly." Drawn before everything
+    // else so the row's own content sits on top of it, and with the focused
+    // border colour rather than the selection colour so it cannot be mistaken
+    // for a selection the user made.
+    // Both sides speak in proxy rows: dragMoveEvent got its row from
+    // indexAt(), which the view answers in its own coordinates, and so is this
+    // index. Comparing a proxy row against a source row would highlight a
+    // different file whenever a filter or sort was active.
+    if (const auto *view = qobject_cast<const PanelView *>(option.widget);
+        view != nullptr && index.row() == view->dropTargetRow()) {
+        QColor highlight = palette.accent;
+        highlight.setAlpha(70);
+        painter->fillRect(row, highlight);
+        painter->setPen(palette.borderFocused);
+        painter->drawRect(row.adjusted(0, 0, -1, -1));
+    }
 
     // Selection marker.
     if (isSelected) {

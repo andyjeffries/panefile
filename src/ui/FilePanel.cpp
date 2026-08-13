@@ -4,6 +4,7 @@
 #include "model/DirectoryModel.h"
 #include "ui/CursorMemory.h"
 #include "ui/FileItemDelegate.h"
+#include "ui/PanelView.h"
 #include "ui/ThemePalette.h"
 
 #include <QDir>
@@ -22,7 +23,7 @@ namespace pf::ui {
 
 FilePanel::FilePanel(QWidget *parent)
     : QWidget(parent), m_model(new DirectoryModel(this)), m_proxy(new FilterSortProxy(this)),
-      m_view(new QListView(this)), m_delegate(new FileItemDelegate(this)),
+      m_view(new PanelView(this)), m_delegate(new FileItemDelegate(this)),
       m_header(new QLabel(this)), m_status(new QLabel(this))
 {
     setObjectName(QStringLiteral("filePanel"));
@@ -94,6 +95,14 @@ FilePanel::FilePanel(QWidget *parent)
 
     connect(m_view, &QListView::activated, this, [this] { activateCursorItem(); });
 
+    // §7.12. The view asks rather than reads, because the selection and the
+    // working directory both live here — the view has neither.
+    connect(m_view, &PanelView::dragPathsRequested, this,
+            [this](QStringList *paths) { *paths = selectedPaths(); });
+    connect(m_view, &PanelView::currentDirectoryRequested, this,
+            [this](QString *path) { *path = m_path; });
+    connect(m_view, &PanelView::filesDropped, this, &FilePanel::filesDropped);
+
     // §7.7's viewport window, refreshed on the two things that change it:
     // scrolling, and rows arriving.
     connect(m_view->verticalScrollBar(), &QScrollBar::valueChanged, this,
@@ -132,7 +141,7 @@ FilePanel::~FilePanel()
     m_delegate->setSelectedNames(nullptr);
 }
 
-QListView *FilePanel::view() const
+PanelView *FilePanel::view() const
 {
     return m_view;
 }

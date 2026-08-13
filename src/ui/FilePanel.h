@@ -10,7 +10,6 @@
 
 class QLabel;
 class QLineEdit;
-class QListView;
 
 namespace pf {
 class DirectoryModel;
@@ -19,6 +18,7 @@ class DirectoryModel;
 namespace pf::ui {
 
 class FileItemDelegate;
+class PanelView;
 
 /// One independent directory panel (§5.2).
 ///
@@ -117,9 +117,15 @@ public:
     void setActive(bool active);
     bool isActive() const;
 
-    QListView *view() const;
+    PanelView *view() const;
 
 Q_SIGNALS:
+    /// §7.12: files were dropped on this panel. The panel does not act on it —
+    /// transferring files is FileOperations' business, and it is the only place
+    /// that knows about conflicts and the undo stack.
+    void filesDropped(const QStringList &paths, const QString &destinationDirectory,
+                      Qt::DropAction action);
+
     void pathChanged(const QString &path);
     void cursorChanged(const QString &name);
     void selectionChanged(int count);
@@ -159,7 +165,7 @@ private:
     // the member initialiser list, so it has to match it.
     DirectoryModel *m_model = nullptr;
     FilterSortProxy *m_proxy = nullptr;
-    QListView *m_view = nullptr;
+    PanelView *m_view = nullptr;
     FileItemDelegate *m_delegate = nullptr;
     QLabel *m_header = nullptr;
     QLabel *m_status = nullptr;

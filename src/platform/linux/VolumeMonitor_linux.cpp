@@ -168,7 +168,7 @@ private:
 
     void refresh()
     {
-        QDBusMessage message = QDBusMessage::createMethodCall(
+        const QDBusMessage message = QDBusMessage::createMethodCall(
             QLatin1String(kService), QLatin1String(kObjectManagerPath),
             QLatin1String(kObjectManager), QStringLiteral("GetManagedObjects"));
 
@@ -177,7 +177,7 @@ private:
 
         connect(watcher, &QDBusPendingCallWatcher::finished, this,
                 [this](QDBusPendingCallWatcher *call) {
-                    QDBusPendingReply<ManagedObjects> reply = *call;
+                    const QDBusPendingReply<ManagedObjects> reply = *call;
                     call->deleteLater();
 
                     if (reply.isError()) {
@@ -200,8 +200,7 @@ private:
                 continue;
             }
 
-            const QDBusObjectPath drivePath =
-                block.value(QStringLiteral("Drive")).value<QDBusObjectPath>();
+            const auto drivePath = block.value(QStringLiteral("Drive")).value<QDBusObjectPath>();
             const QVariantMap drive =
                 objects.value(drivePath).value(QLatin1String(kDriveInterface));
 

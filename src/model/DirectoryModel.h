@@ -115,6 +115,9 @@ private:
 
     QString absolutePathFor(const FileEntry &entry) const;
 
+    /// Wires this model to the shared thumbnail cache, on first use.
+    void connectThumbnailCache();
+
     void onEntriesReady(const QString &path, const QList<FileEntry> &entries);
     void onScanFinished(const QString &path, int total);
     void onScanFailed(const QString &path, const QString &reason);
@@ -123,6 +126,12 @@ private:
     std::shared_ptr<fs::DirectoryWatcher> m_watcher;
     bool m_watchingEnabled = false;
     bool m_thumbnailsEnabled = false;
+
+    /// False until the first thumbnail request has wired this model to the
+    /// shared cache. §3.4: constructing the cache resolves the thumbnail
+    /// directory, which reads XDG configuration — not work for the startup
+    /// path of a panel whose rows have not even been scanned yet.
+    bool m_thumbnailsConnected = false;
 
     /// Paths currently inside the request window, so a scroll can cancel only
     /// what left it rather than cancelling and requeueing everything.

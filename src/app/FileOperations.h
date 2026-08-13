@@ -53,9 +53,20 @@ public:
 Q_SIGNALS:
     void statusMessage(const QString &message);
 
+public Q_SLOTS:
+    /// §7.12: files dropped on a panel.
+    void onFilesDropped(const QStringList &paths, const QString &destination,
+                        Qt::DropAction action);
+
 private:
     void copySelection(bool cut);
     void pasteIntoFocusedPanel();
+
+    /// The one path every copy and move goes through: paste, and §7.12's drop.
+    /// Shared so a dropped file gets the same conflict handling and the same
+    /// undo entry a pasted one does.
+    void runTransfer(const QStringList &paths, const QString &destination, bool move);
+
     void deleteSelection(bool permanent);
     void undoLast();
 

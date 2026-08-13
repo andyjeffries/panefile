@@ -80,7 +80,10 @@ void TestFormat::sizePrecisionDropsWithMagnitude()
 
 void TestFormat::listTimeShowsTimeForToday()
 {
-    const QDateTime today = QDateTime::currentDateTime().addSecs(-3600);
+    // Built from today's date rather than by subtracting an hour from now: in
+    // the hour after midnight "an hour ago" is yesterday, and the test would
+    // fail once a day for reasons that have nothing to do with the code.
+    const QDateTime today(QDate::currentDate(), QTime(12, 0));
     const QString text = formatListTime(today);
 
     QVERIFY2(text.contains(QLatin1Char(':')), qPrintable(text));

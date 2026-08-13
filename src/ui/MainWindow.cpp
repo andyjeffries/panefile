@@ -7,6 +7,7 @@
 #include "model/FileEntry.h"
 #include "ui/FilePanel.h"
 #include "ui/PanelStrip.h"
+#include "ui/PanelView.h"
 #include "ui/Sidebar.h"
 #include "ui/ThemePalette.h"
 #include "ui/quicklook/QuickLookOverlay.h"

@@ -17,6 +17,7 @@
 #include "ui/FilePanel.h"
 #include "ui/MainWindow.h"
 #include "ui/PanelStrip.h"
+#include "ui/PanelView.h"
 #include "ui/Sidebar.h"
 #include "ui/ThemePalette.h"
 #include "ui/modals/HelpModal.h"

@@ -1,0 +1,141 @@
+#include "model/DirectoryModel.h"
+#include "ui/FilePanel.h"
+#include "ui/PanelView.h"
+
+#include <QApplication>
+#include <QDir>
+#include <QSignalSpy>
+#include <QTemporaryDir>
+#include <QTest>
+
+using namespace pf;
+using namespace pf::ui;
+
+namespace {
+
+void touch(const QString &path)
+{
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QFile file(path);
+    [[maybe_unused]] const bool opened = file.open(QIODevice::WriteOnly);
+    Q_ASSERT(opened);
+    file.write("x");
+    file.close();
+}
+
+} // namespace
+
+/// §7.12.
+class TestDragDrop : public QObject
+{
+    Q_OBJECT
+
+private Q_SLOTS:
+
+    void initTestCase()
+    {
+        m_dir = std::make_unique<QTemporaryDir>();
+        touch(m_dir->filePath(QStringLiteral("alpha.txt")));
+        touch(m_dir->filePath(QStringLiteral("beta.txt")));
+        touch(m_dir->filePath(QStringLiteral("target/keep.txt")));
+
+        m_panel = std::make_unique<FilePanel>();
+        m_panel->resize(400, 400);
+        m_panel->navigateTo(m_dir->path());
+
+        QSignalSpy scanned(m_panel.get(), &FilePanel::cursorChanged);
+        QTest::qWait(300);
+    }
+
+    void cleanupTestCase()
+    {
+        m_panel.reset();
+        m_dir.reset();
+    }
+
+    /// §7.12: "Dropping onto empty space targets the panel's cwd."
+    void dropOnEmptySpaceTargetsTheWorkingDirectory()
+    {
+        // Far below the last row.
+        QCOMPARE(m_panel->view()->destinationFor(QPoint(10, 380)), m_dir->path());
+    }
+
+    /// §7.12: "Dropping onto a directory row targets that directory."
+    void dropOnADirectoryRowTargetsThatDirectory()
+    {
+        const QModelIndex row = rowFor(QStringLiteral("target"));
+        QVERIFY(row.isValid());
+
+        QCOMPARE(m_panel->view()->destinationFor(m_panel->view()->visualRect(row).center()),
+                 m_dir->filePath(QStringLiteral("target")));
+    }
+
+    /// A file row is not a target of its own: dropping on it plainly means the
+    /// directory the file is in.
+    void dropOnAFileRowTargetsTheWorkingDirectory()
+    {
+        const QModelIndex row = rowFor(QStringLiteral("alpha.txt"));
+        QVERIFY(row.isValid());
+
+        QCOMPARE(m_panel->view()->destinationFor(m_panel->view()->visualRect(row).center()),
+                 m_dir->path());
+    }
+
+    /// §7.12: "Default action is copy; Shift forces move, Ctrl forces copy."
+    ///
+    /// Copy is the default because the two fail differently: an unwanted copy
+    /// leaves a file to delete, an unwanted move has already taken the original
+    /// away from where the user expected it.
+    void modifiersChooseTheAction()
+    {
+        QCOMPARE(PanelView::actionFor(Qt::NoModifier), Qt::CopyAction);
+        QCOMPARE(PanelView::actionFor(Qt::ControlModifier), Qt::CopyAction);
+        QCOMPARE(PanelView::actionFor(Qt::ShiftModifier), Qt::MoveAction);
+
+        // Shift wins when both are held: it is the one the user had to reach
+        // for deliberately.
+        QCOMPARE(PanelView::actionFor(Qt::ShiftModifier | Qt::ControlModifier), Qt::MoveAction);
+    }
+
+    /// The paths carried by a drag come from the panel's selection (§6.1's
+    /// Selection mode), not the view's own selection model.
+    void dragPayloadComesFromThePanelSelection()
+    {
+        m_panel->clearSelection();
+        m_panel->setCursorName(QStringLiteral("alpha.txt"));
+
+        QStringList paths;
+        Q_EMIT m_panel->view()->dragPathsRequested(&paths);
+
+        // With nothing selected it is the cursor item, which is what makes
+        // every file operation work without a selection first.
+        QCOMPARE(paths.size(), 1);
+        QCOMPARE(QFileInfo(paths.first()).fileName(), QStringLiteral("alpha.txt"));
+
+        m_panel->toggleSelectionAt(QStringLiteral("beta.txt"));
+        paths.clear();
+        Q_EMIT m_panel->view()->dragPathsRequested(&paths);
+
+        QCOMPARE(paths.size(), 1);
+        QCOMPARE(QFileInfo(paths.first()).fileName(), QStringLiteral("beta.txt"));
+    }
+
+private:
+    QModelIndex rowFor(const QString &name) const
+    {
+        const QAbstractItemModel *model = m_panel->view()->model();
+        for (int i = 0; i < model->rowCount(); ++i) {
+            const QModelIndex index = model->index(i, 0);
+            if (index.data(DirectoryModel::NameRole).toString() == name) {
+                return index;
+            }
+        }
+        return {};
+    }
+
+    std::unique_ptr<QTemporaryDir> m_dir;
+    std::unique_ptr<FilePanel> m_panel;
+};
+
+QTEST_MAIN(TestDragDrop)
+#include "tst_dragdrop.moc"

@@ -2,6 +2,7 @@
 
 #include "core/Logging.h"
 #include "ui/FilePanel.h"
+#include "ui/PanelView.h"
 #include "ui/ThemePalette.h"
 
 #include <QHBoxLayout>

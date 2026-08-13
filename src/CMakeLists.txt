@@ -179,6 +179,7 @@ pf_layer_library(pf_ui
         ui/FilePanel.cpp
         ui/MainWindow.cpp
         ui/PanelStrip.cpp
+        ui/PanelView.cpp
         ui/ProcessBar.cpp
         ui/Sidebar.cpp
         ui/ThemePalette.cpp

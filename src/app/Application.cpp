@@ -182,36 +182,58 @@ void Application::registerGlobalActions()
                                    modal->showModal();
                                });
 
-    m_registry->registerAction(QStringLiteral("quit"), tr("Close the modal, or quit"),
-                               ActionCategory::General, [this] {
-                                   if (m_helpModal != nullptr && m_helpModal->isVisible()) {
-                                       m_helpModal->dismiss();
-                                       return;
-                                   }
-                                   // §7.6: Esc dismisses Quick Look before it
-                                   // means anything else. Quitting the
-                                   // application out from under an open preview
-                                   // would be a surprising reading of one key.
-                                   if (m_quickLook != nullptr && m_quickLook->isOpen()) {
-                                       m_quickLook->close();
-                                       return;
-                                   }
-                                   quit();
-                               });
+    // §6.3 gives `quit` both `q` and `Esc`, with the description "Close modal,
+    // or quit if none". Escape no longer quits.
+    //
+    // The escalation was the problem, not the binding. Esc is the key you press
+    // to back out of the thing you are in — a modal, a preview, a filter — and
+    // making the *absence* of such a thing mean "quit the application" turns a
+    // reflex into a way to lose your session. It is also unrecoverable in a way
+    // none of the other steps are.
+    //
+    // So Esc cancels and never does anything else, and quitting has the keys
+    // the platform already uses for it: Cmd+Q on macOS and Ctrl+Q on Linux,
+    // which are the same chord as far as Qt is concerned.
+    m_registry->registerAction(
+        QStringLiteral("cancel"), tr("Dismiss the modal, the preview, or the filter"),
+        ActionCategory::General, [this] {
+            if (m_helpModal != nullptr && m_helpModal->isVisible()) {
+                m_helpModal->dismiss();
+                return;
+            }
 
-    // §8: the session is written on the way out. Connected to aboutToQuit
-    // rather than called from the quit action, so a window closed with the
-    // compositor's own control saves just as well as one closed with `q`.
-    connect(this, &QCoreApplication::aboutToQuit, this, [this] {
-        saveSession();
+            // §7.6: Esc dismisses Quick Look before it means anything else.
+            if (m_quickLook != nullptr && m_quickLook->isOpen()) {
+                m_quickLook->close();
+                return;
+            }
 
-        // Then stop every worker, while the event loop is still alive and Qt's
-        // globals are still standing. A scan, a preview load, a thumbnail or a
-        // search still running when main() returns will reach a Qt global that
-        // static destruction has already torn down — which is what took
-        // QMimeDatabase out from under the scanner thread.
-        WorkerPools::drainAll();
-    });
+            ui::FilePanel *panel = m_mainWindow->panelStrip()->focusedPanel();
+            if (panel == nullptr) {
+                return;
+            }
+
+            // §7.8: "Esc clears it."
+            if (!panel->filterText().isEmpty() || panel->isFilterBarOpen()) {
+                panel->closeFilterBar(false);
+                return;
+            }
+
+            // §6.1: and leaves Selection mode, which is the last thing there is
+            // to back out of.
+            if (panel->isSelectionMode()) {
+                panel->setSelectionMode(false);
+                return;
+            }
+
+            if (panel->selectionCount() > 0) {
+                panel->clearSelection();
+                m_mainWindow->showStatusMessage(tr("Selection cleared"));
+            }
+        });
+
+    m_registry->registerAction(QStringLiteral("quit"), tr("Quit Panefile"), ActionCategory::General,
+                               [] { quit(); });
 
     m_registry->registerAction(QStringLiteral("toggle_sidebar"), tr("Show or hide the sidebar"),
                                ActionCategory::View, [this] { m_mainWindow->toggleSidebar(); });

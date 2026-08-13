@@ -27,7 +27,12 @@ constexpr DefaultBinding kDefaults[] = {
     {KeymapLayer::Global, "confirm", "Return"},
     {KeymapLayer::Global, "confirm", "Right"},
     {KeymapLayer::Normal, "confirm", "l"},
-    {KeymapLayer::Global, "quit", "Escape"},
+    // §6.3 binds `quit` to both `q` and `Esc`. Escape is bound to `cancel`
+    // instead — see the note in Application::registerGlobalActions. Quitting
+    // takes the chord the platform already uses: Cmd+Q on macOS, Ctrl+Q on
+    // Linux, which Qt spells the same way.
+    {KeymapLayer::Global, "cancel", "Escape"},
+    {KeymapLayer::Global, "quit", "Ctrl+Q"},
     {KeymapLayer::Normal, "quit", "q"},
     {KeymapLayer::Normal, "open_help_menu", "?"},
     {KeymapLayer::Normal, "open_command_line", ":"},
@@ -39,6 +44,8 @@ constexpr DefaultBinding kDefaults[] = {
     {KeymapLayer::Normal, "create_new_file_panel", "n"},
     {KeymapLayer::Normal, "split_file_panel", "N"},
     {KeymapLayer::Normal, "close_file_panel", "w"},
+    // The platform's own "close" chord, for the same reason quit takes its own.
+    {KeymapLayer::Global, "close_file_panel", "Ctrl+W"},
     {KeymapLayer::Global, "next_file_panel", "Tab"},
     {KeymapLayer::Normal, "next_file_panel", "L"},
     {KeymapLayer::Global, "previous_file_panel", "Shift+Tab"},
@@ -79,6 +86,10 @@ constexpr DefaultBinding kDefaults[] = {
     {KeymapLayer::Global, "go_forward", "Alt+Right"},
     {KeymapLayer::Normal, "toggle_dot_file", "."},
     {KeymapLayer::Normal, "search_bar", "/"},
+    // Esc already clears an active filter, ahead of its other meanings. This is
+    // the explicit one, for anyone who wants a key that only ever does this —
+    // and so the action appears in the help modal with a key beside it.
+    {KeymapLayer::Normal, "clear_filter", "\\"},
     {KeymapLayer::Normal, "change_panel_mode", "v"},
     {KeymapLayer::Selection, "change_panel_mode", "v"},
     {KeymapLayer::Selection, "select_all", "A"},

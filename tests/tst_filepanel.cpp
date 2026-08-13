@@ -58,6 +58,151 @@ private:
 
 private Q_SLOTS:
 
+    /// Navigating clears the filter.
+    ///
+    /// A filter describes what you wanted to see in the directory you were in.
+    /// Carrying it forward is how a folder of sixteen photographs came to
+    /// render as an empty panel: filter home for "Pic", open Pictures, and
+    /// everything inside is hidden by a query two directories in the past.
+    void navigatingClearsTheFilter()
+    {
+        QTemporaryDir dir;
+        QVERIFY(QDir(dir.path()).mkdir(QStringLiteral("Pictures")));
+        QFile inner(dir.filePath(QStringLiteral("Pictures/photo.jpg")));
+        QVERIFY(inner.open(QIODevice::WriteOnly));
+        inner.close();
+
+        FilePanel panel;
+        panel.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&panel));
+        panel.navigateTo(dir.path());
+        QTRY_COMPARE_WITH_TIMEOUT(panel.view()->model()->rowCount(), 1, 5000);
+
+        panel.openFilterBar();
+        panel.setFilterText(QStringLiteral("Pic"));
+        panel.closeFilterBar(true);
+        QCOMPARE(panel.filterText(), QStringLiteral("Pic"));
+
+        panel.navigateTo(dir.filePath(QStringLiteral("Pictures")));
+        QTRY_COMPARE_WITH_TIMEOUT(panel.view()->model()->rowCount(), 1, 5000);
+
+        QVERIFY2(panel.filterText().isEmpty(), "the filter belonged to the previous directory");
+        QVERIFY(!panel.isFilterBarOpen());
+    }
+
+    /// Going back clears it too — the same argument in the other direction.
+    void goingBackClearsTheFilter()
+    {
+        QTemporaryDir dir;
+        QVERIFY(QDir(dir.path()).mkdir(QStringLiteral("sub")));
+        QFile inner(dir.filePath(QStringLiteral("sub/inner.txt")));
+        QVERIFY(inner.open(QIODevice::WriteOnly));
+        inner.close();
+
+        FilePanel panel;
+        panel.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&panel));
+        panel.navigateTo(dir.path());
+        QTRY_COMPARE_WITH_TIMEOUT(panel.view()->model()->rowCount(), 1, 5000);
+
+        panel.navigateTo(dir.filePath(QStringLiteral("sub")));
+        QTRY_COMPARE_WITH_TIMEOUT(panel.view()->model()->rowCount(), 1, 5000);
+
+        panel.setFilterText(QStringLiteral("zzzz"));
+        QCOMPARE(panel.view()->model()->rowCount(), 0);
+
+        QVERIFY(panel.goBack());
+        QTRY_VERIFY_WITH_TIMEOUT(panel.filterText().isEmpty(), 5000);
+        QTRY_COMPARE_WITH_TIMEOUT(panel.view()->model()->rowCount(), 1, 5000);
+    }
+
+    /// §7.8: "Enter keeps the filter and returns focus to the list."
+    ///
+    /// Keeping it is right; hiding the box while keeping it is not. That left a
+    /// directory of sixteen photographs rendering as an empty panel with
+    /// nothing on screen to say why, and no way to reach the filter to clear
+    /// it.
+    void aKeptFilterStaysVisible()
+    {
+        QTemporaryDir dir;
+        for (const char *name : {"one.jpg", "two.jpg", "three.jpg"}) {
+            QFile file(dir.filePath(QString::fromLatin1(name)));
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.close();
+        }
+
+        FilePanel panel;
+        // Shown, because isFilterBarOpen() asks isVisible(), which is false for
+        // every child of a widget that was never shown — the assertions below
+        // would otherwise pass or fail for reasons unrelated to the filter.
+        panel.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&panel));
+        panel.navigateTo(dir.path());
+        QTRY_COMPARE_WITH_TIMEOUT(panel.view()->model()->rowCount(), 3, 5000);
+
+        panel.openFilterBar();
+        panel.setFilterText(QStringLiteral("zzzz"));
+        panel.closeFilterBar(true);
+
+        // The filter is kept, as the spec says...
+        QCOMPARE(panel.filterText(), QStringLiteral("zzzz"));
+        QCOMPARE(panel.view()->model()->rowCount(), 0);
+
+        // ...and so is the only thing on screen that explains the empty panel.
+        QVERIFY2(panel.isFilterBarOpen(),
+                 "a panel filtered down to nothing must show what is filtering it");
+    }
+
+    /// Esc clears the filter, and then there is nothing to show.
+    void aClearedFilterHidesTheBox()
+    {
+        QTemporaryDir dir;
+        QFile file(dir.filePath(QStringLiteral("one.jpg")));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.close();
+
+        FilePanel panel;
+        // Shown, because isFilterBarOpen() asks isVisible(), which is false for
+        // every child of a widget that was never shown — the assertions below
+        // would otherwise pass or fail for reasons unrelated to the filter.
+        panel.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&panel));
+        panel.navigateTo(dir.path());
+        QTRY_COMPARE_WITH_TIMEOUT(panel.view()->model()->rowCount(), 1, 5000);
+
+        panel.openFilterBar();
+        panel.setFilterText(QStringLiteral("zzzz"));
+        panel.closeFilterBar(false);
+
+        QVERIFY(panel.filterText().isEmpty());
+        QCOMPARE(panel.view()->model()->rowCount(), 1);
+        QVERIFY(!panel.isFilterBarOpen());
+    }
+
+    /// Enter with nothing typed closes the box, because there is no filter to
+    /// keep.
+    void anEmptyFilterClosesTheBox()
+    {
+        QTemporaryDir dir;
+        QFile file(dir.filePath(QStringLiteral("one.jpg")));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.close();
+
+        FilePanel panel;
+        // Shown, because isFilterBarOpen() asks isVisible(), which is false for
+        // every child of a widget that was never shown — the assertions below
+        // would otherwise pass or fail for reasons unrelated to the filter.
+        panel.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&panel));
+        panel.navigateTo(dir.path());
+        QTRY_COMPARE_WITH_TIMEOUT(panel.view()->model()->rowCount(), 1, 5000);
+
+        panel.openFilterBar();
+        panel.closeFilterBar(true);
+
+        QVERIFY(!panel.isFilterBarOpen());
+    }
+
     /// §10.2: "A path that is a file, not a directory, navigates to its parent
     /// and places the cursor on it."
     ///

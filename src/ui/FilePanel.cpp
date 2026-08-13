@@ -15,6 +15,7 @@
 #include <QListView>
 #include <QPainter>
 #include <QScrollBar>
+#include <QSignalBlocker>
 #include <QStyle>
 #include <QStyleOption>
 #include <QVBoxLayout>
@@ -195,6 +196,12 @@ void FilePanel::setPathInternal(const QString &path, bool pushHistory)
     // A selection names entries in the directory being left. Carrying it into
     // the next one would leave names selected that mean different files.
     m_selection.clear();
+
+    // And so does a filter. It describes what you wanted to see *here*, not a
+    // property of the panel — filter for "Pic" in your home directory, open
+    // Pictures, and carrying it forward hides everything inside for a reason
+    // that is two directories in the past.
+    clearFilter();
 
     // §5.2: the cursor lands on the remembered entry for this directory, which
     // for the common case of navigating up is the directory just left.
@@ -483,7 +490,16 @@ void FilePanel::closeFilterBar(bool keepFilter)
         setFilterText(QString());
     }
 
-    m_filterBar->hide();
+    // §7.8: "Enter keeps the filter and returns focus to the list." The focus
+    // moves either way; the box only goes away when there is no longer a filter
+    // to show.
+    //
+    // Hiding it while a filter was still active is what made a directory of
+    // sixteen photographs render as an empty panel with no way to tell why —
+    // the comment two paragraphs up says exactly that, and the code did it
+    // anyway.
+    m_filterBar->setVisible(!filterText().isEmpty());
+
     m_view->setFocus(Qt::ShortcutFocusReason);
     Q_EMIT modeChanged();
 }
@@ -581,11 +597,50 @@ bool FilePanel::reverseSort() const
     return m_proxy->reverseSort();
 }
 
+void FilePanel::clearFilter()
+{
+    if (filterText().isEmpty()) {
+        return;
+    }
+
+    if (m_filterBar != nullptr) {
+        // Blocked, because the box's textChanged would call back into
+        // setFilterText and re-enter the navigation this is part of.
+        const QSignalBlocker blocker(m_filterBar);
+        m_filterBar->clear();
+        m_filterBar->hide();
+    }
+
+    m_proxy->setFilterText(QString());
+}
+
+void FilePanel::updateFilterStatus()
+{
+    // A filter that matches nothing leaves an empty panel, which looks
+    // identical to an empty directory and to a failed scan. Saying which it is
+    // costs one line.
+    if (!filterText().isEmpty() && m_proxy->rowCount() == 0 && m_model->rowCount() > 0) {
+        m_status->setText(tr("No matches for “%1” among %n item(s)", nullptr, m_model->rowCount())
+                              .arg(filterText()));
+        m_status->show();
+        m_showingFilterStatus = true;
+        return;
+    }
+
+    // Only ever hides the message it put there: a scan error owns this label
+    // too, and a filter change is no reason to discard it.
+    if (m_showingFilterStatus) {
+        m_showingFilterStatus = false;
+        m_status->hide();
+    }
+}
+
 void FilePanel::setFilterText(const QString &text)
 {
     m_proxy->setFilterText(text);
     restoreCursor();
     updateHeader();
+    updateFilterStatus();
 }
 
 void FilePanel::refreshTheme()
@@ -714,6 +769,7 @@ bool FilePanel::isActive() const
 void FilePanel::onScanFinished(const QString &path, int count)
 {
     updateThumbnailWindow();
+    updateFilterStatus();
     Q_UNUSED(path)
     Q_UNUSED(count)
     m_status->hide();

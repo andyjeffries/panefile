@@ -151,6 +151,15 @@ private:
     /// not a contiguous range and have to be mapped one by one.
     void updateThumbnailWindow();
 
+    /// Drops the filter, and the box with it. Navigation does this: a filter
+    /// describes the directory you were in.
+    void clearFilter();
+
+    /// Says so when a filter is hiding everything. An empty panel otherwise
+    /// looks the same whether the directory is empty, the scan failed, or a
+    /// filter matched nothing.
+    void updateFilterStatus();
+
     /// §7.3: after the watched directory disappears, move to the nearest
     /// ancestor that still exists.
     void walkUpToExistingAncestor();
@@ -188,6 +197,11 @@ private:
     /// sized to whatever width the panel currently has, so the untruncated
     /// version has to be kept to re-elide on resize.
     QString m_headerText;
+
+    /// True while the status label is showing this panel's own filter message,
+    /// so that clearing it cannot discard a scan error that owns the same
+    /// label.
+    bool m_showingFilterStatus = false;
 
     bool m_active = false;
     bool m_selectionMode = false;

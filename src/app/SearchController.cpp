@@ -95,6 +95,18 @@ void SearchController::registerActions()
                                tr("Filter this directory as you type"), ActionCategory::View,
                                [this] { openFilter(); });
 
+    m_registry->registerAction(
+        QStringLiteral("clear_filter"), tr("Clear this panel's filter"), ActionCategory::View,
+        [this] {
+            if (ui::FilePanel *panel = m_strip->focusedPanel(); panel != nullptr) {
+                panel->closeFilterBar(false);
+            }
+        },
+        [this] {
+            const ui::FilePanel *panel = m_strip->focusedPanel();
+            return panel != nullptr && !panel->filterText().isEmpty();
+        });
+
     m_registry->registerAction(QStringLiteral("open_fuzzy_find"),
                                tr("Find a file anywhere below this directory"),
                                ActionCategory::General, [this] { openFinder(); });

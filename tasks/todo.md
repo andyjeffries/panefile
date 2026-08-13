@@ -154,23 +154,32 @@ Two bugs the tests found, both macOS-only and both silent:
    failed silently in every headless run. It now uses a private serial queue and
    hops to the object's thread itself.
 
-## M6 — Quick Look and thumbnails
+## M6 — Quick Look and thumbnails ✅
 
-- [ ] Renderer interface and registry
-- [ ] Directory, Text, Image, Video, Audio, PDF, Archive and Hex renderers
-- [ ] Float, left, right, bottom, panel and full presentation modes
-- [ ] Debounced loading, skeleton after 200 ms, 5-entry content cache
-- [ ] freedesktop thumbnail cache with `Thumb::URI`/`Thumb::MTime` chunks
-- [ ] Optional plugins: syntax, media, pdf, video-thumb
-- [ ] Tests: renderer selection by MIME and priority, hex fallback, debounce
-      cancellation, cache hit and miss on mtime
+- [x] Renderer interface and registry
+- [x] Directory, Text, Image, Media, PDF, Archive and Hex renderers
+- [x] Float, left, right, bottom, panel and full presentation modes
+- [x] Debounced loading, skeleton after 200 ms, 5-entry content cache
+- [x] freedesktop thumbnail cache with `Thumb::URI`/`Thumb::MTime` chunks
+- [x] Tests: renderer selection by MIME and priority, hex fallback, debounce
+      cancellation, cache hit and miss on mtime, dock transitions
+- [ ] **Deferred: the optional plugin host** (`pf-syntax`, `pf-media`, `pf-pdf`,
+      `pf-video-thumb`). The renderers are written to work without it and say so
+      — the media and PDF renderers show metadata cards, the text renderer shows
+      plain text, and video thumbnails are skipped rather than fail-cached, so
+      a build that gains the plugins later starts producing them. §3.4 forbids
+      any of these becoming link-time dependencies, which is why the host is a
+      piece of work rather than three `find_package` calls.
 
-## M7 — Search and bulk rename
+libarchive moved to a runtime `QLibrary` load in this milestone: adding the
+archive renderer had quietly made it a `DT_NEEDED` entry, which §3.4 forbids.
 
-- [ ] In-panel filter
-- [ ] `FuzzyMatcher` — fzf-style scoring with matched spans
-- [ ] Recursive finder modal
-- [ ] **Bulk rename: a Finder-style sheet, replacing §7.9's `$EDITOR` round-trip.**
+## M7 — Search and bulk rename ✅
+
+- [x] In-panel filter
+- [x] `FuzzyMatcher` — fzf-style scoring with matched spans
+- [x] Recursive finder modal
+- [x] **Bulk rename: a Finder-style sheet, replacing §7.9's `$EDITOR` round-trip.**
       Requested by the user, and the better fit: §7.9 writes the names to a temp
       file, launches `$EDITOR` in a terminal, blocks until it exits, and aborts
       if the line count changed. That is a terminal idiom in a GUI application —
@@ -184,23 +193,37 @@ Two bugs the tests found, both macOS-only and both silent:
       §7.9's other requirements are unchanged and apply to any rename source:
       cycle detection via temporary names (`a→b`, `b→a`), a confirmation listing
       every `old → new` pair, and execution as a single undoable job.
-- [ ] Tests: scoring order, span correctness, Unicode, pathological inputs;
+- [x] Tests: scoring order, span correctness, Unicode, pathological inputs;
       each rename mode against a table of inputs, including collisions and cycles
+- [x] Also landed here: `file_panel_item_create` and `file_panel_item_rename`,
+      which had been registered but unimplemented since M4
 
-## M8 — Archives and mounts
+## M8 — Archives and mounts ✅
 
-- [ ] libarchive create and extract
-- [ ] Path-traversal rejection and tarbomb detection
-- [ ] Mount table: `mountinfo` parser and `getmntinfo`
-- [ ] udisks2 and DiskArbitration removable media
-- [ ] Tests: traversal fixtures, `mountinfo` parser fixtures
+- [x] libarchive create and extract
+- [x] Path-traversal rejection and tarbomb detection
+- [x] Mount table: `mountinfo` parser and `getmntinfo`
+- [x] udisks2 and DiskArbitration removable media
+- [x] Tests: traversal fixtures, `mountinfo` parser fixtures
+- [ ] **Deferred: a password prompt for encrypted archives.** §7.10 asks for
+      one; an encrypted archive currently fails with a message naming the file
+      and saying why, and nothing is written. That is the half of §7.10's
+      sentence that matters — "fail with a clear message rather than partially
+      extracting" — and the prompt is the half still owed.
 
-## M9 — Drag and drop
+## M9 — Drag and drop ✅
 
-- [ ] Outgoing `QDrag` with `text/uri-list` and a rendered row pixmap
-- [ ] Incoming drops, modifier-selected action, target row highlighting
+- [x] Outgoing `QDrag` with `text/uri-list` and a rendered row pixmap
+- [x] Incoming drops, modifier-selected action, target row highlighting
+- [x] Tests: placement rules and modifier mapping, driven directly rather than
+      through synthetic `QDropEvent`s — a `QAbstractScrollArea` refuses drag
+      events sent to it, and testing Qt's event plumbing was never the point
+- [ ] **Deferred: `Alt` opening a copy/move/link menu.** §7.12 offers it as a
+      third option alongside the `Shift` and `Ctrl` modifiers, which do work.
+      Linking is also the only one of the three that no other operation in the
+      application can currently perform.
 
-## M11 — Visual design pass
+## M11 — Visual design pass ✅ (partly)
 
 Added after M2, on the observation that the application looked clunky rather
 than merely unstyled. M3 below builds the *mechanism* — §9's `theme.toml` with
@@ -209,28 +232,134 @@ customise colour, font, row height, border radius and padding. What it does not
 cover is choosing values that look right, which is design work rather than
 plumbing, and is why this is separate.
 
-- [ ] A spacing scale, applied consistently, replacing the ad-hoc paddings
-- [ ] A light, Finder-like default theme — §9 ships only dark themes plus a
-      `system` one derived from `QPalette`
-- [ ] Finder-grade row treatment: row height, alternating rows, column alignment
-- [ ] The focused-panel border of §9, which calls it "the single most important
-      visual affordance in the app" and which currently is not drawn at all —
-      only a slightly lighter background distinguishes the focused panel
-- [ ] Typography: font stack and sizes per platform rather than the system default
-- [ ] Expand the bundled set to 10–20 themes, including light variants
-      (Catppuccin Latte, Rose Pine Dawn, Solarized Light, Nord Light,
-      GitHub Light and Dark, One Dark, Everforest, Kanagawa)
+- [x] A spacing scale, applied consistently, replacing the ad-hoc paddings.
+      Derived from the theme's `panel_padding` rather than fixed, so the four
+      gaps that make up a row's rhythm move together.
+- [x] Finder-grade row treatment: alternating rows, derived from the background
+      so all twenty-three themes get it, and overridable per theme
+- [x] The focused-panel border of §9 — landed in M2 and now asserted by a test
+      that renders the panel and reads the pixels back
+- [x] Expanded the bundled set to twenty-three themes, all canonical published
+      palettes, including macOS Light and macOS Dark
+- [ ] **Still yours to judge: the default theme.** The bundled set includes
+      `macos-light`, and §9's stated default is Catppuccin Mocha. Which one a
+      fresh install should open with is a taste decision, not a technical one,
+      and switching it is one line.
+- [ ] **Still open: typography.** The font stack and sizes are the system
+      default. Choosing better ones needs an eye on a real screen, which is the
+      one thing this machine cannot supply.
 
 Runs after M3 so themes are authored against a real stylesheet rather than
 retrofitted onto one.
 
-## M10 — Session, CLI routing, packaging
+## M10 — Session, CLI routing, packaging ✅ (partly)
 
-- [ ] Session restore, panels 2..N deferred
-- [ ] Single-instance IPC, client path without constructing a `QApplication`
-- [ ] Path routing per §10.2, Wayland activation tokens
-- [ ] AUR PKGBUILDs with the optional dependencies promoted into `depends`
-- [ ] macOS app bundle and Homebrew formula
-- [ ] Docker Arch verification pass: build, test, `makepkg`, `namcap`, hyperfine
-- [ ] Tests: all three routing cases, multiple paths, relative resolution,
-      `--here`/`--panel`, nonexistent paths, IPC version mismatch, stale socket
+- [x] Session restore, panels 2..N deferred
+- [x] Single-instance IPC, client path without constructing a `QApplication`.
+      It constructs no `QCoreApplication` either: on Wayland that would mean a
+      connection to the compositor before deciding whether to draw anything.
+- [x] Path routing per §10.2, Wayland activation tokens
+- [x] AUR PKGBUILDs with the optional dependencies promoted into `depends`
+- [x] macOS app bundle and Homebrew formula
+- [x] Tests: routing rules, relative and `file://` resolution, IPC version
+      mismatch, stale socket reclaim, and refusing to steal a live one
+- [ ] **Deferred: the Docker Arch verification pass** (`makepkg`, `namcap`,
+      `hyperfine` against a real Arch root). CI already builds, tests and
+      measures on Arch every push, which covers most of it; what a container
+      pass would add is the packaging itself.
+- [ ] **Needs your machine: Wayland activation.** §10.4's raise-and-activate
+      dance can only be verified on a real compositor, and §10.4 asks for
+      Hyprland specifically. The code degrades as the spec requires when no
+      token is available, but "it degrades correctly" is not the same as "it
+      raises correctly".
+
+The socket is POSIX rather than `QLocalServer`, which §10.3 names. Linking
+Qt6::Network for it added twenty-eight shared libraries to the binary's
+load-time dependencies — OpenSSL, Kerberos, libcurl, nghttp2 and libproxy,
+which embeds a JavaScript interpreter — for a Unix domain socket. §3.4's
+dependency guard caught it.
+
+## M12 — panefile.dev ✅
+
+- [x] Static HTML and CSS, no JavaScript, no build step
+- [x] Automatic light and dark from `prefers-color-scheme`, using the
+      application's own macOS Light and Catppuccin Mocha palettes
+- [x] `CNAME`, `robots.txt`, `sitemap.xml`, an SVG favicon that follows the
+      colour scheme
+- [x] A GitHub Pages workflow that publishes `docs/site` on change
+- [x] Verified from 320 px to 1440 px: the page never scrolls sideways, and
+      contrast passes 4.5:1 for body text and 3:1 for the rest in both schemes
+- [ ] **Yours to do: point the DNS at it.** The site is live at
+      <https://andyjeffries.github.io/panefile/> and carries a `CNAME` for
+      `panefile.dev`; the domain needs `CNAME panefile.dev →
+      andyjeffries.github.io` (or the four A records for an apex domain) before
+      that name resolves.
+
+---
+
+## Review
+
+All twelve milestones are in. What follows is what was measured, what was
+decided against the specification, and what is still owed.
+
+### Measured
+
+| Property | Target (§11) | Linux (Arch, CI) | macOS (this machine) |
+| --- | --- | --- | --- |
+| First paint | 80 ms | ~13 ms | ~620 ms |
+| Load-time dependencies | no optional ones | 30 | 14 |
+
+The macOS number is not comparable to the Linux one and is not meant to be:
+most of it is dyld, `NSApplication` and Qt's font database, none of which the
+application controls. It is tracked against its own recorded baseline so a
+regression is still visible, which is what caught the two regressions below.
+
+The startup guard earned its keep twice. It caught 2 ms of work that had crept
+onto the critical path across M6–M8 — reading `state.ini`, constructing the
+thumbnail cache, wiring each model to it — all of which is now lazy. And the
+dependency guard caught Qt6::Network arriving with M10's socket, dragging in
+twenty-eight libraries including a JavaScript interpreter.
+
+### Departures from the specification
+
+Four, each because following the letter would have broken something the spec
+asks for elsewhere.
+
+1. **Bulk rename is a Finder-style sheet, not §7.9's `$EDITOR` round trip.**
+   Requested, and the better fit: §7.9's flow needs a terminal to exist and
+   cannot show the result before it happens. Everything underneath it — cycle
+   detection, the confirmation, the single undoable job — is unchanged.
+
+2. **libarchive is loaded with `QLibrary`, not linked.** §3.4 forbids it as a
+   `DT_NEEDED` entry; adding the archive renderer had quietly made it one.
+
+3. **The single-instance socket is POSIX, not `QLocalServer`.** §10.3 names
+   the Qt class; §3.4 forbids the twenty-eight libraries linking it brought.
+   §3.4 wins, and the client path is four syscalls as a result.
+
+4. **The stale-socket check probes before binding, not after a failed bind.**
+   §10.3's wording describes a failure that never arrives — Qt's
+   `QLocalServer::listen` unlinks an existing socket and succeeds, and `bind(2)`
+   cannot tell a live socket from a corpse. Binding first steals a running
+   instance's socket.
+
+Three deviations were made for testability and are noted in their commits: the
+`WatchCoalescer` split, injectable roots on `Trash` and `ThumbnailCache`, and
+the pure parsers for `mountinfo` and the session file.
+
+### Still owed
+
+Eight items, listed under their milestones above. In rough order of how much
+they matter:
+
+- **Wayland activation (§10.4)** needs your Arch + Hyprland machine. Nothing
+  else in the project is unverifiable here.
+- **The optional plugin host (§3.4)** — syntax highlighting, media playback,
+  PDF rendering and video thumbnails. Every one of them degrades as §2 requires
+  and says what is missing, so this is a feature gap rather than a defect.
+- **A password prompt for encrypted archives (§7.10).**
+- **`Alt` for the copy/move/link drop menu (§7.12).**
+- **The default theme, and typography (M11)** — taste decisions, yours.
+- **DNS for panefile.dev** — the site is live and waiting for the record.
+- **The Docker Arch packaging pass** — CI covers build, test and measurement on
+  Arch already; `makepkg` and `namcap` are what a container run would add.

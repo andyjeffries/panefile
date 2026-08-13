@@ -39,11 +39,15 @@ class Panefile < Formula
     system "cmake", "--build", "build"
     system "cmake", "--install", "build"
 
-    # The bundle is what Launch Services needs in order to offer Panefile as a
-    # folder handler; the symlink is what makes `pf` work in a shell.
-    prefix.install "build/bin/Panefile.app" if File.exist?("build/bin/Panefile.app")
-    bin.write_exec_script "#{prefix}/Panefile.app/Contents/MacOS/pf" if
-      File.exist?("#{prefix}/Panefile.app/Contents/MacOS/pf")
+    # The install rules put Panefile.app at the prefix — Launch Services needs a
+    # bundle in order to offer Panefile as a folder handler — and bin/pf beside
+    # it as a wrapper that execs the bundle's executable.
+    #
+    # A wrapper rather than a symlink, deliberately: macOS works out what an
+    # application is from the path its executable was launched by, and a symlink
+    # reports its own path rather than the bundle's. The app would run, but with
+    # no Info.plist behind it: the grey placeholder icon in the Dock, and "pf"
+    # for a name.
   end
 
   test do

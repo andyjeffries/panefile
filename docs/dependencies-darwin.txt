@@ -1,5 +1,5 @@
 # Dynamic dependencies of the pf binary on macOS.
-# Regenerate: scripts/check-dependencies.sh build/release/bin/pf.app/Contents/MacOS/pf > docs/dependencies-darwin.txt
+# Regenerate: scripts/check-dependencies.sh build/release/bin/Panefile.app/Contents/MacOS/Panefile > docs/dependencies-darwin.txt
 # See §3.4: every optional feature must arrive as a plugin, not a DT_NEEDED entry.
 #
 # CoreFoundation and CoreServices arrived with M5's FSEvents watcher. They are

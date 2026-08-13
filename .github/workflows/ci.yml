@@ -152,7 +152,7 @@ jobs:
           cmake --preset release
           cmake --build --preset release
           scripts/check-dependencies.sh \
-            build/release/bin/pf.app/Contents/MacOS/pf docs/dependencies-darwin.txt
+            build/release/bin/Panefile.app/Contents/MacOS/Panefile docs/dependencies-darwin.txt
 
   # §14: run under ASan and UBSan, and treat any leak in a job or the scanner as
   # a bug. Runs on Arch rather than Ubuntu purely because it needs a Qt new

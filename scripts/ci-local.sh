@@ -167,7 +167,7 @@ run_release() {
 
     local binary platform
     if [[ "$(uname -s)" == "Darwin" ]]; then
-        binary="build/release/bin/pf.app/Contents/MacOS/pf"
+        binary="build/release/bin/Panefile.app/Contents/MacOS/Panefile"
         platform="darwin"
     else
         binary="build/release/bin/pf"

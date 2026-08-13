@@ -246,8 +246,20 @@ qt_add_executable(pf MACOSX_BUNDLE main.cpp)
 
 target_link_libraries(pf PRIVATE pf_app)
 
+# The bundle directory takes its name from OUTPUT_NAME, and so does the
+# executable inside it — CMake couples the two. On macOS that makes the choice
+# "Panefile.app containing Panefile" or "pf.app containing pf", and the first is
+# the one a Mac user should be looking at in /Applications and in the Dock. The
+# command stays `pf` regardless, as a wrapper on the PATH that execs into the
+# bundle (cmake/pf-wrapper.sh).
+if(PF_PLATFORM_DARWIN)
+    set(PF_OUTPUT_NAME Panefile)
+else()
+    set(PF_OUTPUT_NAME pf)
+endif()
+
 set_target_properties(pf PROPERTIES
-    OUTPUT_NAME pf
+    OUTPUT_NAME ${PF_OUTPUT_NAME}
     WIN32_EXECUTABLE OFF)
 
 if(PF_PLATFORM_DARWIN)
@@ -272,4 +284,20 @@ if(PF_PLATFORM_DARWIN)
         MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
         MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
         MACOSX_BUNDLE_INFO_PLIST "${PROJECT_SOURCE_DIR}/packaging/macos/Info.plist.in")
+
+    # And the themes, into the same Resources directory an install uses.
+    #
+    # data/CMakeLists.txt stages them at ${CMAKE_BINARY_DIR}/data/themes, which
+    # a Linux build tree finds as bin/../../data. A bundle is two directories
+    # deeper — bin/Panefile.app/Contents/MacOS — so none of Paths.cpp's relative
+    # rules reach it, and running the macOS build tree meant running with no
+    # bundled themes at all unless PANEFILE_DATA_DIR was set by hand.
+    #
+    # Copying them where the bundle expects them makes the build tree behave
+    # like an install here too, which is what the staging was for.
+    add_custom_command(TARGET pf POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${PROJECT_SOURCE_DIR}/data/themes"
+            "$<TARGET_BUNDLE_CONTENT_DIR:pf>/Resources/themes"
+        COMMENT "Staging themes into the bundle")
 endif()

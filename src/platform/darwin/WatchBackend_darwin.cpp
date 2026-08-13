@@ -118,11 +118,28 @@ private:
     {
         if (m_stream != nullptr) {
             FSEventStreamStop(m_stream);
+
+            // Unscheduling before invalidating is the part that matters, and it
+            // is not decoration. FSEventStreamInvalidate does not wait for a
+            // callback that is already running on the dispatch queue, so a
+            // backend destroyed while one was in flight left that callback
+            // holding a dangling `self` — it then called QObject::thread() on
+            // freed memory and took the process with it. Watching a directory
+            // and closing the panel quickly enough is all it takes.
+            FSEventStreamSetDispatchQueue(m_stream, nullptr);
+
             FSEventStreamInvalidate(m_stream);
             FSEventStreamRelease(m_stream);
             m_stream = nullptr;
         }
         if (m_queue != nullptr) {
+            // A barrier on the serial queue: it returns only once everything
+            // already queued has run, so no callback can still be between
+            // reading `info` and using it by the time this object goes away.
+            // The lambda is captureless so it converts to the plain function
+            // pointer dispatch_sync_f wants, without needing blocks.
+            dispatch_sync_f(m_queue, nullptr, [](void *) {});
+
             dispatch_release(m_queue);
             m_queue = nullptr;
         }

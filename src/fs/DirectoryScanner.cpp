@@ -8,6 +8,8 @@
 #include <QRunnable>
 #include <QThreadPool>
 
+#include "core/WorkerPools.h"
+
 #include <array>
 #include <atomic>
 #include <mutex>
@@ -239,15 +241,12 @@ private:
 QThreadPool *DirectoryScanner::pool()
 {
     // Function-local static, so no thread pool is created at load time for a
-    // process that turns out to be a --version invocation (§3.4).
-    static QThreadPool instance;
-    static const bool configured = [] {
-        instance.setMaxThreadCount(4); // §3.3
-        instance.setObjectName(QStringLiteral("pf-scanner"));
-        return true;
-    }();
-    Q_UNUSED(configured)
-    return &instance;
+    // process that turns out to be a --version invocation (§3.4). Registered
+    // with WorkerPools so that shutdown waits for it — a scan still running
+    // when main() returns can reach a Qt global that static destruction has
+    // already torn down, which is exactly how it crashed.
+    static QThreadPool *instance = WorkerPools::acquire("pf-scanner", 4); // §3.3
+    return instance;
 }
 
 DirectoryScanner::DirectoryScanner(QObject *parent) : QObject(parent) {}

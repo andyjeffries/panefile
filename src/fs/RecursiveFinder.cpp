@@ -10,6 +10,8 @@
 #include <QRunnable>
 #include <QThreadPool>
 
+#include "core/WorkerPools.h"
+
 #include <algorithm>
 #include <atomic>
 
@@ -21,14 +23,11 @@ namespace {
 /// and deliver results no sooner.
 QThreadPool *finderPool()
 {
-    static QThreadPool pool;
-    static const bool configured = [] {
-        pool.setMaxThreadCount(1);
-        pool.setObjectName(QStringLiteral("pf-finder"));
-        return true;
-    }();
-    Q_UNUSED(configured)
-    return &pool;
+    // Registered with WorkerPools so shutdown waits for it: a task still
+    // running when main() returns can reach a Qt global that static
+    // destruction has already torn down.
+    static QThreadPool *pool = WorkerPools::acquire("pf-finder", 1);
+    return pool;
 }
 
 /// Directories never worth walking, whatever .gitignore says.

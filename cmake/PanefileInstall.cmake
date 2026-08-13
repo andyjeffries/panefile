@@ -13,6 +13,12 @@ if(PF_PLATFORM_DARWIN)
 
     install(DIRECTORY "${PROJECT_SOURCE_DIR}/data/themes"
         DESTINATION "Panefile.app/Contents/Resources")
+
+    # The bundle target already carries the .icns through
+    # MACOSX_PACKAGE_LOCATION, but an install of the loose binary — which is
+    # what `cmake --install` produces alongside it — has no bundle to carry it.
+    install(FILES "${PROJECT_SOURCE_DIR}/data/icons/panefile.icns"
+        DESTINATION "Panefile.app/Contents/Resources")
 else()
     install(TARGETS pf RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 

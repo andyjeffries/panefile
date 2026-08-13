@@ -1,5 +1,8 @@
 #include "config/Theme.h"
 
+#include <cmath>
+#include <cstdlib>
+
 #include "core/Logging.h"
 #include "platform/Paths.h"
 
@@ -84,6 +87,36 @@ QStringList themeFilesIn(const QString &directory)
 
 } // namespace
 
+namespace {
+
+/// Relative luminance, and the WCAG contrast ratio built on it.
+///
+/// Lightness would be the obvious measure and is the wrong one: several of the
+/// published palettes put their cursor at almost the background's lightness and
+/// distinguish it by hue instead, so a lightness comparison calls those
+/// identical when the eye does not, and calls them different when it cannot.
+double relativeLuminance(const QColor &colour)
+{
+    const auto channel = [](double value) {
+        value /= 255.0;
+        return value <= 0.03928 ? value / 12.92 : std::pow((value + 0.055) / 1.055, 2.4);
+    };
+    return (0.2126 * channel(colour.red())) + (0.7152 * channel(colour.green())) +
+           (0.0722 * channel(colour.blue()));
+}
+
+double contrastRatio(const QColor &a, const QColor &b)
+{
+    const double first = relativeLuminance(a);
+    const double second = relativeLuminance(b);
+    return (std::max(first, second) + 0.05) / (std::min(first, second) + 0.05);
+}
+
+/// Below this the cursor and the banding are the same colour to a reader.
+constexpr double kMinimumCursorSeparation = 1.12;
+
+} // namespace
+
 QColor Theme::effectiveAlternateRowBackground() const
 {
     if (alternateRowBackground.isValid()) {
@@ -93,7 +126,31 @@ QColor Theme::effectiveAlternateRowBackground() const
     // Deliberately slight. Banding that announces itself is a distraction; the
     // job is to keep the eye on one line across a wide row, which takes a few
     // percent, not a stripe.
-    return isLight() ? background.darker(103) : background.lighter(112);
+    const int base = isLight() ? -3 : 12;
+
+    // And never at the cursor's expense.
+    //
+    // The banding is derived from the background; the cursor's colour comes
+    // from the theme, and several published palettes put it within a few
+    // percent of their background. Band at the full amount against one of those
+    // and the row telling you where you are becomes indistinguishable from
+    // every other row — which is exactly what happened to one-dark,
+    // tokyo-night-storm and rose-pine-dawn when banding was introduced.
+    //
+    // So the band is weakened until the cursor is clearly the stronger of the
+    // two, and abandoned entirely when no strength is weak enough. A theme
+    // whose cursor is that faint is better served by no stripes at all than by
+    // stripes that hide it.
+    for (int percent = base; percent != 0; percent += (base < 0 ? 1 : -1)) {
+        const QColor candidate =
+            percent < 0 ? background.darker(100 - percent) : background.lighter(100 + percent);
+
+        if (contrastRatio(cursorBackground, candidate) >= kMinimumCursorSeparation) {
+            return candidate;
+        }
+    }
+
+    return background;
 }
 
 bool Theme::isLight() const

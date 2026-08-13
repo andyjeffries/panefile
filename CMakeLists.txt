@@ -69,5 +69,13 @@ endif()
 
 add_subdirectory(data)
 
+# Development tools — the website screenshot generator. Off by default: they
+# produce artefacts that are committed, so a normal build has no reason to
+# build them.
+option(PF_BUILD_TOOLS "Build the development tools" OFF)
+if(PF_BUILD_TOOLS)
+    add_subdirectory(tools)
+endif()
+
 include(PanefileInstall)
 include(PanefileSummary)

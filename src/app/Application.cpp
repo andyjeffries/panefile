@@ -19,6 +19,7 @@
 #include "core/Logging.h"
 #include "core/StartupTrace.h"
 #include "core/Version.h"
+#include "core/WorkerPools.h"
 #include "fs/JobEngine.h"
 #include "fs/UndoStack.h"
 #include "model/FilterSortProxy.h"
@@ -201,9 +202,16 @@ void Application::registerGlobalActions()
     // §8: the session is written on the way out. Connected to aboutToQuit
     // rather than called from the quit action, so a window closed with the
     // compositor's own control saves just as well as one closed with `q`.
-    connect(this, &QCoreApplication::aboutToQuit, this, [this] { saveSession(); });
+    connect(this, &QCoreApplication::aboutToQuit, this, [this] {
+        saveSession();
 
-    installSignalHandling();
+        // Then stop every worker, while the event loop is still alive and Qt's
+        // globals are still standing. A scan, a preview load, a thumbnail or a
+        // search still running when main() returns will reach a Qt global that
+        // static destruction has already torn down — which is what took
+        // QMimeDatabase out from under the scanner thread.
+        WorkerPools::drainAll();
+    });
 
     m_registry->registerAction(QStringLiteral("toggle_sidebar"), tr("Show or hide the sidebar"),
                                ActionCategory::View, [this] { m_mainWindow->toggleSidebar(); });
@@ -348,6 +356,13 @@ void Application::reloadConfiguration(const QStringList &changedFiles)
 void Application::startUp(const CommandLineOptions &options)
 {
     m_quitAfterPaint = options.quitAfterPaint;
+
+    // First, before any of the work below. A session manager can send SIGTERM
+    // at any moment, and until the handler is in place the default disposition
+    // kills the process outright — during startup that costs nothing, but the
+    // handler is cheap and the window where it is missing should be as small as
+    // it can be.
+    installSignalHandling();
 
     loadConfiguration();
 

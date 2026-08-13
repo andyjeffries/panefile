@@ -14,6 +14,8 @@
 #include <QRunnable>
 #include <QThreadPool>
 
+#include "core/WorkerPools.h"
+
 #include <algorithm>
 #include <atomic>
 
@@ -27,14 +29,11 @@ namespace {
 /// larger pool would only let abandoned loads compete with the live one.
 QThreadPool *loaderPool()
 {
-    static QThreadPool pool;
-    static const bool configured = [] {
-        pool.setMaxThreadCount(2);
-        pool.setObjectName(QStringLiteral("pf-quicklook"));
-        return true;
-    }();
-    Q_UNUSED(configured)
-    return &pool;
+    // Registered with WorkerPools so shutdown waits for it: a task still
+    // running when main() returns can reach a Qt global that static
+    // destruction has already torn down.
+    static QThreadPool *pool = WorkerPools::acquire("pf-quicklook", 2);
+    return pool;
 }
 
 /// Reads a directory listing for DirectoryRenderer (§7.6).

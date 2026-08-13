@@ -13,6 +13,8 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <cmath>
+
 using namespace pf;
 using namespace pf::ui;
 
@@ -26,6 +28,25 @@ void touch(const QString &path)
     Q_ASSERT(opened);
     file.write("x");
     file.close();
+}
+
+/// The WCAG contrast ratio, which is how a reader perceives a difference —
+/// unlike lightness, which several palettes deliberately hold constant while
+/// changing hue.
+double contrast(const QColor &a, const QColor &b)
+{
+    const auto luminance = [](const QColor &colour) {
+        const auto channel = [](double value) {
+            value /= 255.0;
+            return value <= 0.03928 ? value / 12.92 : std::pow((value + 0.055) / 1.055, 2.4);
+        };
+        return (0.2126 * channel(colour.red())) + (0.7152 * channel(colour.green())) +
+               (0.0722 * channel(colour.blue()));
+    };
+
+    const double first = luminance(a);
+    const double second = luminance(b);
+    return (std::max(first, second) + 0.05) / (std::min(first, second) + 0.05);
 }
 
 } // namespace
@@ -123,6 +144,47 @@ private Q_SLOTS:
         light.text = QColor(0x1d, 0x1d, 0x1f);
         QVERIFY(light.isLight());
         QVERIFY(light.effectiveAlternateRowBackground().lightness() < light.background.lightness());
+    }
+
+    /// Every bundled theme must keep its cursor distinguishable from the
+    /// banding.
+    ///
+    /// This is the test the banding should have shipped with. Introducing it in
+    /// M11 made the cursor — the row telling you where you are — indiscernible
+    /// in one-dark, tokyo-night-storm and rose-pine-dawn, whose published
+    /// palettes put the cursor within a few percent of their background. The
+    /// derivation now weakens the band until the cursor clearly wins, and gives
+    /// up on banding entirely when no strength is weak enough.
+    void everyBundledThemeKeepsItsCursorVisible()
+    {
+        const QDir themes(QStringLiteral(PF_THEMES_DIR));
+        const QStringList files = themes.entryList({QStringLiteral("*.toml")}, QDir::Files);
+        QVERIFY2(files.size() >= 20, "the bundled themes should be here");
+
+        for (const QString &file : files) {
+            QFile source(themes.absoluteFilePath(file));
+            QVERIFY(source.open(QIODevice::ReadOnly));
+
+            const config::Theme theme =
+                config::parseTheme(QString::fromUtf8(source.readAll()), file).theme;
+            const QColor band = theme.effectiveAlternateRowBackground();
+
+            if (band == theme.background) {
+                // No banding at all, which is the documented outcome for a
+                // theme whose cursor is too faint to compete with any.
+                continue;
+            }
+
+            const double separation = contrast(theme.cursorBackground, band);
+            QVERIFY2(separation >= 1.12,
+                     qPrintable(QStringLiteral("%1: cursor is %2 against the banding")
+                                    .arg(file)
+                                    .arg(separation, 0, 'f', 2)));
+
+            // And the banding must still be visible at all, or it is a colour
+            // computation nobody sees.
+            QVERIFY2(contrast(band, theme.background) > 1.01, qPrintable(file));
+        }
     }
 
     /// A theme that names the colour keeps it.

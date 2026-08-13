@@ -7,19 +7,20 @@
 <meta name="description" content="Panefile is a keyboard-driven file manager for Linux and macOS. One window, N independent directory panels, under 80 ms to a painted window.">
 <meta name="color-scheme" content="light dark">
 <link rel="stylesheet" href="style.css">
-<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="panefile.svg" type="image/svg+xml">
 
 <meta property="og:type" content="website">
 <meta property="og:title" content="Panefile">
 <meta property="og:description" content="A keyboard-driven, multi-panel file manager for Linux and macOS.">
 <meta property="og:url" content="https://panefile.dev/">
+<meta property="og:image" content="https://panefile.dev/panefile.svg">
 </head>
 <body>
 
 <header class="site">
   <div class="wrap">
     <a class="brand" href="/">
-      <span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      <img class="mark" src="panefile.svg" alt="" width="24" height="24">
       Panefile
     </a>
     <nav>
@@ -49,55 +50,19 @@
       <a class="button" href="https://github.com/andyjeffries/panefile">Source on GitHub</a>
     </div>
 
-    <!-- Drawn in HTML rather than shipped as a screenshot: it stays sharp at
-         any zoom, follows the reader's colour scheme for free, and weighs a
-         couple of kilobytes. -->
-    <div class="window" role="img" aria-label="Panefile showing a sidebar and two directory panels side by side">
-      <div class="titlebar">
-        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-        <em>~/Developer/panefile — Panefile</em>
-      </div>
-
-      <div class="panes">
-        <div class="pane sidebar">
-          <div class="head">PLACES</div>
-          <div class="row"><span>Home</span></div>
-          <div class="row"><span>Desktop</span></div>
-          <div class="row"><span>Downloads</span></div>
-          <div class="row"><span>Documents</span></div>
-          <div class="head" style="padding-top:.6rem">DEVICES</div>
-          <div class="row"><span>● Backup</span></div>
-          <div class="row muted"><span>○ SANDISK</span></div>
-        </div>
-
-        <div class="pane focused">
-          <div class="head">~/Developer/panefile/src &nbsp;·&nbsp; 8 items</div>
-          <div class="row"><span class="dir">app/</span><span class="size">—</span></div>
-          <div class="row"><span class="dir">config/</span><span class="size">—</span></div>
-          <div class="row cursor"><span class="dir">core/</span><span class="size">—</span></div>
-          <div class="row selected"><span class="dir">fs/</span><span class="size">—</span></div>
-          <div class="row selected"><span class="dir">model/</span><span class="size">—</span></div>
-          <div class="row"><span class="dir">platform/</span><span class="size">—</span></div>
-          <div class="row"><span class="dir">ui/</span><span class="size">—</span></div>
-          <div class="row"><span>main.cpp</span><span class="size">2.1 KiB</span></div>
-        </div>
-
-        <div class="pane">
-          <div class="head">~/Downloads &nbsp;·&nbsp; 6 items</div>
-          <div class="row"><span class="arc">qt-6.10.2.tar.xz</span><span class="size">712 MiB</span></div>
-          <div class="row"><span class="arc">panefile-1.0.zip</span><span class="size">4.8 MiB</span></div>
-          <div class="row"><span class="img">screenshot.png</span><span class="size">1.2 MiB</span></div>
-          <div class="row"><span class="exe">install.sh</span><span class="size">1.4 KiB</span></div>
-          <div class="row"><span class="lnk">latest →</span><span class="size">—</span></div>
-          <div class="row"><span>notes.md</span><span class="size">6.0 KiB</span></div>
-        </div>
-      </div>
-
-      <div class="footer">
-        <span>drwxr-xr-x&nbsp; 501:20&nbsp; —&nbsp; 13 Aug 09:41</span>
-        <span class="right">2 selected</span>
-      </div>
-    </div>
+    <!-- A render of the real application, not a mock. tools/screenshot.cpp
+         builds an actual MainWindow over an actual directory, applies the
+         theme through the same StyleSheetBuilder the program uses, and asks Qt
+         to paint it — so this is what Panefile looks like by construction
+         rather than by resemblance. scripts/make-screenshots.sh regenerates
+         both. -->
+    <picture class="shot">
+      <source srcset="screenshot-catppuccin-mocha.png" media="(prefers-color-scheme: dark)">
+      <img src="screenshot-macos-light.png"
+           width="1160" height="430"
+           alt="Panefile showing a sidebar and two directory panels side by side, the left one focused"
+           decoding="async">
+    </picture>
   </div>
 </section>
 

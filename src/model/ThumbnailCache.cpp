@@ -13,6 +13,8 @@
 #include <QRunnable>
 #include <QSaveFile>
 #include <QThreadPool>
+
+#include "core/WorkerPools.h"
 #include <QUrl>
 
 #include <functional>
@@ -29,15 +31,11 @@ const char *const kMTimeKey = "Thumb::MTime";
 /// the threads a copy or a scan wants.
 QThreadPool *thumbnailPool()
 {
-    static QThreadPool pool;
-    static const bool configured = [] {
-        pool.setMaxThreadCount(2);
-        pool.setObjectName(QStringLiteral("pf-thumbnails"));
-        pool.setExpiryTimeout(30000);
-        return true;
-    }();
-    Q_UNUSED(configured)
-    return &pool;
+    // Registered with WorkerPools so shutdown waits for it: a task still
+    // running when main() returns can reach a Qt global that static
+    // destruction has already torn down.
+    static QThreadPool *pool = WorkerPools::acquire("pf-thumbnails", 2);
+    return pool;
 }
 
 /// Whether this build can decode `mime` into an image.

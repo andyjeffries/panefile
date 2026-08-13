@@ -15,6 +15,7 @@ pf_layer_library(pf_core
         core/FuzzyMatcher.cpp
         core/NaturalCompare.cpp
         core/StartupTrace.cpp
+        core/WorkerPools.cpp
     PUBLIC_DEPENDS Qt6::Core)
 
 target_include_directories(pf_core PUBLIC "${CMAKE_CURRENT_BINARY_DIR}")
@@ -250,7 +251,22 @@ set_target_properties(pf PROPERTIES
     WIN32_EXECUTABLE OFF)
 
 if(PF_PLATFORM_DARWIN)
+    # Info.plist names CFBundleIconFile=panefile, and until this was added
+    # nothing ever produced the file it names — the bundle had no Resources
+    # directory at all, so macOS fell back to the generic application icon.
+    #
+    # The .icns is committed rather than generated. Building it needs an SVG
+    # rasteriser and iconutil, neither of which a Linux CI runner or a user
+    # building from source has any business needing for a file that changes
+    # about once a year. scripts/make-icns.sh regenerates it when the artwork
+    # does.
+    set(PF_ICNS "${PROJECT_SOURCE_DIR}/data/icons/panefile.icns")
+    target_sources(pf PRIVATE "${PF_ICNS}")
+    set_source_files_properties("${PF_ICNS}" PROPERTIES
+        MACOSX_PACKAGE_LOCATION "Resources")
+
     set_target_properties(pf PROPERTIES
+        MACOSX_BUNDLE_ICON_FILE "panefile.icns"
         MACOSX_BUNDLE_BUNDLE_NAME "Panefile"
         MACOSX_BUNDLE_GUI_IDENTIFIER "org.panefile.Panefile"
         MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"

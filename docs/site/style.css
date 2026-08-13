@@ -1,0 +1,569 @@
+/*
+ * panefile.dev
+ *
+ * Static CSS, no build step, no JavaScript. Light and dark come from
+ * prefers-color-scheme alone — there is no toggle, because a toggle needs
+ * JavaScript to persist and a page that forgets your choice on every navigation
+ * is worse than one that simply follows the system.
+ *
+ * The palettes are the application's own macOS Light and Catppuccin Mocha
+ * themes, so the site and the thing it describes look like each other.
+ */
+
+:root {
+    /* macOS Light — data/themes/macos-light.toml */
+    --bg: #ffffff;
+    --surface: #f5f5f7;
+    --raised: #ffffff;
+    --text: #1d1d1f;
+    --subtext: #6e6e73;
+    --overlay: #8e8e93;
+    --accent: #007aff;
+    --border: #d2d2d7;
+
+    --directory: #007aff;
+    --executable: #1f9e39;
+    --symlink: #3f8ea8;
+    --archive: #c46a00;
+    --image: #a07c00;
+
+    --shadow: 0 1px 3px rgb(0 0 0 / 6%), 0 8px 24px rgb(0 0 0 / 6%);
+
+    --measure: 34rem;
+    --radius: 10px;
+
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo,
+        Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        /* Catppuccin Mocha — data/themes/catppuccin-mocha.toml */
+        --bg: #1e1e2e;
+        --surface: #181825;
+        --raised: #313244;
+        --text: #cdd6f4;
+        --subtext: #a6adc8;
+        --overlay: #6c7086;
+        --accent: #89b4fa;
+        --border: #45475a;
+
+        --directory: #89b4fa;
+        --executable: #a6e3a1;
+        --symlink: #94e2d5;
+        --archive: #fab387;
+        --image: #f9e2af;
+
+        --shadow: 0 1px 3px rgb(0 0 0 / 30%), 0 12px 32px rgb(0 0 0 / 35%);
+    }
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html {
+    -webkit-text-size-adjust: 100%;
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+}
+
+a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+code,
+kbd,
+pre {
+    font-family: var(--mono);
+}
+
+/* ------------------------------------------------------------------ layout */
+
+.wrap {
+    max-width: 62rem;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+}
+
+section {
+    padding: 4.5rem 0;
+    border-top: 1px solid var(--border);
+}
+
+section:first-of-type {
+    border-top: 0;
+}
+
+h1,
+h2,
+h3 {
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    margin: 0 0 0.6rem;
+}
+
+h2 {
+    font-size: 1.8rem;
+}
+
+h3 {
+    font-size: 1.05rem;
+    margin-top: 0;
+}
+
+p {
+    margin: 0 0 1rem;
+    max-width: var(--measure);
+}
+
+.lede {
+    font-size: 1.15rem;
+    color: var(--subtext);
+}
+
+/* -------------------------------------------------------------------- nav */
+
+header.site {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: saturate(180%) blur(12px);
+    border-bottom: 1px solid var(--border);
+}
+
+header.site .wrap {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    height: 3.25rem;
+}
+
+.brand {
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.brand .mark {
+    display: inline-flex;
+    gap: 2px;
+}
+
+.brand .mark i {
+    display: block;
+    width: 4px;
+    height: 15px;
+    border-radius: 1px;
+    background: var(--overlay);
+}
+
+.brand .mark i:nth-child(2) {
+    background: var(--accent);
+}
+
+header.site nav {
+    margin-left: auto;
+    display: flex;
+    gap: 1.25rem;
+    font-size: 0.9rem;
+}
+
+header.site nav a {
+    color: var(--subtext);
+}
+
+header.site nav a:hover {
+    color: var(--text);
+    text-decoration: none;
+}
+
+/* -------------------------------------------------------------------- hero */
+
+.hero {
+    padding: 5rem 0 3.5rem;
+}
+
+.hero h1 {
+    font-size: clamp(2.4rem, 6vw, 3.6rem);
+    margin-bottom: 1rem;
+}
+
+.hero .lede {
+    font-size: 1.25rem;
+    max-width: 40rem;
+}
+
+.cta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 2rem;
+}
+
+.button {
+    display: inline-block;
+    padding: 0.6rem 1.1rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--text);
+    background: var(--raised);
+}
+
+.button:hover {
+    text-decoration: none;
+    border-color: var(--overlay);
+}
+
+.button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+
+.button.primary:hover {
+    filter: brightness(1.08);
+}
+
+/* --------------------------------------------------------------- terminal */
+
+/*
+ * A mock of the application, drawn in HTML rather than shipped as a
+ * screenshot: it stays sharp at any zoom, follows the reader's colour scheme
+ * for free, and weighs a couple of kilobytes.
+ */
+
+.window {
+    margin-top: 3rem;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.75;
+}
+
+.window .titlebar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.85rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+}
+
+.window .titlebar em {
+    margin-left: 0.5rem;
+    font-style: normal;
+    font-size: 11px;
+    color: var(--subtext);
+}
+
+.dot {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: var(--overlay);
+    opacity: 0.55;
+}
+
+.panes {
+    display: grid;
+    grid-template-columns: 8rem 1fr 1fr;
+    min-height: 17rem;
+}
+
+.pane {
+    border-right: 1px solid var(--border);
+    padding: 0.5rem 0;
+    overflow: hidden;
+}
+
+.pane:last-child {
+    border-right: 0;
+}
+
+.pane.focused {
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
+    box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.pane .head {
+    padding: 0.15rem 0.7rem 0.5rem;
+    color: var(--subtext);
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.row {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.05rem 0.7rem;
+    white-space: nowrap;
+}
+
+.row .size {
+    margin-left: auto;
+    color: var(--subtext);
+}
+
+.row.cursor {
+    background: var(--raised);
+    border-radius: 4px;
+}
+
+.row.selected {
+    box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.dir {
+    color: var(--directory);
+}
+
+.exe {
+    color: var(--executable);
+}
+
+.lnk {
+    color: var(--symlink);
+}
+
+.arc {
+    color: var(--archive);
+}
+
+.img {
+    color: var(--image);
+}
+
+.muted {
+    color: var(--subtext);
+}
+
+.window .footer {
+    display: flex;
+    gap: 1rem;
+    padding: 0.35rem 0.85rem;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--subtext);
+    font-size: 11px;
+}
+
+.window .footer .right {
+    margin-left: auto;
+}
+
+/* ------------------------------------------------------------------- grids */
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: 1.5rem 2rem;
+    margin-top: 2.5rem;
+}
+
+.grid p {
+    margin: 0;
+    color: var(--subtext);
+    font-size: 0.95rem;
+    max-width: none;
+}
+
+.card {
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+}
+
+/* -------------------------------------------------------------------- keys */
+
+kbd {
+    display: inline-block;
+    min-width: 1.6rem;
+    padding: 0.1rem 0.4rem;
+    border: 1px solid var(--border);
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    background: var(--raised);
+    font-size: 0.8rem;
+    text-align: center;
+    color: var(--text);
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 2rem;
+    font-size: 0.95rem;
+}
+
+th,
+td {
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+}
+
+th {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--subtext);
+    font-weight: 600;
+}
+
+td:first-child {
+    white-space: nowrap;
+    width: 1%;
+}
+
+td .desc {
+    color: var(--subtext);
+}
+
+.table-scroll {
+    overflow-x: auto;
+}
+
+/* -------------------------------------------------------------------- code */
+
+pre {
+    margin: 1.5rem 0 0;
+    padding: 1rem 1.15rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    overflow-x: auto;
+    font-size: 0.85rem;
+    line-height: 1.7;
+}
+
+pre .c {
+    color: var(--overlay);
+}
+
+pre .p {
+    color: var(--accent);
+}
+
+/* ------------------------------------------------------------------ swatch */
+
+.themes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-top: 2rem;
+}
+
+.theme {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.7rem 0.4rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 0.85rem;
+    color: var(--subtext);
+}
+
+.theme .chips {
+    display: flex;
+}
+
+.theme .chips i {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    border: 1px solid var(--bg);
+    margin-right: -4px;
+}
+
+/* ------------------------------------------------------------------ footer */
+
+footer.site {
+    padding: 3rem 0 4rem;
+    border-top: 1px solid var(--border);
+    color: var(--subtext);
+    font-size: 0.9rem;
+}
+
+footer.site p {
+    max-width: none;
+}
+
+/* ------------------------------------------------------------------ narrow */
+
+@media (max-width: 46rem) {
+    body {
+        font-size: 16px;
+    }
+
+    section {
+        padding: 3rem 0;
+    }
+
+    /* The sidebar and the third panel are the first things a narrow window
+       loses in the application too (§7.1), so the mock loses them here. */
+    .panes {
+        grid-template-columns: 1fr;
+    }
+
+    .panes .pane:not(.focused) {
+        display: none;
+    }
+
+    header.site nav {
+        gap: 0.9rem;
+        font-size: 0.85rem;
+    }
+}
+
+@media (max-width: 30rem) {
+    /*
+     * Five links plus the wordmark do not fit on a phone. The three section
+     * links go rather than being allowed to overflow: the sections they point
+     * at are reachable by scrolling, which on a page this length is no worse,
+     * and Install and GitHub are the two a visitor actually came for.
+     */
+    header.site nav a[href="#panels"],
+    header.site nav a[href="#keys"],
+    header.site nav a[href="#themes"] {
+        display: none;
+    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    html {
+        scroll-behavior: smooth;
+    }
+}

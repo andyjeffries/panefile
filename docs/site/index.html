@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panefile — a keyboard-driven multi-panel file manager</title>
+<meta name="description" content="Panefile is a keyboard-driven file manager for Linux and macOS. One window, N independent directory panels, under 80 ms to a painted window.">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="Panefile">
+<meta property="og:description" content="A keyboard-driven, multi-panel file manager for Linux and macOS.">
+<meta property="og:url" content="https://panefile.dev/">
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="/">
+      <span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      Panefile
+    </a>
+    <nav>
+      <a href="#panels">Panels</a>
+      <a href="#keys">Keys</a>
+      <a href="#themes">Themes</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/andyjeffries/panefile">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<section class="hero">
+  <div class="wrap">
+    <h1>One window. As many directories as you need.</h1>
+    <p class="lede">
+      Panefile is a keyboard-driven file manager for Linux and macOS. Instead of
+      a window or a tab per location, one window holds any number of independent
+      directory panels side by side — each with its own path, cursor, history,
+      sort order and filter.
+    </p>
+
+    <div class="cta">
+      <a class="button primary" href="#install">Install</a>
+      <a class="button" href="https://github.com/andyjeffries/panefile">Source on GitHub</a>
+    </div>
+
+    <!-- Drawn in HTML rather than shipped as a screenshot: it stays sharp at
+         any zoom, follows the reader's colour scheme for free, and weighs a
+         couple of kilobytes. -->
+    <div class="window" role="img" aria-label="Panefile showing a sidebar and two directory panels side by side">
+      <div class="titlebar">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <em>~/Developer/panefile — Panefile</em>
+      </div>
+
+      <div class="panes">
+        <div class="pane">
+          <div class="head">PLACES</div>
+          <div class="row"><span>Home</span></div>
+          <div class="row"><span>Desktop</span></div>
+          <div class="row"><span>Downloads</span></div>
+          <div class="row"><span>Documents</span></div>
+          <div class="head" style="padding-top:.6rem">DEVICES</div>
+          <div class="row"><span>● Backup</span></div>
+          <div class="row muted"><span>○ SANDISK</span></div>
+        </div>
+
+        <div class="pane focused">
+          <div class="head">~/Developer/panefile/src &nbsp;·&nbsp; 8 items</div>
+          <div class="row"><span class="dir">app/</span><span class="size">—</span></div>
+          <div class="row"><span class="dir">config/</span><span class="size">—</span></div>
+          <div class="row cursor"><span class="dir">core/</span><span class="size">—</span></div>
+          <div class="row selected"><span class="dir">fs/</span><span class="size">—</span></div>
+          <div class="row selected"><span class="dir">model/</span><span class="size">—</span></div>
+          <div class="row"><span class="dir">platform/</span><span class="size">—</span></div>
+          <div class="row"><span class="dir">ui/</span><span class="size">—</span></div>
+          <div class="row"><span>main.cpp</span><span class="size">2.1 KiB</span></div>
+        </div>
+
+        <div class="pane">
+          <div class="head">~/Downloads &nbsp;·&nbsp; 6 items</div>
+          <div class="row"><span class="arc">qt-6.10.2.tar.xz</span><span class="size">712 MiB</span></div>
+          <div class="row"><span class="arc">panefile-1.0.zip</span><span class="size">4.8 MiB</span></div>
+          <div class="row"><span class="img">screenshot.png</span><span class="size">1.2 MiB</span></div>
+          <div class="row"><span class="exe">install.sh</span><span class="size">1.4 KiB</span></div>
+          <div class="row"><span class="lnk">latest →</span><span class="size">—</span></div>
+          <div class="row"><span>notes.md</span><span class="size">6.0 KiB</span></div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <span>drwxr-xr-x&nbsp; 501:20&nbsp; —&nbsp; 13 Aug 09:41</span>
+        <span class="right">2 selected</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="panels">
+  <div class="wrap">
+    <h2>Panels, not tabs</h2>
+    <p>
+      Panels are peers. None of them is the parent of another, and none of them
+      is a preview of another — which is what separates this from Miller
+      columns. Copying between two directories means putting them side by side
+      and pressing two keys, never dragging a window across a screen.
+    </p>
+
+    <div class="grid">
+      <div class="card">
+        <h3>Up to ten at once</h3>
+        <p>Create, split, close and cycle with single keystrokes. Below 400&nbsp;px of width only the focused panel is shown, so it still works in a quarter-screen tile.</p>
+      </div>
+      <div class="card">
+        <h3>Independent state</h3>
+        <p>Each panel keeps its own working directory, cursor, selection, history, sort order and filter. Splitting one copies its path and sort but deliberately not its selection.</p>
+      </div>
+      <div class="card">
+        <h3>Quick Look</h3>
+        <p><kbd>Space</kbd> opens a rich preview of the cursor item. The arrow keys still move the panel cursor while it is open, so you can hold <kbd>j</kbd> and flick through a folder of photographs.</p>
+      </div>
+      <div class="card">
+        <h3>Two searches</h3>
+        <p><kbd>/</kbd> filters the directory you are in as you type. <kbd>Ctrl</kbd>+<kbd>F</kbd> walks the whole subtree on a worker thread and streams matches in, ranked.</p>
+      </div>
+      <div class="card">
+        <h3>Rename in bulk</h3>
+        <p>Find and replace, add a prefix or suffix, or number a selection — with every old&nbsp;→&nbsp;new pair previewed live. Swapping two files' names works, because cycles are broken with a temporary.</p>
+      </div>
+      <div class="card">
+        <h3>Undo</h3>
+        <p>Moves, renames, bulk renames and trashing are undoable. Copying and permanent deletion are not, and say so in the confirmation rather than pretending otherwise.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="fast">
+  <div class="wrap">
+    <h2>Fast enough to leave closed</h2>
+    <p>
+      A file manager you keep open because it is slow to start is a file manager
+      that is always in your way. Panefile targets a painted window in under
+      80&nbsp;milliseconds, and every release measures it — a build that
+      regresses more than 15% against the recorded baseline fails.
+    </p>
+
+    <div class="grid">
+      <div class="card">
+        <h3>Nothing eager</h3>
+        <p>The syntax highlighter, the media backends, the D-Bus connection, every modal and every preview renderer are built on first use. A session that never previews a file never pays for one.</p>
+      </div>
+      <div class="card">
+        <h3>Nothing blocking</h3>
+        <p>Every stat, read, copy, hash and thumbnail happens off the GUI thread. A 100,000-entry directory streams in as it is scanned rather than appearing all at once at the end.</p>
+      </div>
+      <div class="card">
+        <h3>Nothing hidden</h3>
+        <p>The dynamic dependency list is checked on every build. A new load-time dependency is the most common way a program quietly gets slower to start, so it fails the build instead.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="keys">
+  <div class="wrap">
+    <h2>Everything from the keyboard</h2>
+    <p>
+      The mouse is supported and never required. Bindings are sequences of
+      chords, so <kbd>g</kbd><kbd>h</kbd> and <kbd>d</kbd><kbd>d</kbd> work
+      alongside <kbd>Ctrl</kbd>+<kbd>C</kbd>, and every one of them is
+      remappable in a plain text file.
+    </p>
+
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Keys</th><th>Action</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd></td><td>Move, enter, go up<span class="desc"> — arrow keys work too</span></td></tr>
+          <tr><td><kbd>n</kbd> / <kbd>N</kbd> / <kbd>w</kbd></td><td>New panel, split this one, close it</td></tr>
+          <tr><td><kbd>Tab</kbd></td><td>Next panel</td></tr>
+          <tr><td><kbd>Space</kbd></td><td>Quick Look<span class="desc"> — <kbd>Ctrl</kbd>+<kbd>Space</kbd> cycles where it docks</span></td></tr>
+          <tr><td><kbd>v</kbd></td><td>Selection mode<span class="desc"> — movement then extends the selection</span></td></tr>
+          <tr><td><kbd>/</kbd></td><td>Filter this directory</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>F</kbd></td><td>Find anywhere below here</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>X</kbd> / <kbd>V</kbd></td><td>Copy, cut, paste</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>B</kbd></td><td>Bulk rename the selection</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>A</kbd> / <kbd>E</kbd></td><td>Create an archive, extract one</td></tr>
+          <tr><td><kbd>g</kbd><kbd>g</kbd> · <kbd>g</kbd><kbd>h</kbd> · <kbd>g</kbd><kbd>r</kbd></td><td>Top, home, root<span class="desc"> — <kbd>g</kbd> is the &ldquo;go&rdquo; prefix, and yours to extend</span></td></tr>
+          <tr><td><kbd>?</kbd></td><td>Every binding, in a modal</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="themes">
+  <div class="wrap">
+    <h2>Themed in plain text</h2>
+    <p>
+      Twenty-three themes ship with it, all of them the real published palettes
+      rather than approximations. Colours, spacing, row height and font are TOML;
+      edit the file and the window restyles without restarting.
+    </p>
+
+    <div class="themes">
+      <span class="theme"><span class="chips"><i style="background:#1e1e2e"></i><i style="background:#89b4fa"></i><i style="background:#a6e3a1"></i></span>Catppuccin</span>
+      <span class="theme"><span class="chips"><i style="background:#1a1b26"></i><i style="background:#7aa2f7"></i><i style="background:#9ece6a"></i></span>Tokyo Night</span>
+      <span class="theme"><span class="chips"><i style="background:#282828"></i><i style="background:#83a598"></i><i style="background:#b8bb26"></i></span>Gruvbox</span>
+      <span class="theme"><span class="chips"><i style="background:#2e3440"></i><i style="background:#88c0d0"></i><i style="background:#a3be8c"></i></span>Nord</span>
+      <span class="theme"><span class="chips"><i style="background:#282a36"></i><i style="background:#bd93f9"></i><i style="background:#50fa7b"></i></span>Dracula</span>
+      <span class="theme"><span class="chips"><i style="background:#191724"></i><i style="background:#c4a7e7"></i><i style="background:#9ccfd8"></i></span>Rosé Pine</span>
+      <span class="theme"><span class="chips"><i style="background:#fdf6e3"></i><i style="background:#268bd2"></i><i style="background:#859900"></i></span>Solarized</span>
+      <span class="theme"><span class="chips"><i style="background:#2d353b"></i><i style="background:#a7c080"></i><i style="background:#83c092"></i></span>Everforest</span>
+      <span class="theme"><span class="chips"><i style="background:#1f1f28"></i><i style="background:#7e9cd8"></i><i style="background:#98bb6c"></i></span>Kanagawa</span>
+      <span class="theme"><span class="chips"><i style="background:#282c34"></i><i style="background:#61afef"></i><i style="background:#98c379"></i></span>One</span>
+      <span class="theme"><span class="chips"><i style="background:#ffffff"></i><i style="background:#007aff"></i><i style="background:#28cd41"></i></span>macOS</span>
+    </div>
+
+<pre><code><span class="c"># ~/.config/panefile/theme.toml</span>
+<span class="p">[colors]</span>
+background     = <span class="dir">"#1e1e2e"</span>
+text           = <span class="dir">"#cdd6f4"</span>
+accent         = <span class="dir">"#89b4fa"</span>
+directory      = <span class="dir">"#89b4fa"</span>
+
+<span class="p">[ui]</span>
+row_height     = 24
+panel_padding  = 8</code></pre>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <h2>Install</h2>
+
+    <div class="grid">
+      <div class="card">
+        <h3>Arch Linux</h3>
+        <p>From the AUR. The package pulls in every optional dependency, so a plain install is a full-featured one.</p>
+<pre><code>yay -S panefile</code></pre>
+      </div>
+
+      <div class="card">
+        <h3>macOS</h3>
+        <p>A real second platform, not a port shim: native paths, FSEvents, DiskArbitration and an app bundle.</p>
+<pre><code>brew install andyjeffries/tap/panefile</code></pre>
+      </div>
+
+      <div class="card">
+        <h3>From source</h3>
+        <p>Qt 6.7 or newer, CMake 3.25, a C++20 compiler. Nothing else is required; the optional pieces degrade gracefully.</p>
+<pre><code>cmake --preset release
+cmake --build --preset release</code></pre>
+      </div>
+    </div>
+
+    <p style="margin-top:2.5rem">
+      Panefile is developed and tested on Arch&nbsp;+&nbsp;Hyprland and on macOS.
+      X11 is best-effort. There is no hard dependency on any compositor.
+    </p>
+  </div>
+</section>
+
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    <p>
+      <a href="https://github.com/andyjeffries/panefile">GitHub</a> ·
+      <a href="https://github.com/andyjeffries/panefile/blob/main/IMPLEMENTATION.md">Specification</a> ·
+      <a href="https://github.com/andyjeffries/panefile/issues">Issues</a>
+    </p>
+    <p>
+      Interaction model borrowed, with thanks, from
+      <a href="https://superfile.dev">superfile</a>.
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>

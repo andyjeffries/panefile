@@ -95,6 +95,15 @@ int main(int argc, char **argv)
     if (pf::ui::FilePanel *first = window.panelStrip()->panelAt(0); first != nullptr) {
         window.panelStrip()->setFocusedPanel(first);
     }
+    // The offscreen platform leaves the pointer at the window's origin, which
+    // sits on the first sidebar row — so every render came out with a spurious
+    // hover highlight on "Home" that looked like a selection and was reported
+    // as one. A Leave event to each widget clears WA_UnderMouse, which is what
+    // moving a real pointer away would do.
+    for (QWidget *widget : window.findChildren<QWidget *>()) {
+        QEvent leave(QEvent::Leave);
+        QApplication::sendEvent(widget, &leave);
+    }
     settle(200);
 
     QImage image(QSize(width, height) * scale, QImage::Format_ARGB32);

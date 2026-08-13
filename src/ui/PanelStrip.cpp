@@ -31,7 +31,11 @@ PanelStrip::PanelStrip(QWidget *parent)
 
     m_splitter->setObjectName(QStringLiteral("panelSplitter"));
     m_splitter->setChildrenCollapsible(false);
-    m_splitter->setHandleWidth(1);
+    // Wider than the 1px used elsewhere, and transparent (see the stylesheet):
+    // each panel draws its own full rounded border, so what is wanted between
+    // them is space, not a line. This is also the drag target, and one pixel of
+    // it was never a realistic thing to hit.
+    m_splitter->setHandleWidth(6);
     layout->addWidget(m_splitter);
 }
 

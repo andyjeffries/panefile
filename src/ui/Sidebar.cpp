@@ -5,6 +5,7 @@
 #include "ui/ThemePalette.h"
 
 #include <QDir>
+#include <QEvent>
 #include <QFileInfo>
 #include <QListWidget>
 #include <QStandardPaths>
@@ -42,9 +43,29 @@ Sidebar::Sidebar(QWidget *parent) : QWidget(parent), m_list(new QListWidget(this
     // Colours come from the stylesheet; only the item-view roles the style
     // consults directly are set here.
     QPalette listPalette = m_list->palette();
-    listPalette.setColor(QPalette::Highlight, currentPalette().selectionBackground);
-    listPalette.setColor(QPalette::HighlightedText, currentPalette().text);
+    listPalette.setColor(QPalette::Active, QPalette::Highlight,
+                         currentPalette().selectionBackground);
+    listPalette.setColor(QPalette::Active, QPalette::HighlightedText, currentPalette().text);
+
+    // Invisible when the sidebar is not the thing you are working in.
+    //
+    // §5.1's places are shortcuts — press one and a panel goes there — not a
+    // state, and a highlight left on one reads as "you are here", which in a
+    // window holding several panels at several paths is true of none of them.
+    //
+    // Done through the palette rather than the stylesheet because Qt paints an
+    // unfocused selection from the Inactive group and never consults the
+    // stylesheet's ::item:selected rule for it — which is why the row stayed a
+    // desaturated grey however thoroughly the selection was cleared.
+    listPalette.setColor(QPalette::Inactive, QPalette::Highlight, currentPalette().surface);
+    listPalette.setColor(QPalette::Inactive, QPalette::HighlightedText, currentPalette().subtext);
     m_list->setPalette(listPalette);
+
+    // §5.1's places are shortcuts, not a state. A highlight left on one reads
+    // as "you are here", which in a window holding several panels at several
+    // paths is true of none of them — so the current row is dropped whenever
+    // the sidebar stops being the thing you are working in.
+    m_list->installEventFilter(this);
 
     connect(m_list, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
         if (item == nullptr || item->data(kIsHeadingRole).toBool()) {
@@ -52,6 +73,8 @@ Sidebar::Sidebar(QWidget *parent) : QWidget(parent), m_list(new QListWidget(this
         }
         const QString path = item->data(kPathRole).toString();
         if (!path.isEmpty()) {
+            // The place has been opened, so nothing here is current any more.
+            clearHighlight();
             Q_EMIT placeActivated(path);
             return;
         }
@@ -129,7 +152,27 @@ void Sidebar::populate()
 
     addDevices();
 
+    clearHighlight();
+
     m_populated = true;
+}
+
+void Sidebar::clearHighlight()
+{
+    // Both, and in this order. The current row and the selection are separate
+    // things in an item view: clearing the current index leaves a selected row
+    // still painted, which is what kept "Home" highlighted after the current
+    // index had already been dropped.
+    m_list->clearSelection();
+    m_list->setCurrentRow(-1);
+}
+
+bool Sidebar::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == m_list && event->type() == QEvent::FocusOut) {
+        clearHighlight();
+    }
+    return QWidget::eventFilter(watched, event);
 }
 
 void Sidebar::addDevices()

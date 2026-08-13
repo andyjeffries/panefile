@@ -112,6 +112,12 @@ QListWidget#sidebarList::item:hover {
     background-color: %{hover};
 }
 
+/* The sidebar's entries are shortcuts — press one and a panel goes there — not
+   a state, so nothing here is highlighted unless the sidebar has focus, where
+   the highlight means "this is the one Enter will open". That is arranged in
+   Sidebar rather than here: Qt's stylesheet grammar does not reliably combine a
+   widget pseudo-state with a sub-control one, and `:focus::item:selected`
+   quietly painted the whole list instead of a row. */
 QListWidget#sidebarList::item:selected {
     background-color: %{selection_bg};
     color: %{text};
@@ -194,6 +200,19 @@ QSplitter::handle {
 }
 
 QSplitter::handle:hover {
+    background-color: %{border_focused};
+}
+
+/* Except between panels, which draw their own full borders — a line there is a
+   third edge between two that are already there, and reads as a seam. The
+   handle keeps its width so it can still be dragged; it simply does not paint.
+   Hover still shows, because a grab target you cannot see is worse than a
+   line. */
+QSplitter#panelSplitter::handle {
+    background-color: transparent;
+}
+
+QSplitter#panelSplitter::handle:hover {
     background-color: %{border_focused};
 }
 

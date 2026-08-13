@@ -2,6 +2,8 @@
 #include "config/Theme.h"
 #include "model/DirectoryModel.h"
 #include "ui/FilePanel.h"
+#include "ui/MainWindow.h"
+#include "ui/PanelStrip.h"
 #include "ui/PanelView.h"
 #include "ui/ThemePalette.h"
 

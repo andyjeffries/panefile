@@ -20,6 +20,14 @@
 #include <QVBoxLayout>
 
 namespace pf::ui {
+namespace {
+
+/// The width of the border StyleSheetBuilder draws on QWidget#filePanel. The
+/// two have to agree: the stylesheet draws it and the layout has to leave room
+/// for it.
+constexpr int kPanelBorderWidth = 1;
+
+} // namespace
 
 FilePanel::FilePanel(QWidget *parent)
     : QWidget(parent), m_model(new DirectoryModel(this)), m_proxy(new FilterSortProxy(this)),
@@ -32,7 +40,17 @@ FilePanel::FilePanel(QWidget *parent)
     setMinimumWidth(140);
 
     auto *layout = new QVBoxLayout(this);
-    layout->setContentsMargins(0, 0, 0, 0);
+
+    // Inset by the border the stylesheet draws on QWidget#filePanel.
+    //
+    // A stylesheet border on a plain QWidget does not move its children: with
+    // zero margins the list's viewport is laid out *over* the border and paints
+    // on top of it. That went unnoticed until M11 added row banding, at which
+    // point every banded row painted out its slice of the focused panel's blue
+    // border and the border appeared to break in and out down the panel — one
+    // 26-pixel segment per row, which is the row height.
+    layout->setContentsMargins(kPanelBorderWidth, kPanelBorderWidth, kPanelBorderWidth,
+                               kPanelBorderWidth);
     layout->setSpacing(0);
 
     m_header->setObjectName(QStringLiteral("panelHeader"));

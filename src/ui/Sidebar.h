@@ -56,6 +56,10 @@ public:
     /// is not on one.
     void unmountCurrentVolume();
 
+    /// Drops the current row when the list loses focus. Public because QObject
+    /// declares it so.
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
 Q_SIGNALS:
     /// The user chose a place. The panel controller decides which panel it
     /// opens in; the sidebar deliberately does not know.
@@ -69,6 +73,10 @@ private:
     void addHeading(const QString &title);
     void addPlace(const QString &title, const QString &path);
     void addDevices();
+
+    /// Drops both the current row and the selection, so no place is left
+    /// looking like a state.
+    void clearHighlight();
 
     QListWidget *m_list = nullptr;
     QStringList m_pinned;

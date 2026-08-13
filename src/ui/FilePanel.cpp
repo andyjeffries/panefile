@@ -92,6 +92,11 @@ FilePanel::FilePanel(QWidget *parent)
 
     connect(m_view, &QListView::activated, this, [this] { activateCursorItem(); });
 
+    // §7.7's viewport window, refreshed on the two things that change it:
+    // scrolling, and rows arriving.
+    connect(m_view->verticalScrollBar(), &QScrollBar::valueChanged, this,
+            [this] { updateThumbnailWindow(); });
+
     applyPalette();
     setActive(false);
 }
@@ -278,6 +283,25 @@ QString FilePanel::cursorName() const
     return current.isValid() ? current.data(DirectoryModel::NameRole).toString() : QString();
 }
 
+QString FilePanel::cursorPath() const
+{
+    const QString name = cursorName();
+    if (name.isEmpty() || m_path.isEmpty()) {
+        return {};
+    }
+    return QDir(m_path).absoluteFilePath(name);
+}
+
+FileEntry FilePanel::cursorEntry() const
+{
+    const QModelIndex current = m_view->currentIndex();
+    if (!current.isValid()) {
+        return {};
+    }
+    const QVariant value = current.data(DirectoryModel::EntryRole);
+    return value.canConvert<FileEntry>() ? value.value<FileEntry>() : FileEntry{};
+}
+
 void FilePanel::setCursorName(const QString &name)
 {
     for (int row = 0; row < m_proxy->rowCount(); ++row) {
@@ -356,6 +380,29 @@ void FilePanel::movePage(int direction)
     // One row of overlap, so a page down leaves a line of context rather than
     // making the reader work out whether anything was skipped.
     moveCursor(direction * std::max(1, visibleRows - 1));
+}
+
+void FilePanel::setThumbnailsEnabled(bool enabled)
+{
+    m_model->setThumbnailsEnabled(enabled);
+    if (enabled) {
+        updateThumbnailWindow();
+    }
+}
+
+void FilePanel::updateThumbnailWindow()
+{
+    if (!m_model->thumbnailsEnabled()) {
+        return;
+    }
+
+    const QModelIndex first = m_view->indexAt(m_view->viewport()->rect().topLeft());
+    const QModelIndex last = m_view->indexAt(m_view->viewport()->rect().bottomLeft());
+
+    const int firstRow = first.isValid() ? m_proxy->mapToSource(first).row() : 0;
+    const int lastRow = last.isValid() ? m_proxy->mapToSource(last).row() : m_model->rowCount() - 1;
+
+    m_model->requestThumbnailRange(std::min(firstRow, lastRow), std::max(firstRow, lastRow));
 }
 
 void FilePanel::setShowHidden(bool show)
@@ -542,6 +589,7 @@ bool FilePanel::isActive() const
 
 void FilePanel::onScanFinished(const QString &path, int count)
 {
+    updateThumbnailWindow();
     Q_UNUSED(path)
     Q_UNUSED(count)
     m_status->hide();

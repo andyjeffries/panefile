@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ui/quicklook/QuickLookDock.h"
+
 #include <QMainWindow>
 
 class QLabel;
@@ -9,6 +11,7 @@ namespace pf::ui {
 
 class FilePanel;
 class PanelStrip;
+class QuickLookOverlay;
 class Sidebar;
 
 /// The single top-level window: sidebar, panel strip and status furniture
@@ -42,6 +45,22 @@ public:
     void showProcessBar(QWidget *processBar);
     void hideProcessBar();
 
+    /// Adopts the Quick Look pane. Called on its first use; §3.4 keeps the
+    /// widget — and every renderer behind it — from existing until then.
+    void setQuickLookWidget(QWidget *view);
+    QWidget *quickLookWidget() const;
+
+    /// Places the pane for `dock` (§7.6). Idempotent, and safe to call while it
+    /// is hidden: the placement is what changes, not the visibility.
+    ///
+    /// `floatPercent` and `dockPercent` are `quicklook.float_size_percent` and
+    /// `quicklook.dock_size_percent`.
+    void setQuickLookDock(QuickLookDock dock, int floatPercent, int dockPercent);
+    QuickLookDock quickLookDock() const;
+
+    void setQuickLookVisible(bool visible);
+    bool isQuickLookVisible() const;
+
 Q_SIGNALS:
     /// Emitted once, after the window's first paint completes. Drives
     /// --quit-after-paint and the startup measurements of §3.4, which are taken
@@ -52,17 +71,42 @@ protected:
     void paintEvent(QPaintEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
 
+Q_SIGNALS:
+    /// The pane's close affordance, or a click on the float backdrop.
+    void quickLookDismissed();
+
 private:
     void updateFooter();
     void connectPanel(FilePanel *panel);
 
+    /// Detaches the pane from whichever container currently holds it, without
+    /// destroying it. Every dock change goes through this first, so no mode has
+    /// to know which mode preceded it.
+    void detachQuickLook();
+
+    /// Lazily built, because the float backdrop is only needed by two of the
+    /// six modes.
+    QuickLookOverlay *quickLookOverlay();
+
     QSplitter *m_splitter = nullptr;
+
+    /// Vertical, holding the horizontal splitter and — in bottom dock mode —
+    /// the Quick Look pane. §7.6 calls the docked modes "user-resizable", which
+    /// a splitter gives and a layout does not.
+    QSplitter *m_contentSplitter = nullptr;
     Sidebar *m_sidebar = nullptr;
     PanelStrip *m_strip = nullptr;
     QLabel *m_footer = nullptr;
     QLabel *m_pending = nullptr;
     QWidget *m_processBar = nullptr;
     QWidget *m_footerRow = nullptr;
+
+    QWidget *m_quickLook = nullptr;
+    QuickLookOverlay *m_quickLookOverlay = nullptr;
+    QuickLookDock m_quickLookDock = QuickLookDock::Float;
+    int m_quickLookFloatPercent = 70;
+    int m_quickLookDockPercent = 35;
+    bool m_quickLookVisible = false;
 
     /// Connections to whichever panel currently has focus. Kept so they can be
     /// dropped when focus moves: Qt::UniqueConnection cannot be used with

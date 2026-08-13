@@ -2,6 +2,7 @@
 
 #include <QCollator>
 #include <QSortFilterProxyModel>
+#include <QString>
 
 namespace pf {
 
@@ -13,6 +14,11 @@ enum class SortKey {
     Type,
     Random,
 };
+
+/// Parses `panels.default_sort` and the `o` menu's names. Anything
+/// unrecognised is Name, which is §8's documented default.
+SortKey sortKeyFromName(const QString &name);
+QString sortKeyName(SortKey key);
 
 /// Per-panel filtering and sorting (§4.4).
 ///

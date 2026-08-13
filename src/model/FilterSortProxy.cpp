@@ -5,6 +5,40 @@
 #include "model/FileEntry.h"
 
 namespace pf {
+
+SortKey sortKeyFromName(const QString &name)
+{
+    if (name == QLatin1String("size")) {
+        return SortKey::Size;
+    }
+    if (name == QLatin1String("modified")) {
+        return SortKey::Modified;
+    }
+    if (name == QLatin1String("type")) {
+        return SortKey::Type;
+    }
+    if (name == QLatin1String("random")) {
+        return SortKey::Random;
+    }
+    return SortKey::Name;
+}
+
+QString sortKeyName(SortKey key)
+{
+    switch (key) {
+    case SortKey::Size:
+        return QStringLiteral("size");
+    case SortKey::Modified:
+        return QStringLiteral("modified");
+    case SortKey::Type:
+        return QStringLiteral("type");
+    case SortKey::Random:
+        return QStringLiteral("random");
+    case SortKey::Name:
+        break;
+    }
+    return QStringLiteral("name");
+}
 namespace {
 
 /// A stable pseudo-random ordering key.

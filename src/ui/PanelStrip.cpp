@@ -36,7 +36,9 @@ PanelStrip::PanelStrip(QWidget *parent)
 
 FilePanel *PanelStrip::addPanel(const QString &path)
 {
-    if (m_panels.size() >= kMaxPanels) {
+    // §7.6: the Quick Look pane in `panel` dock mode "counts toward
+    // panels.max_count", so it occupies one of the ten slots.
+    if (m_panels.size() + (m_quickLookSlot != nullptr ? 1 : 0) >= kMaxPanels) {
         qCDebug(pfUi) << "panel limit reached";
         Q_EMIT panelLimitReached();
         Q_EMIT statusMessage(tr("At most %1 panels").arg(kMaxPanels));
@@ -50,6 +52,11 @@ FilePanel *PanelStrip::addPanel(const QString &path)
     m_splitter->addWidget(panel);
     m_panels.append(panel);
     connectPanel(panel);
+
+    // Before the scan: settings that change what is listed — hidden files, sort
+    // order — must be in place, or the first scan would be filtered wrongly and
+    // then re-filtered a moment later.
+    Q_EMIT panelCreated(panel);
 
     panel->navigateTo(path);
     equalise();
@@ -193,7 +200,10 @@ QList<FilePanel *> PanelStrip::panels() const
 
 void PanelStrip::equalise()
 {
-    const int count = static_cast<int>(m_panels.size());
+    // The splitter's own count, not m_panels.size(): §7.6's `panel` dock mode
+    // puts the Quick Look pane in here "as though it were another panel", and
+    // leaving it out of the division would give it whatever width was left.
+    const int count = m_splitter->count();
     if (count == 0) {
         return;
     }
@@ -223,6 +233,34 @@ void PanelStrip::equalise()
         sizes.append(std::max(1, available / count));
     }
     m_splitter->setSizes(sizes);
+}
+
+void PanelStrip::setQuickLookSlot(QWidget *widget)
+{
+    if (m_quickLookSlot == widget) {
+        return;
+    }
+
+    if (m_quickLookSlot != nullptr) {
+        // setParent(nullptr) rather than hide(): a hidden widget still holds an
+        // index in the splitter, and equalise() would keep dividing width for
+        // something invisible.
+        m_quickLookSlot->setParent(nullptr);
+    }
+
+    m_quickLookSlot = widget;
+
+    if (m_quickLookSlot != nullptr) {
+        m_splitter->addWidget(m_quickLookSlot);
+    }
+
+    equalise();
+    Q_EMIT panelCountChanged(count());
+}
+
+QWidget *PanelStrip::quickLookSlot() const
+{
+    return m_quickLookSlot;
 }
 
 void PanelStrip::applyResponsiveLayout(int availableWidth)

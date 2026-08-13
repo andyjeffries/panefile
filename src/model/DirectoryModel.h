@@ -3,6 +3,7 @@
 #include "model/FileEntry.h"
 
 #include <QAbstractListModel>
+#include <QSet>
 #include <QString>
 
 #include <memory>
@@ -43,6 +44,10 @@ public:
     };
     Q_ENUM(Roles)
 
+    /// §7.7: "Only request thumbnails for rows in or within 20 rows of the
+    /// viewport; cancel requests for rows that scroll away."
+    static constexpr int kThumbnailOvershoot = 20;
+
     explicit DirectoryModel(QObject *parent = nullptr);
     ~DirectoryModel() override;
 
@@ -57,6 +62,17 @@ public:
     /// default, so a model used for a one-off listing — a Quick Look directory
     /// preview, say — does not take a watch it will never use.
     void setWatchingEnabled(bool enabled);
+
+    /// §7.7's `thumbnails.enabled`. Off by default at construction time so a
+    /// panel that never scrolls costs nothing; the panel turns it on from the
+    /// configuration once it has one.
+    void setThumbnailsEnabled(bool enabled);
+    bool thumbnailsEnabled() const;
+
+    /// Queues thumbnails for the visible rows and the overshoot either side,
+    /// and cancels anything queued outside that window. Called by the panel on
+    /// scroll and after a scan.
+    void requestThumbnailRange(int firstVisibleRow, int lastVisibleRow);
     bool isWatchingEnabled() const;
 
     int rowCount(const QModelIndex &parent = {}) const override;
@@ -97,6 +113,8 @@ private:
 
     void startWatching();
 
+    QString absolutePathFor(const FileEntry &entry) const;
+
     void onEntriesReady(const QString &path, const QList<FileEntry> &entries);
     void onScanFinished(const QString &path, int total);
     void onScanFailed(const QString &path, const QString &reason);
@@ -104,6 +122,11 @@ private:
     std::unique_ptr<fs::DirectoryScanner> m_scanner;
     std::shared_ptr<fs::DirectoryWatcher> m_watcher;
     bool m_watchingEnabled = false;
+    bool m_thumbnailsEnabled = false;
+
+    /// Paths currently inside the request window, so a scroll can cancel only
+    /// what left it rather than cancelling and requeueing everything.
+    QSet<QString> m_thumbnailWindow;
     std::vector<FileEntry> m_entries;
     QString m_path;
     QString m_error;

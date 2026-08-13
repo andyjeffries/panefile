@@ -1,5 +1,6 @@
 #pragma once
 
+#include "model/FileEntry.h"
 #include "model/FilterSortProxy.h"
 
 #include <QSet>
@@ -47,10 +48,21 @@ public:
     QString cursorName() const;
     void setCursorName(const QString &name);
 
+    /// The cursor item's absolute path, empty when there is no cursor.
+    QString cursorPath() const;
+
+    /// The cursor item's metadata. Quick Look and the footer both want it, and
+    /// reaching through the panel's view into the model from outside would tie
+    /// them to the proxy's role numbering.
+    FileEntry cursorEntry() const;
+
     void moveCursor(int delta);
     void moveCursorToStart();
     void moveCursorToEnd();
     void movePage(int direction);
+
+    /// §7.7's `thumbnails.enabled`, applied to this panel's model.
+    void setThumbnailsEnabled(bool enabled);
 
     void setShowHidden(bool show);
     bool showHidden() const;
@@ -113,6 +125,11 @@ protected:
 private:
     void applyPalette();
     void applyHeaderElision();
+
+    /// §7.7: queues thumbnails for the rows on screen and the overshoot either
+    /// side. The proxy reorders and filters, so the visible *source* rows are
+    /// not a contiguous range and have to be mapped one by one.
+    void updateThumbnailWindow();
 
     /// §7.3: after the watched directory disappears, move to the nearest
     /// ancestor that still exists.

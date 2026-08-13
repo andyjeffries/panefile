@@ -24,6 +24,7 @@ class Keymap;
 } // namespace pf::input
 
 namespace pf::ui {
+class FilePanel;
 class HelpModal;
 class MainWindow;
 class ProcessBar;
@@ -35,6 +36,7 @@ struct CommandLineOptions;
 class FileOperations;
 class KeyDispatcher;
 class PanelController;
+class QuickLookController;
 
 /// The QApplication subclass that owns the window and the deferred-startup
 /// queue.
@@ -85,6 +87,9 @@ private:
     void reloadConfiguration(const QStringList &changedFiles);
     void buildInputSystem();
     void registerGlobalActions();
+
+    /// Applies `[panels]` and `[thumbnails]` to a newly created panel.
+    void configurePanel(ui::FilePanel *panel) const;
     ui::HelpModal *helpModal();
     ui::ProcessBar *processBar();
 
@@ -96,6 +101,7 @@ private:
     std::unique_ptr<input::Keymap> m_keymap;
     std::unique_ptr<KeyDispatcher> m_dispatcher;
     std::unique_ptr<PanelController> m_panelController;
+    std::unique_ptr<QuickLookController> m_quickLook;
     std::unique_ptr<FileOperations> m_fileOperations;
     std::unique_ptr<config::ConfigWatcher> m_configWatcher;
     std::unique_ptr<fs::JobEngine> m_jobEngine;

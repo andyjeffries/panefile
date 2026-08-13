@@ -82,17 +82,30 @@ pf_layer_library(pf_config
 pf_layer_library(pf_fs
     LAYER fs
     SOURCES
+        fs/ArchiveReader.cpp
         fs/DirectoryScanner.cpp
         fs/DirectoryWatcher.cpp
         fs/FsError.cpp
         fs/WatchCoalescer.cpp
         fs/Job.cpp
         fs/JobEngine.cpp
+        fs/LibArchive.cpp
         fs/Trash.cpp
         fs/UndoStack.cpp
         fs/jobs/DeleteJob.cpp
         fs/jobs/TransferJob.cpp
     PUBLIC_DEPENDS Qt6::Core pf_core pf_platform)
+
+if(PF_HAVE_LIBARCHIVE)
+    # Headers only, deliberately. §3.4: "Optional heavy dependencies … must not
+    # be direct link-time dependencies of the main binary. … A DT_NEEDED entry
+    # costs relocation and page-in time at every launch whether or not the code
+    # is called." fs/LibArchive.cpp resolves the symbols with QLibrary on the
+    # first archive the user opens, so the include directories are wanted and
+    # the link is not.
+    target_compile_definitions(pf_fs PRIVATE PF_HAVE_LIBARCHIVE=1)
+    target_include_directories(pf_fs PRIVATE ${LibArchive_INCLUDE_DIRS})
+endif()
 
 # ---------------------------------------------------------------------------
 # model — the directory model, its proxy, and icon resolution.
@@ -103,6 +116,7 @@ pf_layer_library(pf_model
         model/DirectoryModel.cpp
         model/FilterSortProxy.cpp
         model/IconProvider.cpp
+        model/ThumbnailCache.cpp
     PUBLIC_DEPENDS Qt6::Core Qt6::Gui pf_core pf_platform pf_fs)
 
 # §4.3's bundled fallback icon set, embedded rather than installed: it is the
@@ -137,6 +151,18 @@ pf_layer_library(pf_ui
         ui/Sidebar.cpp
         ui/ThemePalette.cpp
         ui/modals/ConflictModal.cpp
+        ui/quicklook/QuickLookDock.cpp
+        ui/quicklook/QuickLookLoader.cpp
+        ui/quicklook/QuickLookOverlay.cpp
+        ui/quicklook/QuickLookRegistry.cpp
+        ui/quicklook/QuickLookView.cpp
+        ui/quicklook/renderers/ArchiveRenderer.cpp
+        ui/quicklook/renderers/DirectoryRenderer.cpp
+        ui/quicklook/renderers/HexRenderer.cpp
+        ui/quicklook/renderers/ImageRenderer.cpp
+        ui/quicklook/renderers/MediaRenderer.cpp
+        ui/quicklook/renderers/PdfRenderer.cpp
+        ui/quicklook/renderers/TextRenderer.cpp
         ui/modals/HelpModal.cpp
         ui/modals/Modal.cpp
     PUBLIC_DEPENDS
@@ -154,6 +180,7 @@ pf_layer_library(pf_app
         app/FileOperations.cpp
         app/KeyDispatcher.cpp
         app/PanelController.cpp
+        app/QuickLookController.cpp
     PUBLIC_DEPENDS
         Qt6::Core Qt6::Gui Qt6::Widgets
         pf_core pf_platform pf_config pf_input pf_fs)

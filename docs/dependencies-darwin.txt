@@ -1,7 +1,18 @@
 # Dynamic dependencies of the pf binary on macOS.
 # Regenerate: scripts/check-dependencies.sh build/release/bin/pf.app/Contents/MacOS/pf > docs/dependencies-darwin.txt
 # See §3.4: every optional feature must arrive as a plugin, not a DT_NEEDED entry.
+#
+# CoreFoundation and CoreServices arrived with M5's FSEvents watcher. They are
+# the macOS half of §7.3's platform seam, not an optional feature — there is no
+# directory watching on macOS without them, and they are in the dyld shared
+# cache, so they cost no page-in.
+#
+# libarchive is deliberately absent: §3.4 forbids it as a link-time dependency,
+# and fs/LibArchive.cpp resolves its symbols with QLibrary on the first archive
+# the user opens.
 AppKit
+CoreFoundation
+CoreServices
 DiskArbitration
 ImageIO
 IOKit

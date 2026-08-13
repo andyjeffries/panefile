@@ -31,6 +31,27 @@ if(PF_PLATFORM_LINUX)
     list(APPEND PF_REQUIRED_QT_COMPONENTS DBus)
 endif()
 
+# libarchive is a required dependency (§2), not an optional one: §7.10's create
+# and extract are core features, and it is small enough that making it optional
+# would buy nothing.
+if(PF_PLATFORM_DARWIN)
+    # Homebrew keeps libarchive keg-only: macOS ships an older copy in /usr/lib
+    # that FindLibArchive would otherwise prefer, and whose headers are absent.
+    foreach(prefix "/opt/homebrew/opt/libarchive" "/usr/local/opt/libarchive")
+        if(EXISTS "${prefix}")
+            list(APPEND CMAKE_PREFIX_PATH "${prefix}")
+        endif()
+    endforeach()
+endif()
+
+find_package(LibArchive)
+if(LibArchive_FOUND)
+    set(PF_HAVE_LIBARCHIVE ON)
+else()
+    message(WARNING
+        "libarchive was not found. Archive preview and extraction will be unavailable.")
+endif()
+
 find_package(Qt6 6.7 REQUIRED COMPONENTS ${PF_REQUIRED_QT_COMPONENTS})
 qt_standard_project_setup()
 

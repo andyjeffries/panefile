@@ -7,6 +7,7 @@
 #include "app/FileOperations.h"
 #include "app/KeyDispatcher.h"
 #include "app/PanelController.h"
+#include "app/QuickLookController.h"
 #include "config/Config.h"
 #include "config/ConfigWatcher.h"
 #include "config/Hotkeys.h"
@@ -17,6 +18,7 @@
 #include "core/Version.h"
 #include "fs/JobEngine.h"
 #include "fs/UndoStack.h"
+#include "model/ThumbnailCache.h"
 #include "platform/Paths.h"
 #include "ui/FilePanel.h"
 #include "ui/MainWindow.h"
@@ -113,7 +115,32 @@ void Application::buildInputSystem()
 
     m_panelController->registerActions();
     m_fileOperations->registerActions();
+    m_quickLook = std::make_unique<QuickLookController>(m_mainWindow.get(), m_registry.get());
+    m_quickLook->applySettings(m_settings.quicklook);
+    m_quickLook->registerActions();
+
+    connect(m_mainWindow->panelStrip(), &ui::PanelStrip::panelCreated, this,
+            &Application::configurePanel);
+
     registerGlobalActions();
+}
+
+void Application::configurePanel(ui::FilePanel *panel) const
+{
+    if (panel == nullptr) {
+        return;
+    }
+
+    panel->setShowHidden(m_settings.panels.showHidden);
+    panel->setSortKey(sortKeyFromName(m_settings.panels.defaultSort));
+
+    // §7.7: thumbnails are a panel-level facility, so a build with them
+    // disabled never constructs the cache's memory tier at all.
+    panel->setThumbnailsEnabled(m_settings.thumbnails.enabled);
+
+    ThumbnailCache::instance().setEnabled(m_settings.thumbnails.enabled);
+    ThumbnailCache::instance().setMaxFileSizeMb(m_settings.thumbnails.maxFileSizeMb);
+    ThumbnailCache::instance().setVideoEnabled(m_settings.thumbnails.video);
 }
 
 void Application::registerGlobalActions()
@@ -130,6 +157,14 @@ void Application::registerGlobalActions()
                                ActionCategory::General, [this] {
                                    if (m_helpModal != nullptr && m_helpModal->isVisible()) {
                                        m_helpModal->dismiss();
+                                       return;
+                                   }
+                                   // §7.6: Esc dismisses Quick Look before it
+                                   // means anything else. Quitting the
+                                   // application out from under an open preview
+                                   // would be a surprising reading of one key.
+                                   if (m_quickLook != nullptr && m_quickLook->isOpen()) {
+                                       m_quickLook->close();
                                        return;
                                    }
                                    quit();
@@ -249,6 +284,9 @@ void Application::reloadConfiguration(const QStringList &changedFiles)
             for (ui::FilePanel *panel : m_mainWindow->panelStrip()->panels()) {
                 panel->refreshTheme();
             }
+            if (m_quickLook != nullptr) {
+                m_quickLook->applySettings(m_settings.quicklook);
+            }
         }
     }
 
@@ -333,6 +371,14 @@ bool Application::notify(QObject *receiver, QEvent *event)
         const bool typing =
             focus != nullptr && focus->inherits("QLineEdit") &&
             !(keyEvent->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier));
+
+        // §7.6's per-renderer keys — `+`/`-`/`0`, `[`/`]`, `/` — are offered to
+        // the renderer before the dispatcher. Movement keys are never consumed
+        // there, which is what keeps "the arrow keys still move the panel
+        // cursor" true while a preview is open.
+        if (!typing && m_quickLook != nullptr && m_quickLook->handleKey(keyEvent)) {
+            return true;
+        }
 
         if (!typing && m_dispatcher->handleKeyPress(keyEvent)) {
             return true;

@@ -138,12 +138,26 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
     // Icon, tinted to the same colour the name is painted in, so the row reads
     // as one thing rather than as a picture next to some text.
     const QColor nameColour = colourFor(entry);
-    const QIcon icon = IconProvider::instance().iconFor(entry, nameColour);
-    if (!icon.isNull()) {
-        const QRect iconRect(x, row.top() + ((row.height() - kIconSize) / 2), kIconSize, kIconSize);
+    const QRect iconRect(x, row.top() + ((row.height() - kIconSize) / 2), kIconSize, kIconSize);
+
+    // §7.7: a generated thumbnail replaces the icon for the row it belongs to.
+    // Served from the model's memory tier, which is why this stays a hash
+    // lookup and not the file read a thumbnail would otherwise imply.
+    const QVariant thumbnail = index.data(DirectoryModel::ThumbnailRole);
+    const auto image = thumbnail.canConvert<QImage>() ? thumbnail.value<QImage>() : QImage();
+
+    if (!image.isNull()) {
+        const QSize scaled = image.size().scaled(iconRect.size(), Qt::KeepAspectRatio);
+        painter->drawImage(QRect(iconRect.x() + ((iconRect.width() - scaled.width()) / 2),
+                                 iconRect.y() + ((iconRect.height() - scaled.height()) / 2),
+                                 scaled.width(), scaled.height()),
+                           image);
+    } else if (const QIcon icon = IconProvider::instance().iconFor(entry, nameColour);
+               !icon.isNull()) {
         icon.paint(painter, iconRect, Qt::AlignCenter,
                    entry.isBroken ? QIcon::Disabled : QIcon::Normal);
     }
+
     x += kIconSize + kHorizontalPadding;
 
     // Right-hand columns are laid out first so the name knows how much room it

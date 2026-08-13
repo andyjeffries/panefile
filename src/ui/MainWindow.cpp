@@ -9,6 +9,7 @@
 #include "ui/PanelStrip.h"
 #include "ui/Sidebar.h"
 #include "ui/ThemePalette.h"
+#include "ui/quicklook/QuickLookOverlay.h"
 
 #include <QHBoxLayout>
 #include <QLabel>
@@ -31,7 +32,8 @@ constexpr int kStatusMessageMs = 4000;
 } // namespace
 
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent), m_splitter(new QSplitter(Qt::Horizontal)), m_sidebar(new Sidebar),
+    : QMainWindow(parent), m_splitter(new QSplitter(Qt::Horizontal)),
+      m_contentSplitter(new QSplitter(Qt::Vertical)), m_sidebar(new Sidebar),
       m_strip(new PanelStrip), m_footer(new QLabel), m_pending(new QLabel)
 {
     setObjectName(QStringLiteral("mainWindow"));
@@ -51,7 +53,16 @@ MainWindow::MainWindow(QWidget *parent)
     m_splitter->setStretchFactor(0, 0);
     m_splitter->setStretchFactor(1, 1);
     m_splitter->setSizes({180, 1020});
-    layout->addWidget(m_splitter, 1);
+
+    // The vertical splitter exists whether or not Quick Look is docked below:
+    // introducing it later would mean re-parenting the panel strip at the
+    // moment the user pressed a key, which loses focus and scroll position.
+    m_contentSplitter->setObjectName(QStringLiteral("contentSplitter"));
+    m_contentSplitter->setChildrenCollapsible(false);
+    m_contentSplitter->setHandleWidth(1);
+    m_contentSplitter->addWidget(m_splitter);
+    m_contentSplitter->setStretchFactor(0, 1);
+    layout->addWidget(m_contentSplitter, 1);
 
     // The footer row carries both the cursor metadata and the pending-chord
     // indicator, which sits at the right where it does not shift the metadata
@@ -163,6 +174,161 @@ void MainWindow::hideProcessBar()
     if (m_processBar != nullptr) {
         m_processBar->hide();
     }
+}
+
+QuickLookOverlay *MainWindow::quickLookOverlay()
+{
+    if (m_quickLookOverlay == nullptr) {
+        m_quickLookOverlay = new QuickLookOverlay(centralWidget());
+        connect(m_quickLookOverlay, &QuickLookOverlay::backdropClicked, this,
+                &MainWindow::quickLookDismissed);
+    }
+    return m_quickLookOverlay;
+}
+
+void MainWindow::setQuickLookWidget(QWidget *view)
+{
+    if (m_quickLook == view) {
+        return;
+    }
+    m_quickLook = view;
+    if (m_quickLook != nullptr) {
+        m_quickLook->hide();
+        setQuickLookDock(m_quickLookDock, m_quickLookFloatPercent, m_quickLookDockPercent);
+    }
+}
+
+QWidget *MainWindow::quickLookWidget() const
+{
+    return m_quickLook;
+}
+
+QuickLookDock MainWindow::quickLookDock() const
+{
+    return m_quickLookDock;
+}
+
+void MainWindow::detachQuickLook()
+{
+    if (m_quickLook == nullptr) {
+        return;
+    }
+
+    if (m_quickLookOverlay != nullptr && m_quickLookOverlay->contentWidget() == m_quickLook) {
+        m_quickLookOverlay->hideOverlay();
+        m_quickLookOverlay->setContentWidget(nullptr);
+        // The drop shadow belongs to float mode. Left in place it would render
+        // as a dark smear along the edge of a docked pane.
+        m_quickLook->setGraphicsEffect(nullptr);
+    }
+
+    m_strip->setQuickLookSlot(nullptr);
+
+    // setParent(nullptr) rather than hide(): a widget left in a splitter still
+    // occupies an index, and the next mode would insert beside it rather than
+    // in place of it.
+    m_quickLook->setParent(nullptr);
+    m_quickLook->hide();
+
+    // Panels are only hidden by full mode, and it is the only mode that has to
+    // put them back.
+    m_splitter->show();
+}
+
+void MainWindow::setQuickLookDock(QuickLookDock dock, int floatPercent, int dockPercent)
+{
+    m_quickLookDock = dock;
+    m_quickLookFloatPercent = floatPercent;
+    m_quickLookDockPercent = dockPercent;
+
+    if (m_quickLook == nullptr) {
+        return;
+    }
+
+    detachQuickLook();
+
+    switch (dock) {
+    case QuickLookDock::Float:
+    case QuickLookDock::Full: {
+        QuickLookOverlay *overlay = quickLookOverlay();
+        overlay->setSizePercent(dock == QuickLookDock::Full ? 100 : floatPercent);
+        overlay->setContentWidget(m_quickLook);
+        if (m_quickLookVisible) {
+            overlay->showOverlay();
+        }
+        break;
+    }
+
+    case QuickLookDock::Right:
+    case QuickLookDock::Left: {
+        // Beside the panel strip, inside the same splitter, so dragging the
+        // handle trades width between the two the way §7.6 asks.
+        const int index = dock == QuickLookDock::Left ? m_splitter->indexOf(m_strip)
+                                                      : m_splitter->indexOf(m_strip) + 1;
+        m_splitter->insertWidget(index, m_quickLook);
+        m_quickLook->setVisible(m_quickLookVisible);
+
+        const int total = m_splitter->width();
+        const int paneWidth = total * dockPercent / 100;
+        QList<int> sizes = m_splitter->sizes();
+        if (sizes.size() >= 2) {
+            sizes[index] = paneWidth;
+            const int stripIndex = m_splitter->indexOf(m_strip);
+            sizes[stripIndex] = qMax(1, sizes.at(stripIndex) - paneWidth);
+            m_splitter->setSizes(sizes);
+        }
+        break;
+    }
+
+    case QuickLookDock::Bottom: {
+        m_contentSplitter->addWidget(m_quickLook);
+        m_contentSplitter->setStretchFactor(1, 0);
+        m_quickLook->setVisible(m_quickLookVisible);
+
+        const int total = m_contentSplitter->height();
+        const int paneHeight = total * dockPercent / 100;
+        m_contentSplitter->setSizes({qMax(1, total - paneHeight), paneHeight});
+        break;
+    }
+
+    case QuickLookDock::Panel:
+        // §7.6: "Occupies a slot in the panel strip itself, as though it were
+        // another panel. Counts toward panels.max_count."
+        m_strip->setQuickLookSlot(m_quickLook);
+        m_quickLook->setVisible(m_quickLookVisible);
+        break;
+    }
+
+    if (dock == QuickLookDock::Full && m_quickLookVisible) {
+        m_splitter->hide();
+    }
+}
+
+void MainWindow::setQuickLookVisible(bool visible)
+{
+    m_quickLookVisible = visible;
+
+    if (m_quickLook == nullptr) {
+        return;
+    }
+
+    if (m_quickLookDock == QuickLookDock::Float || m_quickLookDock == QuickLookDock::Full) {
+        QuickLookOverlay *overlay = quickLookOverlay();
+        if (visible) {
+            overlay->showOverlay();
+        } else {
+            overlay->hideOverlay();
+        }
+        m_splitter->setVisible(!visible || m_quickLookDock != QuickLookDock::Full);
+        return;
+    }
+
+    m_quickLook->setVisible(visible);
+}
+
+bool MainWindow::isQuickLookVisible() const
+{
+    return m_quickLookVisible && m_quickLook != nullptr;
 }
 
 void MainWindow::toggleFooter()

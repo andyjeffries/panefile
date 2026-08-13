@@ -32,6 +32,8 @@ pf_add_test(tst_keymap      SOURCES tst_keymap.cpp      LIBS pf_input pf_app)
 pf_add_test(tst_cursormemory SOURCES tst_cursormemory.cpp LIBS pf_ui)
 pf_add_test(tst_filepanel   SOURCES tst_filepanel.cpp   LIBS pf_ui pf_input)
 pf_add_test(tst_panels      SOURCES tst_panels.cpp      LIBS pf_ui pf_app)
+pf_add_test(tst_quicklook  SOURCES tst_quicklook.cpp  LIBS pf_ui)
+pf_add_test(tst_thumbnails SOURCES tst_thumbnails.cpp LIBS pf_model)
 pf_add_test(tst_paths       SOURCES tst_paths.cpp       LIBS pf_platform)
 pf_add_test(tst_startuptrace SOURCES tst_startuptrace.cpp LIBS pf_core)
 # toml++ is a private dependency of pf_config — DefaultConfig.h does not expose

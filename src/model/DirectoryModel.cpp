@@ -3,6 +3,7 @@
 #include "core/Logging.h"
 #include "fs/DirectoryScanner.h"
 #include "fs/DirectoryWatcher.h"
+#include "model/ThumbnailCache.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -88,6 +89,82 @@ void DirectoryModel::setWatchingEnabled(bool enabled)
         return;
     }
     startWatching();
+}
+
+void DirectoryModel::setThumbnailsEnabled(bool enabled)
+{
+    if (m_thumbnailsEnabled == enabled) {
+        return;
+    }
+    m_thumbnailsEnabled = enabled;
+
+    if (!enabled) {
+        for (const QString &path : std::as_const(m_thumbnailWindow)) {
+            ThumbnailCache::instance().cancel(path);
+        }
+        m_thumbnailWindow.clear();
+        return;
+    }
+
+    // One connection, not one per request: a generated thumbnail arrives by
+    // path, and the model turns that back into a row.
+    connect(&ThumbnailCache::instance(), &ThumbnailCache::ready, this,
+            [this](const QString &path, const QImage &) {
+                const int row = indexOfName(QFileInfo(path).fileName());
+                if (row < 0 || QFileInfo(path).absolutePath() != m_path) {
+                    return;
+                }
+                const QModelIndex changed = index(row, 0);
+                Q_EMIT dataChanged(changed, changed, {ThumbnailRole});
+            });
+}
+
+bool DirectoryModel::thumbnailsEnabled() const
+{
+    return m_thumbnailsEnabled;
+}
+
+void DirectoryModel::requestThumbnailRange(int firstVisibleRow, int lastVisibleRow)
+{
+    if (!m_thumbnailsEnabled) {
+        return;
+    }
+
+    // §7.7: "rows in or within 20 rows of the viewport".
+    const int first = std::max(0, firstVisibleRow - kThumbnailOvershoot);
+    const int last =
+        std::min(static_cast<int>(m_entries.size()) - 1, lastVisibleRow + kThumbnailOvershoot);
+
+    QSet<QString> window;
+    for (int row = first; row <= last; ++row) {
+        const FileEntry &entry = m_entries[static_cast<std::size_t>(row)];
+        if (entry.isDir) {
+            continue;
+        }
+        window.insert(absolutePathFor(entry));
+    }
+
+    // §7.7: "cancel requests for rows that scroll away". Only what left the
+    // window is cancelled — re-requesting everything on every scroll event
+    // would cancel work that is about to finish.
+    for (const QString &path : std::as_const(m_thumbnailWindow)) {
+        if (!window.contains(path)) {
+            ThumbnailCache::instance().cancel(path);
+        }
+    }
+
+    for (const QString &path : std::as_const(window)) {
+        if (!m_thumbnailWindow.contains(path)) {
+            ThumbnailCache::instance().request(path, ThumbnailCache::Size::Normal);
+        }
+    }
+
+    m_thumbnailWindow = window;
+}
+
+QString DirectoryModel::absolutePathFor(const FileEntry &entry) const
+{
+    return m_path + QLatin1Char('/') + entry.name;
 }
 
 bool DirectoryModel::isWatchingEnabled() const
@@ -263,6 +340,17 @@ QVariant DirectoryModel::data(const QModelIndex &index, int role) const
         return entry->modified;
     case IsDirRole:
         return entry->isDir;
+    case ThumbnailRole: {
+        if (!m_thumbnailsEnabled || entry->isDir) {
+            return {};
+        }
+        // A memory-tier hit or nothing: §5.3 forbids IO in the paint path, and
+        // this is called from it. Generation is driven by requestThumbnailRange
+        // instead, which knows which rows are actually on screen.
+        const QImage image = ThumbnailCache::instance().lookup(absolutePathFor(*entry),
+                                                               ThumbnailCache::Size::Normal);
+        return image.isNull() ? QVariant() : QVariant::fromValue(image);
+    }
     case Qt::ToolTipRole:
         if (entry->isSymlink && !entry->linkTarget.isEmpty()) {
             // QT_USE_QSTRINGBUILDER makes a concatenation an expression

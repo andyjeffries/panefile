@@ -120,16 +120,27 @@ run_tidy() {
     fi
 
     local output=""
+    local skipped=()
     local file
     while IFS= read -r file; do
         # Only files the build knows about; a source not yet added to a
         # CMakeLists has no compile command and would report a spurious error.
         if ! grep -q "\"$PWD/$file\"" build/dev/compile_commands.json 2>/dev/null; then
+            skipped+=("$file")
             continue
         fi
         output+="$("$tool" -p build/dev "${tidy_extra_args[@]}" \
             --warnings-as-errors='*' "$file" 2>/dev/null | grep -E '(error|warning):' || true)"
     done < <(find src -name '*.cpp' -not -path '*/build/*')
+
+    # The other platform's half of src/platform/ has no compile command here and
+    # is therefore never linted on this machine — which is exactly how a
+    # Linux-only finding reached CI unseen. Naming the skipped files makes the
+    # gap visible instead of silent; CI on the other platform is what closes it.
+    if (( ${#skipped[@]} > 0 )); then
+        printf '%s  not in this build, linted only by CI: %s%s\n' \
+            "$dim" "${skipped[*]}" "$reset"
+    fi
 
     if [[ -n "$output" ]]; then
         echo "$output" | head -40

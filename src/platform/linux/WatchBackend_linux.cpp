@@ -22,7 +22,7 @@ constexpr uint32_t kWatchMask = IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED
 
 /// Room for a good burst of events per read. Reading one at a time would turn
 /// an extraction of ten thousand files into ten thousand syscalls.
-constexpr size_t kBufferSize = 64 * 1024;
+constexpr size_t kBufferSize = static_cast<size_t>(64) * 1024;
 
 WatchEvent::Kind kindOf(uint32_t mask)
 {
@@ -55,7 +55,11 @@ class InotifyBackend : public WatchBackend
 public:
     explicit InotifyBackend(QObject *parent) : WatchBackend(parent) {}
 
-    ~InotifyBackend() override { stop(); }
+    // stop() is virtual, and calling a virtual from a destructor dispatches to
+    // *this* class rather than to any override — so the release is spelled out
+    // here instead. It is the same work, without the pretence that a subclass's
+    // stop() would run.
+    ~InotifyBackend() override { release(); }
 
     bool isSupported() const override { return true; }
 
@@ -88,7 +92,10 @@ public:
         return true;
     }
 
-    void stop() override
+    void stop() override { release(); }
+
+private:
+    void release()
     {
         if (m_notifier != nullptr) {
             m_notifier->setEnabled(false);
@@ -106,7 +113,6 @@ public:
         m_path.clear();
     }
 
-private:
     void readEvents()
     {
         std::array<char, kBufferSize> buffer{};

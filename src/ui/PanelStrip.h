@@ -53,11 +53,26 @@ public:
     /// §5.1: resets the splitter to equal widths.
     void equalise();
 
+    /// §7.6's `panel` dock mode: the Quick Look pane occupies a slot in the
+    /// strip "as though it were another panel", and "counts toward
+    /// panels.max_count" — so it goes in this splitter and is included in the
+    /// limit, without becoming a FilePanel or ever taking the cursor.
+    ///
+    /// Passing nullptr removes it. The widget is not owned.
+    void setQuickLookSlot(QWidget *widget);
+    QWidget *quickLookSlot() const;
+
     /// §7.1: below 400 px of total width, only the focused panel is shown.
     /// Applied on resize.
     void applyResponsiveLayout(int availableWidth);
 
 Q_SIGNALS:
+    /// A panel has been constructed but has not yet scanned. The composition
+    /// root applies `[panels]` and `[thumbnails]` here, so a panel created by
+    /// `n`, by a split or by the command line all start out configured the same
+    /// way without the strip having to know what the settings are.
+    void panelCreated(FilePanel *panel);
+
     void focusedPanelChanged(FilePanel *panel);
     void panelCountChanged(int count);
     void panelLimitReached();
@@ -70,6 +85,7 @@ private:
     void connectPanel(FilePanel *panel) const;
 
     QSplitter *m_splitter = nullptr;
+    QWidget *m_quickLookSlot = nullptr;
     QList<FilePanel *> m_panels;
     FilePanel *m_focused = nullptr;
     bool m_compact = false;

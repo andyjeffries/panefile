@@ -72,6 +72,13 @@ FilePanel::FilePanel(QWidget *parent)
     m_view->setModel(m_proxy);
     m_view->setItemDelegate(m_delegate);
 
+    // §7.3: watch the directory a panel is showing, and walk up when it goes.
+    m_model->setWatchingEnabled(true);
+    connect(m_model, &DirectoryModel::directoryVanished, this, [this](const QString &gone) {
+        Q_EMIT statusMessage(tr("%1 no longer exists").arg(QDir::toNativeSeparators(gone)));
+        walkUpToExistingAncestor();
+    });
+
     connect(m_model, &DirectoryModel::scanFinished, this, &FilePanel::onScanFinished);
     connect(m_model, &DirectoryModel::scanFailed, this, &FilePanel::onScanFailed);
     connect(m_model, &DirectoryModel::scanProgress, this, [this](int) { updateHeader(); });
@@ -164,6 +171,27 @@ void FilePanel::setPathInternal(const QString &path, bool pushHistory)
     updateHeader();
 
     Q_EMIT pathChanged(m_path);
+}
+
+void FilePanel::walkUpToExistingAncestor()
+{
+    // §7.3: "walk the panel up to the nearest existing ancestor". Not merely
+    // the parent — a `rm -r` of a whole tree takes several levels with it, and
+    // stopping at the first missing one would leave the panel showing another
+    // directory that is also gone.
+    QDir directory(m_path);
+    while (!directory.exists() && !directory.isRoot()) {
+        if (!directory.cdUp()) {
+            break;
+        }
+    }
+
+    const QString target = directory.exists() ? directory.absolutePath() : QDir::rootPath();
+
+    // Without history: the directory the user was in no longer exists, so a
+    // back entry pointing at it would be a dead end they could walk into.
+    m_path.clear();
+    setPathInternal(target, false);
 }
 
 void FilePanel::goToParent()

@@ -49,7 +49,7 @@ CopyAcceleration copyFileAccelerated(int sourceFd, int destinationFd, quint64 si
     bool anySucceeded = false;
 
     while (copied < size) {
-        const size_t remaining = static_cast<size_t>(size - copied);
+        const auto remaining = static_cast<size_t>(size - copied);
         const ssize_t written = ::copy_file_range(sourceFd, nullptr, destinationFd, nullptr,
                                                   std::min(remaining, kChunkSize), 0);
 

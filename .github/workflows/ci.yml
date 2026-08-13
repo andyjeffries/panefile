@@ -188,6 +188,7 @@ jobs:
   lint:
     name: clang-format + clang-tidy
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     container: archlinux:base-devel
     steps:
       - name: Install dependencies
@@ -198,23 +199,19 @@ jobs:
 
       - uses: actions/checkout@v4
 
+      # Both stages run through scripts/ci-local.sh, the same script a developer
+      # runs before committing. Duplicating the commands here let the two drift:
+      # the script skips files with no compile command, this job did not, and so
+      # CI spent three minutes linting the macOS platform sources against Linux
+      # headers before failing on a missing copyfile.h.
       - name: Check formatting
-        run: |
-          find src tests \( -name '*.cpp' -o -name '*.h' \) -print0 \
-            | xargs -0 clang-format --dry-run --Werror
-
-      - name: Configure for compile_commands.json
         env:
           CC: clang
           CXX: clang++
-        run: cmake --preset dev
-
-      # moc output and the generated Version.h must exist before clang-tidy can
-      # parse a translation unit that includes them.
-      - name: Build generated sources
-        run: cmake --build --preset dev
+        run: scripts/ci-local.sh format
 
       - name: clang-tidy
-        run: |
-          find src -name '*.cpp' -print0 \
-            | xargs -0 clang-tidy -p build/dev --warnings-as-errors='*'
+        env:
+          CC: clang
+          CXX: clang++
+        run: scripts/ci-local.sh tidy

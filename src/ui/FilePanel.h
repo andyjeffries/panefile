@@ -113,6 +113,10 @@ protected:
 private:
     void applyPalette();
     void applyHeaderElision();
+
+    /// §7.3: after the watched directory disappears, move to the nearest
+    /// ancestor that still exists.
+    void walkUpToExistingAncestor();
     void onScanFinished(const QString &path, int count);
     void onScanFailed(const QString &path, const QString &reason);
     void updateHeader();

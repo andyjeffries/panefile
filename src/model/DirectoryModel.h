@@ -10,7 +10,9 @@
 
 namespace pf::fs {
 class DirectoryScanner;
-}
+class DirectoryWatcher;
+struct WatchDelta;
+} // namespace pf::fs
 
 namespace pf {
 
@@ -51,6 +53,12 @@ public:
     /// Re-runs the scan for the current path.
     void refresh();
 
+    /// §7.3: watch the current directory and apply targeted updates. Off by
+    /// default, so a model used for a one-off listing — a Quick Look directory
+    /// preview, say — does not take a watch it will never use.
+    void setWatchingEnabled(bool enabled);
+    bool isWatchingEnabled() const;
+
     int rowCount(const QModelIndex &parent = {}) const override;
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
@@ -70,16 +78,32 @@ public:
 
 Q_SIGNALS:
     void scanStarted(const QString &path);
+
+    /// §7.3: the watched directory itself is gone, so the panel must "walk up
+    /// to the nearest existing ancestor".
+    void directoryVanished(const QString &path);
     void scanProgress(int count);
     void scanFinished(const QString &path, int count);
     void scanFailed(const QString &path, const QString &reason);
 
 private:
+    void applyDelta(const fs::WatchDelta &delta);
+
+    /// Re-reads one entry from disk and updates its row, or inserts it.
+    /// Returns false when the entry has gone.
+    bool refreshEntry(const QString &name);
+
+    void removeEntry(const QString &name);
+
+    void startWatching();
+
     void onEntriesReady(const QString &path, const QList<FileEntry> &entries);
     void onScanFinished(const QString &path, int total);
     void onScanFailed(const QString &path, const QString &reason);
 
     std::unique_ptr<fs::DirectoryScanner> m_scanner;
+    std::shared_ptr<fs::DirectoryWatcher> m_watcher;
+    bool m_watchingEnabled = false;
     std::vector<FileEntry> m_entries;
     QString m_path;
     QString m_error;

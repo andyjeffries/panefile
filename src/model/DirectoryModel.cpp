@@ -2,6 +2,11 @@
 
 #include "core/Logging.h"
 #include "fs/DirectoryScanner.h"
+#include "fs/DirectoryWatcher.h"
+
+#include <QDir>
+#include <QFileInfo>
+
 #include <utility>
 
 namespace pf {
@@ -42,6 +47,11 @@ void DirectoryModel::refresh()
     m_scanning = true;
     Q_EMIT scanStarted(m_path);
     m_scanner->scan(m_path);
+
+    // The watch is taken alongside the scan rather than after it. A file
+    // created while the scan is running would otherwise be missed entirely:
+    // too late for the scan to see, too early for the watch to report.
+    startWatching();
 }
 
 void DirectoryModel::onEntriesReady(const QString &path, const QList<FileEntry> &entries)
@@ -64,6 +74,125 @@ void DirectoryModel::onEntriesReady(const QString &path, const QList<FileEntry> 
     endInsertRows();
 
     Q_EMIT scanProgress(static_cast<int>(m_entries.size()));
+}
+
+void DirectoryModel::setWatchingEnabled(bool enabled)
+{
+    if (m_watchingEnabled == enabled) {
+        return;
+    }
+    m_watchingEnabled = enabled;
+
+    if (!enabled) {
+        m_watcher.reset();
+        return;
+    }
+    startWatching();
+}
+
+bool DirectoryModel::isWatchingEnabled() const
+{
+    return m_watchingEnabled;
+}
+
+void DirectoryModel::startWatching()
+{
+    if (!m_watchingEnabled || m_path.isEmpty()) {
+        return;
+    }
+
+    // The old watcher is dropped before the new one is taken. Holding both
+    // across a navigation would keep a watch on every directory visited until
+    // the panel closed, and inotify watches are a limited per-user resource.
+    m_watcher.reset();
+    m_watcher = fs::DirectoryWatcher::acquire(m_path);
+
+    connect(m_watcher.get(), &fs::DirectoryWatcher::changed, this, &DirectoryModel::applyDelta);
+}
+
+bool DirectoryModel::refreshEntry(const QString &name)
+{
+    const QFileInfo info(m_path + QLatin1Char('/') + name);
+    if (!info.exists() && !info.isSymLink()) {
+        return false;
+    }
+
+    FileEntry entry;
+    entry.name = name;
+    entry.isHidden = name.startsWith(QLatin1Char('.'));
+    entry.size = static_cast<quint64>(info.size());
+    entry.modified = info.lastModified();
+    entry.isSymlink = info.isSymLink();
+    entry.isDir = info.isDir();
+    entry.isBroken = info.isSymLink() && !info.exists();
+    entry.isExecutable = info.isExecutable();
+    if (entry.isSymlink) {
+        entry.linkTarget = info.symLinkTarget();
+    }
+
+    if (const int row = indexOfName(name); row >= 0) {
+        m_entries[static_cast<std::size_t>(row)] = entry;
+        const QModelIndex changed = index(row, 0);
+        Q_EMIT dataChanged(changed, changed);
+        return true;
+    }
+
+    // Appended rather than inserted in sorted position: the proxy owns the
+    // ordering, and having the model maintain one too would mean two sort
+    // implementations that have to agree.
+    const int last = static_cast<int>(m_entries.size());
+    beginInsertRows({}, last, last);
+    m_entries.push_back(entry);
+    endInsertRows();
+    return true;
+}
+
+void DirectoryModel::removeEntry(const QString &name)
+{
+    const int row = indexOfName(name);
+    if (row < 0) {
+        return;
+    }
+    beginRemoveRows({}, row, row);
+    m_entries.erase(m_entries.begin() + row);
+    endRemoveRows();
+}
+
+void DirectoryModel::applyDelta(const fs::WatchDelta &delta)
+{
+    if (delta.selfGone) {
+        // §7.3: the panel walks up to the nearest existing ancestor. The model
+        // reports what happened and lets the panel decide where to go, because
+        // "up" is a navigation and navigation is the panel's business.
+        Q_EMIT directoryVanished(m_path);
+        return;
+    }
+
+    if (delta.needsFullRescan) {
+        // §7.3's threshold was crossed, or the backend lost events. Either way
+        // the deltas can no longer be trusted to describe the directory.
+        qCDebug(pfFs) << "rescanning" << m_path << "after a large or lossy event burst";
+        refresh();
+        return;
+    }
+
+    // Deletions first, then renames, then creations: a rename within the
+    // directory produces a delete and a create for the same row, and applying
+    // them in the other order would insert the new name before removing the old
+    // one, leaving both visible for a frame.
+    for (const QString &name : delta.deleted) {
+        removeEntry(name);
+    }
+    for (const auto &[from, to] : delta.renamed) {
+        removeEntry(from);
+        refreshEntry(to);
+    }
+    for (const QString &name : delta.created) {
+        refreshEntry(name);
+    }
+    for (const QString &name : delta.modified) {
+        refreshEntry(name);
+    }
 }
 
 void DirectoryModel::onScanFinished(const QString &path, int total)

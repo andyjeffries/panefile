@@ -24,16 +24,19 @@ target_include_directories(pf_core PUBLIC "${CMAKE_CURRENT_BINARY_DIR}")
 # ---------------------------------------------------------------------------
 set(PF_PLATFORM_SOURCES
     platform/FileOpsCommon.cpp
-    platform/Paths.cpp)
+    platform/Paths.cpp
+    platform/WatchBackend.cpp)
 
 if(PF_PLATFORM_LINUX)
     list(APPEND PF_PLATFORM_SOURCES
         platform/linux/FileOps_linux.cpp
-        platform/linux/Paths_linux.cpp)
+        platform/linux/Paths_linux.cpp
+        platform/linux/WatchBackend_linux.cpp)
 elseif(PF_PLATFORM_DARWIN)
     list(APPEND PF_PLATFORM_SOURCES
         platform/darwin/FileOps_darwin.cpp
-        platform/darwin/Paths_darwin.cpp)
+        platform/darwin/Paths_darwin.cpp
+        platform/darwin/WatchBackend_darwin.cpp)
 endif()
 
 pf_layer_library(pf_platform
@@ -80,7 +83,9 @@ pf_layer_library(pf_fs
     LAYER fs
     SOURCES
         fs/DirectoryScanner.cpp
+        fs/DirectoryWatcher.cpp
         fs/FsError.cpp
+        fs/WatchCoalescer.cpp
         fs/Job.cpp
         fs/JobEngine.cpp
         fs/Trash.cpp

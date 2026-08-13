@@ -109,8 +109,14 @@ run_tidy() {
         return
     fi
     if [[ ! -f build/dev/compile_commands.json ]]; then
-        fail "clang-tidy (no compile_commands.json — run the build stage first)"
-        return
+        # Configure and build rather than failing: clang-tidy needs both the
+        # compile database and the generated sources (moc output, Version.h),
+        # and a caller asking for the tidy stage plainly wants it to run.
+        echo "  no compile database yet; configuring and building first"
+        if ! cmake --preset dev >/dev/null || ! cmake --build --preset dev >/dev/null; then
+            fail "clang-tidy (the build it needs did not succeed)"
+            return
+        fi
     fi
 
     local output=""

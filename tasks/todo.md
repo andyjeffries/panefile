@@ -132,13 +132,27 @@ undo entry, so building them apart would mean building them twice.
 The trash browser of §7.5 is deferred to M6, which brings the virtual panel
 mode it needs.
 
-## M5 — Directory watching
+## M5 — Directory watching ✅
 
-- [ ] Portable `WatchCoalescer` — debounce, coalescing, rescan threshold
-- [ ] inotify backend
-- [ ] FSEvents backend
-- [ ] Targeted model deltas; walk up on self-delete
-- [ ] Tests: create/delete/rename produce correct deltas, driven by synthetic events
+- [x] `WatchCoalescer` — 150 ms debounce, coalescing, rename pairing, 200-event
+      rescan threshold. Pure logic, tested identically on both platforms.
+- [x] inotify backend, wrapping the syscalls directly per §7.3
+- [x] FSEvents backend
+- [x] Targeted model deltas; the panel walks up to the nearest existing ancestor
+- [x] `DirectoryWatcher`, refcounted per path so two panels share one watch
+- [x] Tests: 26, all the coalescing cases from synthetic events plus one that
+      exercises the real backend
+
+Two bugs the tests found, both macOS-only and both silent:
+
+1. FSEvents reports *canonical* paths. On macOS `/tmp` and `/var` are symlinks
+   into `/private`, so comparing against the uncanonicalised path discarded
+   every event for anything below them.
+2. Scheduling the stream on the main dispatch queue works under Qt's Cocoa
+   plugin and not under the offscreen one, which uses a poll-based dispatcher
+   and never drains that queue. Watching therefore worked in the application and
+   failed silently in every headless run. It now uses a private serial queue and
+   hops to the object's thread itself.
 
 ## M6 — Quick Look and thumbnails
 

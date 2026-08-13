@@ -19,6 +19,7 @@
 #include "ui/modals/RenameModal.h"
 #include <QDir>
 #include <QFile>
+#include <QKeySequence>
 
 #include <QApplication>
 #include <QClipboard>
@@ -523,6 +524,18 @@ void FileOperations::onFilesDropped(const QStringList &paths, const QString &des
     runTransfer(transferable, destination, action == Qt::MoveAction);
 }
 
+namespace {
+
+/// The undo shortcut in the platform's own notation — ⌘Z on macOS, Ctrl+Z
+/// elsewhere. Qt renders the standard sequence, so this needs no #ifdef and no
+/// second place to keep in step.
+QString undoShortcut()
+{
+    return QKeySequence(QKeySequence::Undo).toString(QKeySequence::NativeText);
+}
+
+} // namespace
+
 void FileOperations::runTransfer(const QStringList &paths, const QString &destination, bool move)
 {
     auto job = std::make_unique<fs::TransferJob>(
@@ -556,7 +569,7 @@ void FileOperations::runTransfer(const QStringList &paths, const QString &destin
             });
 
     connect(m_engine, &fs::JobEngine::jobFinished, this,
-            [this, jobId, raw, move](int id, const fs::JobResult &result) {
+            [this, jobId, raw, move, destination](int id, const fs::JobResult &result) {
                 if (id != jobId) {
                     return;
                 }
@@ -582,7 +595,28 @@ void FileOperations::runTransfer(const QStringList &paths, const QString &destin
                     Q_EMIT statusMessage(tr("%n item(s) could not be transferred: %1", nullptr,
                                             static_cast<int>(result.errors.size()))
                                              .arg(result.errors.first().reason));
+                    return;
                 }
+
+                if (result.cancelled || result.filesProcessed == 0) {
+                    return;
+                }
+
+                // Say where they went.
+                //
+                // A drag onto a directory row targets that directory, which is
+                // both what §7.12 asks for and what Finder does — but it is easy
+                // to do by accident, and a move that happens in silence looks
+                // exactly like a file disappearing. Naming the destination is
+                // what turns "where has it gone" into "oh, in there", and the
+                // reminder that a move is undoable is worth more here than
+                // anywhere else in the application.
+                const QString where = QDir(destination).dirName();
+                Q_EMIT statusMessage(
+                    move
+                        ? tr("Moved %n item(s) to %1 — %2 to undo", nullptr, result.filesProcessed)
+                              .arg(where, undoShortcut())
+                        : tr("Copied %n item(s) to %1", nullptr, result.filesProcessed).arg(where));
             });
 }
 

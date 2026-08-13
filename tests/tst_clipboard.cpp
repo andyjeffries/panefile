@@ -42,6 +42,34 @@ class TestClipboard : public QObject
 
 private Q_SLOTS:
 
+    /// A completed transfer says what it did and where the files went.
+    ///
+    /// It used to say nothing at all unless something failed. A drag onto a
+    /// directory row targets that directory — §7.12, and what Finder does — but
+    /// it is easy to hit by accident, and since a drag within one filesystem
+    /// now moves rather than copies, a silent success is indistinguishable from
+    /// a file vanishing. That is exactly how it was reported.
+    void aFinishedTransferSaysWhereTheFilesWent()
+    {
+        QStringList messages;
+        connect(m_operations.get(), &FileOperations::statusMessage, this,
+                [&messages](const QString &text) { messages << text; });
+
+        const QString target = m_dir->filePath(QStringLiteral("target"));
+        m_operations->onFilesDropped({m_dir->filePath(QStringLiteral("a.txt"))}, target,
+                                     Qt::MoveAction);
+
+        QTRY_VERIFY_WITH_TIMEOUT(!messages.isEmpty(), 5000);
+
+        // The destination is named — "it went in there" is the whole point —
+        // and a move advertises that it can be taken back.
+        QVERIFY2(messages.constLast().contains(QStringLiteral("target")),
+                 qPrintable(messages.constLast()));
+        QVERIFY2(messages.constLast().contains(QStringLiteral("undo")),
+                 qPrintable(messages.constLast()));
+        QVERIFY(QFile::exists(target + QStringLiteral("/a.txt")));
+    }
+
     void init()
     {
         QApplication::clipboard()->clear();

@@ -87,6 +87,37 @@ private Q_SLOTS:
                  m_dir->filePath(QStringLiteral("target")));
     }
 
+    /// Selection mode must not change where a drop lands.
+    ///
+    /// A file dropped onto a pane in Selection mode was reported as vanishing.
+    /// The mode is cosmetic — a header badge and a paint style — so if the
+    /// destination ever depended on it, that would be the whole explanation.
+    void selectionModeDoesNotChangeTheDestination()
+    {
+        const QModelIndex directory = rowFor(QStringLiteral("target"));
+        const QModelIndex file = rowFor(QStringLiteral("alpha.txt"));
+        QVERIFY(directory.isValid());
+        QVERIFY(file.isValid());
+
+        const QString onEmpty = m_panel->view()->destinationFor(QPoint(10, 380));
+        const QString onDirectory =
+            m_panel->view()->destinationFor(m_panel->view()->visualRect(directory).center());
+        const QString onFile =
+            m_panel->view()->destinationFor(m_panel->view()->visualRect(file).center());
+
+        m_panel->setSelectionMode(true);
+        m_panel->toggleSelectionAt(QStringLiteral("beta.txt"));
+
+        QCOMPARE(m_panel->view()->destinationFor(QPoint(10, 380)), onEmpty);
+        QCOMPARE(m_panel->view()->destinationFor(m_panel->view()->visualRect(directory).center()),
+                 onDirectory);
+        QCOMPARE(m_panel->view()->destinationFor(m_panel->view()->visualRect(file).center()),
+                 onFile);
+
+        m_panel->setSelectionMode(false);
+        m_panel->clearSelection();
+    }
+
     /// A file row is not a target of its own: dropping on it plainly means the
     /// directory the file is in.
     void dropOnAFileRowTargetsTheWorkingDirectory()
@@ -156,6 +187,57 @@ private Q_SLOTS:
 
         QCOMPARE(paths.size(), 1);
         QCOMPARE(QFileInfo(paths.first()).fileName(), QStringLiteral("beta.txt"));
+    }
+
+    /// Dragging a row that is not part of the selection drags *that row*.
+    ///
+    /// This is the case that loses files if it is wrong. With a selection left
+    /// over from earlier — easy to accumulate in Selection mode, which no longer
+    /// clears on exit — grabbing some other file and dragging it would carry the
+    /// old selection instead: the file the user was pointing at stays put, and
+    /// files they had forgotten about move somewhere else. Now that a drag
+    /// within one filesystem moves rather than copies, that is not a nuisance,
+    /// it is data going missing.
+    ///
+    /// It works because pressing on an unselected row clears the selection
+    /// before the drag can start, which is the press half of the click handling.
+    void draggingAnUnselectedRowLeavesTheOldSelectionBehind()
+    {
+        m_panel->clearSelection();
+        m_panel->setSelectionMode(true);
+        m_panel->toggleSelectionAt(QStringLiteral("beta.txt"));
+        QCOMPARE(m_panel->selectionCount(), 1);
+
+        // The press that begins a drag on a different row.
+        m_panel->handleClickPress(QStringLiteral("alpha.txt"), Qt::NoModifier);
+        m_panel->setCursorName(QStringLiteral("alpha.txt"));
+
+        QStringList paths;
+        Q_EMIT m_panel->view()->dragPathsRequested(&paths);
+
+        QCOMPARE(paths.size(), 1);
+        QCOMPARE(QFileInfo(paths.constFirst()).fileName(), QStringLiteral("alpha.txt"));
+
+        m_panel->setSelectionMode(false);
+        m_panel->clearSelection();
+    }
+
+    /// And dragging a row that *is* selected carries the whole selection, which
+    /// is the reason the press does not clear it.
+    void draggingASelectedRowCarriesTheSelection()
+    {
+        m_panel->clearSelection();
+        m_panel->toggleSelectionAt(QStringLiteral("alpha.txt"));
+        m_panel->toggleSelectionAt(QStringLiteral("beta.txt"));
+
+        m_panel->handleClickPress(QStringLiteral("beta.txt"), Qt::NoModifier);
+
+        QStringList paths;
+        Q_EMIT m_panel->view()->dragPathsRequested(&paths);
+
+        QCOMPARE(paths.size(), 2);
+
+        m_panel->clearSelection();
     }
 
 private:

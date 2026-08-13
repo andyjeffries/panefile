@@ -36,8 +36,15 @@
 #include <QFileInfo>
 #include <QFont>
 #include <QKeyEvent>
+#include <QSocketNotifier>
 #include <QTimer>
 #include <QWindow>
+
+#include <array>
+#include <csignal>
+
+#include <sys/socket.h>
+#include <unistd.h>
 
 namespace pf {
 
@@ -195,6 +202,8 @@ void Application::registerGlobalActions()
     // rather than called from the quit action, so a window closed with the
     // compositor's own control saves just as well as one closed with `q`.
     connect(this, &QCoreApplication::aboutToQuit, this, [this] { saveSession(); });
+
+    installSignalHandling();
 
     m_registry->registerAction(QStringLiteral("toggle_sidebar"), tr("Show or hide the sidebar"),
                                ActionCategory::View, [this] { m_mainWindow->toggleSidebar(); });
@@ -464,6 +473,62 @@ void Application::restoreSessionOrOpenInitialPanel(const CommandLineOptions &opt
             panel->setCursorName(info.fileName());
         }
     }
+}
+
+namespace {
+
+/// The write end of the self-pipe, read by the notifier below.
+///
+/// A file-scope int rather than a member, because a signal handler has no
+/// `this` and cannot be given one. `volatile sig_atomic_t` is the only type the
+/// standard promises is safe to touch from a handler.
+volatile std::sig_atomic_t g_signalPipe = -1;
+
+/// Everything a signal handler is allowed to do here.
+///
+/// write(2) is on the async-signal-safe list; almost nothing else is — not
+/// malloc, not qDebug, and certainly not saving a session file. So the handler
+/// writes one byte and returns, and the real work happens on the event loop.
+extern "C" void onTerminationSignal(int number)
+{
+    const auto byte = static_cast<char>(number);
+    const ssize_t written = ::write(g_signalPipe, &byte, 1);
+    Q_UNUSED(written)
+}
+
+} // namespace
+
+void Application::installSignalHandling()
+{
+    std::array<int, 2> fds{};
+    if (::socketpair(AF_UNIX, SOCK_STREAM, 0, fds.data()) != 0) {
+        qCWarning(pfApp) << "could not create the signal pipe; SIGTERM will not save the session";
+        return;
+    }
+
+    g_signalPipe = fds[0];
+
+    auto *notifier = new QSocketNotifier(fds[1], QSocketNotifier::Read, this);
+    connect(notifier, &QSocketNotifier::activated, this, [notifier](QSocketDescriptor fd) {
+        char byte = 0;
+        const ssize_t read = ::read(static_cast<int>(fd), &byte, 1);
+        Q_UNUSED(read)
+
+        notifier->setEnabled(false);
+        qCDebug(pfApp) << "terminating on signal" << static_cast<int>(byte);
+
+        // quit(), not exit(): this unwinds through aboutToQuit, which is what
+        // writes the session.
+        quit();
+    });
+
+    // The previous disposition is discarded deliberately. There is nothing
+    // useful to do with it: these two are being taken over for the whole life
+    // of the process, and a caller that had already installed a handler would
+    // be a second owner of the same signal, which is not a situation to
+    // negotiate at runtime.
+    (void)std::signal(SIGTERM, &onTerminationSignal);
+    (void)std::signal(SIGINT, &onTerminationSignal);
 }
 
 void Application::saveSession() const

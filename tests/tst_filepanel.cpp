@@ -57,6 +57,49 @@ private:
     }
 
 private Q_SLOTS:
+
+    /// §10.2: "A path that is a file, not a directory, navigates to its parent
+    /// and places the cursor on it."
+    ///
+    /// The cursor is asked for before the scan has delivered a single row —
+    /// which is the case for every caller that navigates and then names a
+    /// cursor: the command line, the single-instance hand-off, session restore
+    /// and the recursive finder. A search that simply failed left the cursor on
+    /// whatever sorted first, which is not the file the user named.
+    void aCursorNamedBeforeTheScanArrivesIsStillApplied()
+    {
+        QTemporaryDir dir;
+        for (const char *name : {"aaa.txt", "target.txt", "zzz.txt"}) {
+            QFile file(dir.filePath(QString::fromLatin1(name)));
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.close();
+        }
+
+        FilePanel panel;
+        panel.navigateTo(dir.path());
+
+        // Immediately: the scan runs on a worker and has certainly not
+        // finished.
+        panel.setCursorName(QStringLiteral("target.txt"));
+
+        QTRY_COMPARE_WITH_TIMEOUT(panel.cursorName(), QStringLiteral("target.txt"), 5000);
+    }
+
+    /// A name that never arrives must not leave the panel with no cursor at all.
+    void aCursorNamedForAMissingFileFallsBackToTheFirstRow()
+    {
+        QTemporaryDir dir;
+        QFile file(dir.filePath(QStringLiteral("only.txt")));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.close();
+
+        FilePanel panel;
+        panel.navigateTo(dir.path());
+        panel.setCursorName(QStringLiteral("never-existed.txt"));
+
+        QTRY_COMPARE_WITH_TIMEOUT(panel.cursorName(), QStringLiteral("only.txt"), 5000);
+    }
+
     void initTestCase();
 
     void listsTheDirectory();

@@ -320,9 +320,20 @@ void FilePanel::setCursorName(const QString &name)
         if (index.data(DirectoryModel::NameRole).toString() == name) {
             m_view->setCurrentIndex(index);
             m_view->scrollTo(index, QAbstractItemView::PositionAtCenter);
+            m_pendingCursorName.clear();
             return;
         }
     }
+
+    // Not there — yet. Scanning is asynchronous, so every caller that navigates
+    // and then asks for a cursor (§10.2's "a path that is a file navigates to
+    // its parent and places the cursor on it", session restore, the recursive
+    // finder) arrives before the rows do, and a search that simply fails leaves
+    // the cursor on whatever sorted first.
+    //
+    // Remembering the name lets restoreCursor() apply it when the scan
+    // delivers, and the same code then handles the case where it never arrives.
+    m_pendingCursorName = name;
 }
 
 void FilePanel::rememberCursor()

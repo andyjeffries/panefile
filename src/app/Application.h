@@ -107,6 +107,15 @@ private:
     void restoreSessionOrOpenInitialPanel(const CommandLineOptions &options);
 
     void saveSession() const;
+
+    /// Makes SIGTERM and SIGINT quit cleanly, so the session survives a logout.
+    ///
+    /// A session manager ends a session with SIGTERM, and Qt's default
+    /// disposition for it is to kill the process outright — which skips
+    /// aboutToQuit and loses exactly the session the user is about to want
+    /// back. The self-pipe below is the standard way to get a signal onto the
+    /// event loop, because almost nothing is safe to do inside a handler.
+    void installSignalHandling();
     ui::HelpModal *helpModal();
     ui::ProcessBar *processBar();
 

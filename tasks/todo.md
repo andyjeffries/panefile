@@ -322,7 +322,7 @@ twenty-eight libraries including a JavaScript interpreter.
 
 ### Departures from the specification
 
-Seven, each because following the letter would have broken something the spec
+Eight, each because following the letter would have broken something the spec
 asks for elsewhere.
 
 1. **Bulk rename is a Finder-style sheet, not §7.9's `$EDITOR` round trip.**
@@ -359,6 +359,12 @@ asks for elsewhere.
    `select_all` "Selection mode only". Selecting everything in order to rename
    or move it does not need a mode first, and `Ctrl+A` is unavailable because
    §7.10 spends it on compress.
+
+8. **A finished job lingers for one second, not §7.4's five.** Requested. Five
+   seconds is several times longer than most of the work takes, and the bar has
+   nothing left to say for four of them. The bar also waits 250 ms before
+   appearing at all, so copying three small files no longer flashes a progress
+   bar for work that is already over.
 
 Three deviations were made for testability and are noted in their commits: the
 `WatchCoalescer` split, injectable roots on `Trash` and `ThumbnailCache`, and

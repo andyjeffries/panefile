@@ -80,7 +80,6 @@ ui::CompressModal *FileOperations::compressModal()
                     auto job = std::make_unique<fs::ArchiveJob>(sources, destination, format);
                     auto *raw = job.get();
 
-                    m_window->showProcessBar(nullptr);
                     const int jobId = m_engine->submit(std::move(job));
 
                     connect(m_engine, &fs::JobEngine::jobFinished, this,
@@ -145,7 +144,6 @@ void FileOperations::extractCursorItem()
     auto job = std::make_unique<fs::ExtractJob>(archivePath, panel->path());
     auto *raw = job.get();
 
-    m_window->showProcessBar(nullptr);
     const int jobId = m_engine->submit(std::move(job));
 
     connect(m_engine, &fs::JobEngine::jobFinished, this,
@@ -325,7 +323,6 @@ void FileOperations::runRenamePlan(const QString &directory, const fs::RenamePla
     auto job = std::make_unique<fs::RenameJob>(directory, plan);
     auto *raw = job.get();
 
-    m_window->showProcessBar(nullptr);
     const int jobId = m_engine->submit(std::move(job));
 
     connect(m_engine, &fs::JobEngine::jobFinished, this,

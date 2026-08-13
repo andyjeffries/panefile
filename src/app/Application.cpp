@@ -123,8 +123,13 @@ void Application::buildInputSystem()
     // the first submission rather than at startup keeps it off the critical
     // path (§3.4) — and the connection has to be made before any job can be
     // submitted, which is why it is wired here rather than lazily.
-    connect(m_jobEngine.get(), &fs::JobEngine::jobSubmitted, this,
-            [this](int, const QString &) { m_mainWindow->showProcessBar(processBar()); });
+    connect(m_jobEngine.get(), &fs::JobEngine::jobSubmitted, this, [this](int, const QString &) {
+        // Construct it, so it starts tracking — but let it decide when
+        // it is worth showing. Three small files are copied before its
+        // appearance delay elapses, and a bar that flashes up and
+        // vanishes is worse than none at all.
+        processBar();
+    });
 
     m_panelController->registerActions();
     m_fileOperations->registerActions();
@@ -287,6 +292,8 @@ ui::ProcessBar *Application::processBar()
         m_processBar = new ui::ProcessBar(m_jobEngine.get(), m_mainWindow.get());
         connect(m_processBar, &ui::ProcessBar::becameIdle, m_mainWindow.get(),
                 &ui::MainWindow::hideProcessBar);
+        connect(m_processBar, &ui::ProcessBar::shouldAppear, m_mainWindow.get(),
+                [this] { m_mainWindow->showProcessBar(m_processBar); });
     }
     return m_processBar;
 }

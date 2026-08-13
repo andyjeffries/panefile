@@ -35,7 +35,7 @@ QString formatRate(quint64 bytes, qint64 elapsedMs)
 ProcessBar::ProcessBar(fs::JobEngine *engine, QWidget *parent)
     : QWidget(parent), m_engine(engine), m_summary(new QLabel(this)),
       m_progress(new QProgressBar(this)), m_jobs(new QTreeWidget(this)),
-      m_lingerTimer(new QTimer(this))
+      m_lingerTimer(new QTimer(this)), m_appearTimer(new QTimer(this))
 {
     setObjectName(QStringLiteral("processBar"));
 
@@ -69,6 +69,16 @@ ProcessBar::ProcessBar(fs::JobEngine *engine, QWidget *parent)
     m_jobs->hide();
     layout->addWidget(m_jobs);
 
+    m_appearTimer->setSingleShot(true);
+    m_appearTimer->setInterval(kAppearDelayMs);
+    connect(m_appearTimer, &QTimer::timeout, this, [this] {
+        // Still working, so it is worth looking at. A job that finished inside
+        // the delay never gets here, and the bar never appears for it.
+        if (m_engine->activeCount() > 0 || m_engine->queuedCount() > 0) {
+            Q_EMIT shouldAppear();
+        }
+    });
+
     m_lingerTimer->setSingleShot(true);
     m_lingerTimer->setInterval(kLingerMs);
     connect(m_lingerTimer, &QTimer::timeout, this, [this] {
@@ -98,6 +108,12 @@ void ProcessBar::onSubmitted(int jobId, const QString &description)
     m_items.insert(jobId, item);
 
     m_lingerTimer->stop();
+
+    // Restarting would push the appearance back on every job in a batch, so a
+    // steady stream of small ones would keep the bar hidden indefinitely.
+    if (!m_appearTimer->isActive()) {
+        m_appearTimer->start();
+    }
 }
 
 void ProcessBar::onProgress(int jobId, quint64 bytesDone, quint64 bytesTotal, int filesDone,
@@ -148,6 +164,7 @@ void ProcessBar::onFinished(int jobId, const fs::JobResult &result)
 void ProcessBar::scheduleIdleCheck()
 {
     if (m_engine->activeCount() == 0 && m_engine->queuedCount() == 0) {
+        m_appearTimer->stop();
         m_lingerTimer->start();
     }
 }
@@ -162,8 +179,12 @@ void ProcessBar::onAggregate(quint64 bytesDone, quint64 bytesTotal, int activeJo
     }
 
     if (activeJobs == 0) {
-        m_summary->setText(tr("Idle"));
+        // "Done" rather than "Idle" at 100%: the bar is reporting on work that
+        // just finished, not describing the application's mood, and a full bar
+        // with no words for it reads as something still in progress.
+        m_progress->setRange(0, 100);
         m_progress->setValue(m_progress->maximum());
+        m_summary->setText(tr("Done"));
         return;
     }
 

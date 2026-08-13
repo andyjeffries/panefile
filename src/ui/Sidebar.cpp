@@ -67,27 +67,50 @@ Sidebar::Sidebar(QWidget *parent) : QWidget(parent), m_list(new QListWidget(this
     // the sidebar stops being the thing you are working in.
     m_list->installEventFilter(this);
 
-    connect(m_list, &QListWidget::itemActivated, this, [this](QListWidgetItem *item) {
-        if (item == nullptr || item->data(kIsHeadingRole).toBool()) {
-            return;
-        }
-        const QString path = item->data(kPathRole).toString();
-        if (!path.isEmpty()) {
-            // The place has been opened, so nothing here is current any more.
-            clearHighlight();
-            Q_EMIT placeActivated(path);
-            return;
-        }
+    // Both signals, because they cover different gestures and neither covers
+    // all of them.
+    //
+    // itemActivated is emitted on Enter, and on a *double* click — on macOS the
+    // style does not activate an item on a single click, which is why clicking
+    // a place in the sidebar did nothing at all. itemClicked is the single
+    // click. Wiring both means a double click fires twice, which openItem is
+    // written to tolerate.
+    connect(m_list, &QListWidget::itemClicked, this, &Sidebar::openItem);
+    connect(m_list, &QListWidget::itemActivated, this, &Sidebar::openItem);
+}
 
-        // §7.11: "Enter mounts … and navigates." A device row with no path is
-        // an unmounted volume; mounting is asynchronous, and the navigation
-        // happens when it reports where it landed.
-        const QString volumeId = item->data(kVolumeIdRole).toString();
-        if (!volumeId.isEmpty() && m_volumes != nullptr) {
-            Q_EMIT statusMessage(tr("Mounting…"));
-            m_volumes->mount(volumeId);
-        }
-    });
+void Sidebar::openItem(QListWidgetItem *item)
+{
+    if (item == nullptr || item->data(kIsHeadingRole).toBool()) {
+        return;
+    }
+
+    const QString path = item->data(kPathRole).toString();
+    if (!path.isEmpty()) {
+        // The place has been opened, so nothing here is current any more, and
+        // the panel it opened in is where the user is now working.
+        clearHighlight();
+        Q_EMIT placeActivated(path);
+        return;
+    }
+
+    // §7.11: "Enter mounts … and navigates." A device row with no path is an
+    // unmounted volume; mounting is asynchronous, and the navigation happens
+    // when it reports where it landed.
+    const QString volumeId = item->data(kVolumeIdRole).toString();
+    if (volumeId.isEmpty() || m_volumes == nullptr) {
+        return;
+    }
+
+    // A double click delivers both signals, and asking to mount the same volume
+    // twice is a second D-Bus call for something already under way.
+    if (m_mounting.contains(volumeId)) {
+        return;
+    }
+    m_mounting.insert(volumeId);
+
+    Q_EMIT statusMessage(tr("Mounting…"));
+    m_volumes->mount(volumeId);
 }
 
 void Sidebar::addHeading(const QString &title)
@@ -225,7 +248,8 @@ void Sidebar::startWatchingDevices()
     });
 
     connect(m_volumes.get(), &platform::VolumeMonitor::mounted, this,
-            [this](const QString &, const QString &mountPoint) {
+            [this](const QString &id, const QString &mountPoint) {
+                m_mounting.remove(id);
                 // §7.11: "Enter mounts … and navigates."
                 if (!mountPoint.isEmpty()) {
                     Q_EMIT placeActivated(mountPoint);
@@ -233,7 +257,10 @@ void Sidebar::startWatchingDevices()
             });
 
     connect(m_volumes.get(), &platform::VolumeMonitor::operationFailed, this,
-            [this](const QString &, const QString &reason) { Q_EMIT statusMessage(reason); });
+            [this](const QString &id, const QString &reason) {
+                m_mounting.remove(id);
+                Q_EMIT statusMessage(reason);
+            });
 
     m_volumes->start();
 }

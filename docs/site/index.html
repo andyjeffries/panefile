@@ -24,6 +24,7 @@
       Panefile
     </a>
     <nav>
+      <a href="#quickstart">Quickstart</a>
       <a href="#panels">Panels</a>
       <a href="#keys">Keys</a>
       <a href="#themes">Themes</a>
@@ -63,6 +64,67 @@
            alt="Panefile showing a sidebar and two directory panels side by side, the left one focused"
            decoding="async">
     </picture>
+  </div>
+</section>
+
+<section id="quickstart">
+  <div class="wrap">
+    <h2>Five minutes, start to finish</h2>
+    <p>
+      Copying files between two folders, without a second window and without the
+      mouse. Every key below is remappable.
+    </p>
+
+    <ol class="walkthrough">
+      <li>
+        <kbd>j</kbd> <kbd>k</kbd> to a subfolder, <kbd>l</kbd> to go in
+        <span>Arrow keys work too, and <kbd>h</kbd> goes back up.</span>
+      </li>
+      <li>
+        <kbd>v</kbd> to start selecting, then <kbd>j</kbd> five times
+        <span>Selection mode: movement extends the selection. The panel header says how many.</span>
+      </li>
+      <li>
+        <kbd>⌘C</kbd> to copy
+        <span><kbd>Ctrl</kbd>+<kbd>C</kbd> on Linux — one binding, right on both.
+        <kbd>⌘X</kbd> cuts instead.</span>
+      </li>
+      <li>
+        <kbd>n</kbd> for a second panel
+        <span>It opens beside the first, not on top of it. <kbd>N</kbd> would duplicate this one instead.</span>
+      </li>
+      <li>
+        <kbd>Tab</kbd> to move between panels
+        <span>The focused panel has a coloured border — the one thing the design
+        never lets you lose track of.</span>
+      </li>
+      <li>
+        <kbd>⌘N</kbd>, type <code>photos/</code>, <kbd>Enter</kbd>
+        <span>The trailing slash makes it a folder. Without it you get a file.</span>
+      </li>
+      <li>
+        <kbd>l</kbd> to go into it, <kbd>⌘V</kbd> to paste
+        <span>The copy runs in the background with a progress bar. Conflicts ask,
+        once, with an “apply to all” option.</span>
+      </li>
+      <li>
+        <kbd>v</kbd>, select them all, <kbd>⌘B</kbd> to rename in bulk
+        <span>Find and replace, add a prefix or suffix, or number them — with
+        every old&nbsp;→&nbsp;new pair shown before anything is renamed.</span>
+      </li>
+      <li>
+        <kbd>⌘W</kbd> to close the panel
+        <span>Never the last one. <kbd>⌘Z</kbd> undoes the move, the rename, or
+        the trash — though not the copy, which is a thing that only ever added
+        files.</span>
+      </li>
+    </ol>
+
+    <p class="aside">
+      Lost? <kbd>?</kbd> lists every action and its keys. <kbd>Esc</kbd> backs
+      out of whatever you are in — a preview, a filter, selection mode — and
+      never quits.
+    </p>
   </div>
 </section>
 
@@ -149,15 +211,19 @@
         </thead>
         <tbody>
           <tr><td><kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd></td><td>Move, enter, go up<span class="desc"> — arrow keys work too</span></td></tr>
-          <tr><td><kbd>n</kbd> / <kbd>N</kbd> / <kbd>w</kbd></td><td>New panel, split this one, close it</td></tr>
+          <tr><td><kbd>n</kbd> / <kbd>N</kbd></td><td>New panel, or duplicate this one</td></tr>
           <tr><td><kbd>Tab</kbd></td><td>Next panel</td></tr>
           <tr><td><kbd>Space</kbd></td><td>Quick Look<span class="desc"> — <kbd>Ctrl</kbd>+<kbd>Space</kbd> cycles where it docks</span></td></tr>
           <tr><td><kbd>v</kbd></td><td>Selection mode<span class="desc"> — movement then extends the selection</span></td></tr>
-          <tr><td><kbd>/</kbd></td><td>Filter this directory</td></tr>
+          <tr><td><kbd>/</kbd></td><td>Filter this directory<span class="desc"> — <kbd>\</kbd> clears it, and so does <kbd>Esc</kbd></span></td></tr>
           <tr><td><kbd>Ctrl</kbd>+<kbd>F</kbd></td><td>Find anywhere below here</td></tr>
-          <tr><td><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>X</kbd> / <kbd>V</kbd></td><td>Copy, cut, paste</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>X</kbd> / <kbd>V</kbd></td><td>Copy, cut, paste<span class="desc"> — Command on macOS</span></td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>N</kbd></td><td>New file, or folder with a trailing <code>/</code></td></tr>
           <tr><td><kbd>Ctrl</kbd>+<kbd>B</kbd></td><td>Bulk rename the selection</td></tr>
           <tr><td><kbd>Ctrl</kbd>+<kbd>A</kbd> / <kbd>E</kbd></td><td>Create an archive, extract one</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td>Undo a move, rename or trash<span class="desc"> — a copy is not undoable, and says so</span></td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>Back out of a preview, a filter, or selection mode<span class="desc"> — never quits</span></td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>W</kbd> / <kbd>Q</kbd></td><td>Close the panel, quit</td></tr>
           <tr><td><kbd>g</kbd><kbd>g</kbd> · <kbd>g</kbd><kbd>h</kbd> · <kbd>g</kbd><kbd>r</kbd></td><td>Top, home, root<span class="desc"> — <kbd>g</kbd> is the &ldquo;go&rdquo; prefix, and yours to extend</span></td></tr>
           <tr><td><kbd>?</kbd></td><td>Every binding, in a modal</td></tr>
         </tbody>

@@ -3,6 +3,7 @@
 #include "platform/VolumeMonitor.h"
 
 #include <QList>
+#include <QSet>
 #include <QString>
 #include <QWidget>
 
@@ -74,6 +75,11 @@ private:
     void addPlace(const QString &title, const QString &path);
     void addDevices();
 
+    /// Opens the place or mounts the device a row stands for. Tolerates being
+    /// called twice for one gesture: a double click delivers both itemClicked
+    /// and itemActivated.
+    void openItem(QListWidgetItem *item);
+
     /// Drops both the current row and the selection, so no place is left
     /// looking like a state.
     void clearHighlight();
@@ -83,6 +89,9 @@ private:
 
     /// §3.4: null until startWatchingDevices() is called.
     std::unique_ptr<platform::VolumeMonitor> m_volumes;
+
+    /// Volumes with a mount already requested, so one gesture cannot ask twice.
+    QSet<QString> m_mounting;
 
     bool m_populated = false;
 };

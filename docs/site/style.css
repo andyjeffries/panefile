@@ -279,6 +279,67 @@ header.site nav a:hover {
     background: var(--surface);
 }
 
+/* -------------------------------------------------------------- walkthrough */
+
+.walkthrough {
+    counter-reset: step;
+    list-style: none;
+    margin: 2.5rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 0.25rem;
+}
+
+.walkthrough li {
+    position: relative;
+    padding: 0.85rem 0 0.85rem 3rem;
+    border-top: 1px solid var(--border);
+}
+
+.walkthrough li:last-child {
+    border-bottom: 1px solid var(--border);
+}
+
+.walkthrough li::before {
+    counter-increment: step;
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 0.85rem;
+    width: 1.7rem;
+    height: 1.7rem;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--subtext);
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+    display: grid;
+    place-items: center;
+}
+
+.walkthrough span {
+    display: block;
+    margin-top: 0.3rem;
+    color: var(--subtext);
+    font-size: 0.92rem;
+    max-width: 44rem;
+}
+
+.walkthrough code,
+.aside code {
+    padding: 0.05rem 0.3rem;
+    border-radius: 4px;
+    background: var(--surface);
+    font-size: 0.85em;
+}
+
+.aside {
+    margin-top: 2rem;
+    color: var(--subtext);
+    max-width: 44rem;
+}
+
 /* -------------------------------------------------------------------- keys */
 
 kbd {

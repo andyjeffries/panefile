@@ -90,13 +90,36 @@ Qt::DropAction PanelView::actionFor(Qt::KeyboardModifiers modifiers, bool sameFi
     return sameFilesystem ? Qt::MoveAction : Qt::CopyAction;
 }
 
+QString PanelView::nameAt(const QPoint &position) const
+{
+    const QModelIndex index = indexAt(position);
+    if (!index.isValid()) {
+        return {};
+    }
+    return index.data(DirectoryModel::NameRole).toString();
+}
+
 void PanelView::mousePressEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton) {
         m_pressPosition = event->position().toPoint();
         m_pressed = true;
+        Q_EMIT rowClicked(nameAt(m_pressPosition), event->modifiers());
     }
     QListView::mousePressEvent(event);
+}
+
+void PanelView::mouseReleaseEvent(QMouseEvent *event)
+{
+    // A press that is still "pressed" here never travelled far enough to become
+    // a drag, so it was a click after all. The distinction matters for a plain
+    // click on an already-selected row: clearing the selection on the way down
+    // would empty it just as the user started dragging it somewhere.
+    if (event->button() == Qt::LeftButton && m_pressed) {
+        m_pressed = false;
+        Q_EMIT clickCompleted(nameAt(event->position().toPoint()), event->modifiers());
+    }
+    QListView::mouseReleaseEvent(event);
 }
 
 void PanelView::mouseMoveEvent(QMouseEvent *event)

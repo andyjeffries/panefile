@@ -98,6 +98,20 @@ public:
     void selectAll();
     void clearSelection();
 
+    /// Selects everything between the anchor and `name`, in the order the panel
+    /// is sorted — what Shift+click means everywhere else, and the reason the
+    /// anchor is remembered rather than derived from the cursor.
+    void extendSelectionTo(const QString &name);
+
+    /// Applies a click's modifiers to the selection (§6.1 by mouse).
+    ///
+    /// Split across press and release because of one case: a plain click on an
+    /// already-selected row. Clearing on the way down would empty the selection
+    /// just as the user began dragging it, so the clear waits for a release
+    /// that proves no drag happened.
+    void handleClickPress(const QString &name, Qt::KeyboardModifiers modifiers);
+    void handleClickRelease(const QString &name, Qt::KeyboardModifiers modifiers);
+
     /// Absolute paths of the selected entries, or of the cursor item when
     /// nothing is selected.
     ///
@@ -185,6 +199,10 @@ private:
 
     QString m_path;
     QSet<QString> m_selection;
+
+    /// Where a Shift+click range starts. Held by name rather than row because
+    /// a sort or a filter can move a row out from under an index.
+    QString m_selectionAnchor;
     QStringList m_backStack;
     QStringList m_forwardStack;
 

@@ -116,6 +116,8 @@ FilePanel::FilePanel(QWidget *parent)
 
     // §7.12. The view asks rather than reads, because the selection and the
     // working directory both live here — the view has neither.
+    connect(m_view, &PanelView::rowClicked, this, &FilePanel::handleClickPress);
+    connect(m_view, &PanelView::clickCompleted, this, &FilePanel::handleClickRelease);
     connect(m_view, &PanelView::dragPathsRequested, this,
             [this](QStringList *paths) { *paths = selectedPaths(); });
     connect(m_view, &PanelView::currentDirectoryRequested, this,
@@ -194,8 +196,10 @@ void FilePanel::setPathInternal(const QString &path, bool pushHistory)
 
     m_path = cleaned;
     // A selection names entries in the directory being left. Carrying it into
-    // the next one would leave names selected that mean different files.
+    // the next one would leave names selected that mean different files, and
+    // the same goes for the anchor a Shift+click would extend from.
     m_selection.clear();
+    m_selectionAnchor.clear();
 
     // And so does a filter. It describes what you wanted to see *here*, not a
     // property of the panel — filter for "Pic" in your home directory, open
@@ -700,6 +704,101 @@ void FilePanel::toggleSelectionAt(const QString &name)
     Q_EMIT selectionChanged(static_cast<int>(m_selection.size()));
 }
 
+void FilePanel::extendSelectionTo(const QString &name)
+{
+    if (name.isEmpty()) {
+        return;
+    }
+
+    // With nothing anchored yet the cursor is the natural start, so a
+    // Shift+click straight after arriving in a directory still does something
+    // sensible rather than nothing.
+    const QString anchor = m_selectionAnchor.isEmpty() ? cursorName() : m_selectionAnchor;
+    if (anchor.isEmpty()) {
+        toggleSelectionAt(name);
+        m_selectionAnchor = name;
+        return;
+    }
+
+    int from = -1;
+    int to = -1;
+    for (int row = 0; row < m_proxy->rowCount(); ++row) {
+        const QString rowName = m_proxy->index(row, 0).data(DirectoryModel::NameRole).toString();
+        if (rowName == anchor) {
+            from = row;
+        }
+        if (rowName == name) {
+            to = row;
+        }
+    }
+
+    // Either end can be missing if a filter hid it since the anchor was set.
+    if (from < 0 || to < 0) {
+        toggleSelectionAt(name);
+        m_selectionAnchor = name;
+        return;
+    }
+
+    if (from > to) {
+        std::swap(from, to);
+    }
+
+    // The range replaces the selection rather than adding to it, so dragging
+    // the shift-click up and down narrows as well as widens — a range that only
+    // ever grew would need a fresh click to correct an overshoot. The anchor
+    // itself is left alone, since it is the fixed end.
+    m_selection.clear();
+    for (int row = from; row <= to; ++row) {
+        m_selection.insert(m_proxy->index(row, 0).data(DirectoryModel::NameRole).toString());
+    }
+
+    m_view->viewport()->update();
+    updateHeader();
+    Q_EMIT selectionChanged(static_cast<int>(m_selection.size()));
+}
+
+void FilePanel::handleClickPress(const QString &name, Qt::KeyboardModifiers modifiers)
+{
+    if ((modifiers & Qt::ShiftModifier) != 0) {
+        extendSelectionTo(name);
+        return;
+    }
+
+    // Ctrl on Linux, Command on macOS — Qt maps Qt::ControlModifier to Command
+    // there. Qt::MetaModifier is checked too so that a Mac's Ctrl+click, which
+    // arrives as Meta, toggles as well rather than doing nothing.
+    if ((modifiers & (Qt::ControlModifier | Qt::MetaModifier)) != 0) {
+        toggleSelectionAt(name);
+        m_selectionAnchor = name;
+        return;
+    }
+
+    // A plain press on an unselected row starts over immediately, which is what
+    // makes the new selection feel instant. A press on a *selected* row is left
+    // alone until the release: it might be the start of a drag, and dragging a
+    // multi-file selection has to still have one.
+    if (!m_selection.contains(name)) {
+        clearSelection();
+    }
+    m_selectionAnchor = name;
+}
+
+void FilePanel::handleClickRelease(const QString &name, Qt::KeyboardModifiers modifiers)
+{
+    const bool plain =
+        (modifiers & (Qt::ShiftModifier | Qt::ControlModifier | Qt::MetaModifier)) == 0;
+    if (!plain) {
+        return;
+    }
+
+    // The deferred half of the press: no drag happened, so the click stands and
+    // the selection it was covering for can go.
+    if (m_selection.contains(name) && m_selection.size() > 1) {
+        clearSelection();
+        m_selectionAnchor = name;
+    }
+}
+
 void FilePanel::selectAll()
 {
     // Everything *visible*: a filter is a statement about what the user is
@@ -719,6 +818,7 @@ void FilePanel::clearSelection()
         return;
     }
     m_selection.clear();
+    m_selectionAnchor.clear();
     m_view->viewport()->update();
     updateHeader();
     Q_EMIT selectionChanged(0);

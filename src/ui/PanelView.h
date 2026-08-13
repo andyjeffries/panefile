@@ -64,6 +64,18 @@ Q_SIGNALS:
     void filesDropped(const QStringList &paths, const QString &destinationDirectory,
                       Qt::DropAction action);
 
+    /// A row was clicked, with whatever modifiers were held. The panel decides
+    /// what that means for the selection, because the selection is the panel's
+    /// (§6.1) and not the view's selection model.
+    ///
+    /// `name` is empty for a click on empty space.
+    void rowClicked(const QString &name, Qt::KeyboardModifiers modifiers);
+
+    /// The button came back up on the same row it went down on, with no drag in
+    /// between — so a plain click really was a click, and can now clear the
+    /// selection it could not safely clear on the way down.
+    void clickCompleted(const QString &name, Qt::KeyboardModifiers modifiers);
+
     /// A drag is starting; the panel supplies the paths, because the selection
     /// belongs to it rather than to the view.
     void dragPathsRequested(QStringList *paths);
@@ -88,6 +100,7 @@ private:
 protected:
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
 
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dragMoveEvent(QDragMoveEvent *event) override;
@@ -100,6 +113,9 @@ private:
     /// panel's selection, not the view's. Named apart so the two cannot be
     /// confused for an override that never fires.
     void beginPanelDrag();
+
+    /// The entry name at a viewport position, or empty for empty space.
+    QString nameAt(const QPoint &position) const;
 
     /// Renders up to three rows plus a "+N" badge.
     QPixmap dragPixmap(const QStringList &paths) const;

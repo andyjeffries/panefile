@@ -200,17 +200,20 @@ QWidget#footerRow {
    harder to scan; everything else in the window is the system UI face, which is
    what stops the application reading as a terminal utility. */
 QLabel#footer {
+    background-color: transparent;
     color: %{subtext};
     font-family: %{mono_family};
     font-size: %{small_font_size}pt;
 }
 
 QLabel#selectionCount {
+    background-color: transparent;
     color: %{subtext};
     font-size: %{small_font_size}pt;
 }
 
 QLabel#pendingKeys {
+    background-color: transparent;
     color: %{accent};
     font-size: %{small_font_size}pt;
     font-weight: bold;

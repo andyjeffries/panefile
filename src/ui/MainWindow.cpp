@@ -72,6 +72,9 @@ MainWindow::MainWindow(QWidget *parent)
     auto *footerRow = new QWidget(central);
     auto *footerLayout = new QHBoxLayout(footerRow);
     footerRow->setObjectName(QStringLiteral("footerRow"));
+    // Same reason as the sidebar: a plain QWidget does not paint the
+    // stylesheet's background or its top hairline without being told to.
+    footerRow->setAttribute(Qt::WA_StyledBackground, true);
     footerLayout->setContentsMargins(currentPalette().panelPadding, 4,
                                      currentPalette().panelPadding, 4);
     footerLayout->setSpacing(14);

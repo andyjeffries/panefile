@@ -73,5 +73,6 @@ for theme in macos-light catppuccin-mocha; do
             --theme "$theme" \
             --paths "$sandbox/Developer/panefile/src,$sandbox/Downloads" \
             --width 1160 --height 430 --scale 2 \
+            --chrome --title "Panefile" \
             --output "docs/site/screenshot-$theme.png"
 done

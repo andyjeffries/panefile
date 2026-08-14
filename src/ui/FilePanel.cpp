@@ -90,6 +90,7 @@ FilePanel::FilePanel(QWidget *parent)
     // one continuous surface; styling them separately left a seam between them.
     auto *headerRow = new QWidget(this);
     headerRow->setObjectName(QStringLiteral("panelHeaderRow"));
+    headerRow->setAttribute(Qt::WA_StyledBackground, true);
     auto *headerLayout = new QHBoxLayout(headerRow);
     // Set here rather than in the stylesheet: `padding` on a plain QWidget
     // styles the widget's own painting and does not inset the layout inside it,

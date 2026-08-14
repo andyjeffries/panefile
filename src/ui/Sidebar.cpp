@@ -28,6 +28,13 @@ constexpr int kVolumeIdRole = Qt::UserRole + 3;
 Sidebar::Sidebar(QWidget *parent) : QWidget(parent), m_list(new QListWidget(this))
 {
     setObjectName(QStringLiteral("sidebar"));
+
+    // Without this a plain QWidget subclass ignores the stylesheet's
+    // background-color entirely — Qt only paints one automatically for the
+    // widget classes that already draw themselves. The list inside painted its
+    // own grey and the section label's strip did not, which is what left a
+    // paler band across the top of the sidebar.
+    setAttribute(Qt::WA_StyledBackground, true);
     setMinimumWidth(140);
     setMaximumWidth(280);
     // The design's width. A sidebar of shortcuts does not earn more, and at

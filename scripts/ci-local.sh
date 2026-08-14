@@ -9,6 +9,7 @@
 #
 # Usage:
 #   scripts/ci-local.sh              everything
+#   scripts/ci-local.sh fix          reformat in place, then stop
 #   scripts/ci-local.sh format       just clang-format
 #   scripts/ci-local.sh build        configure, build, test (Debug, -Werror)
 #   scripts/ci-local.sh tidy         just clang-tidy
@@ -95,6 +96,23 @@ tidy_one() {
 export -f tidy_one
 
 # --- stages -----------------------------------------------------------------
+
+# The counterpart to run_format, which only ever reports. Having the fixer here
+# rather than in everyone's shell history means it uses the same file list and
+# the same resolved binary as the gate that judges it — a hand-rolled find and a
+# hardcoded Homebrew path drift from both.
+run_fix() {
+    announce "clang-format --fix"
+
+    local tool
+    if ! tool="$(find_tool clang-format)"; then
+        printf '%s  clang-format not found, skipping%s\n' "$dim" "$reset"
+        return
+    fi
+
+    sources | xargs "$tool" -i
+    ok "clang-format --fix"
+}
 
 run_format() {
     announce "clang-format"
@@ -189,8 +207,15 @@ run_tidy() {
 
         # Concatenated in the order the files were found, so the report does not
         # reshuffle itself from run to run with whichever worker finished first.
+        # The explicit newline matters: command substitution eats the trailing
+        # one, and without it every finding lands on a single line and the
+        # head -40 below caps nothing.
+        local log
         for file in "${lintable[@]}"; do
-            output+="$(cat "$logs/${file//\//_}.log" 2>/dev/null)"
+            log="$logs/${file//\//_}.log"
+            if [[ -s "$log" ]]; then
+                output+="$(cat "$log")"$'\n'
+            fi
         done
         rm -rf "$logs"
     fi
@@ -241,13 +266,14 @@ run_release() {
 }
 
 case "$stage" in
+fix)     run_fix ;;
 format)  run_format ;;
 build)   run_build ;;
 tidy)    run_tidy ;;
 release) run_release ;;
 all)     run_format; run_build; run_tidy; run_release ;;
 *)
-    echo "unknown stage '$stage'; expected one of: all format build tidy release" >&2
+    echo "unknown stage '$stage'; expected one of: all fix format build tidy release" >&2
     exit 64
     ;;
 esac

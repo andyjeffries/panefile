@@ -1,8 +1,10 @@
 #include "platform/Launcher.h"
 
 #include <QFileInfo>
+
 #include <QProcess>
 #include <QProcessEnvironment>
+#include <algorithm>
 
 namespace pf::platform {
 namespace {
@@ -59,12 +61,10 @@ bool Launcher::openTerminal(const QString &directory)
         return true;
     }
 
-    for (const QString &candidate : terminalCandidates()) {
-        if (runDetached(candidate, {}, directory)) {
-            return true;
-        }
-    }
-    return false;
+    const QStringList &candidates = terminalCandidates();
+    return std::ranges::any_of(candidates, [&directory](const QString &candidate) {
+        return runDetached(candidate, {}, directory);
+    });
 }
 
 bool Launcher::openInEditor(const QString &path)
@@ -90,12 +90,9 @@ bool Launcher::openInEditor(const QString &path)
     }
     terminals << terminalCandidates();
 
-    for (const QString &terminal : terminals) {
-        if (runDetached(terminal, {QStringLiteral("-e"), editor, path}, directory)) {
-            return true;
-        }
-    }
-    return false;
+    return std::ranges::any_of(terminals, [&](const QString &terminal) {
+        return runDetached(terminal, {QStringLiteral("-e"), editor, path}, directory);
+    });
 }
 
 } // namespace pf::platform

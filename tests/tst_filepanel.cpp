@@ -79,9 +79,13 @@ private Q_SLOTS:
         panel.navigateTo(dir.path());
         QTRY_COMPARE_WITH_TIMEOUT(panel.view()->model()->rowCount(), 2, 5000);
 
-        QVERIFY2(!panel.headerText().contains(QStringLiteral(" of ")),
-                 qPrintable(panel.headerText()));
-        QVERIFY2(panel.headerText().contains(QStringLiteral("2")), qPrintable(panel.headerText()));
+        // The count, not the path. Asserting against headerText() passed on
+        // macOS for the wrong reason — a /var/folders/… temporary path contains
+        // digits, so `contains("2")` was true whatever the count said — and
+        // failed on Linux, where /tmp/tst_filepanel-FotCEa does not.
+        QVERIFY2(!panel.headerCountText().contains(QStringLiteral(" of ")),
+                 qPrintable(panel.headerCountText()));
+        QCOMPARE(panel.headerCountText(), QStringLiteral("2 items"));
     }
 
     /// But a filter genuinely withholding something still says so, and counts

@@ -75,11 +75,11 @@ QWidget#filePanel[panelActive="true"] {
 
 /* A hairline under the header rather than a filled bar: the path and the count
    are labels on the list, not a toolbar above it. */
+/* The margins are set on the layout in FilePanel, because padding here would
+   style this widget's own painting without insetting the labels inside it. */
 QWidget#panelHeaderRow {
     background-color: transparent;
     border-bottom: 1px solid %{header_rule};
-    min-height: 34px;
-    padding: 0px %{padding}px;
 }
 
 QLabel#panelHeader {
@@ -87,7 +87,6 @@ QLabel#panelHeader {
     color: %{overlay};
     font-size: %{chrome_font_size}pt;
     font-weight: 600;
-    padding: 7px 0px;
 }
 
 /* Near-black in the focused panel against a mid grey in the other. Along with
@@ -140,7 +139,12 @@ QWidget#sidebar {
     border-right: 1px solid %{seam};
 }
 
+/* Transparent, or it paints the *content* background over the sidebar: the
+   catch-all QWidget rule gives every widget the window's background colour, and
+   a label that does not opt out of it stamps a lighter block behind its own
+   text. That is what put a paler strip across the top of the sidebar. */
 QLabel#sidebarSection {
+    background-color: transparent;
     color: %{overlay};
     font-size: %{small_font_size}pt;
     font-weight: 600;

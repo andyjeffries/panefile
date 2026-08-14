@@ -34,11 +34,13 @@
 #include "ui/Sidebar.h"
 #include "ui/ThemePalette.h"
 #include "ui/modals/HelpModal.h"
+#include "ui/modals/InputModal.h"
 
 #include <QDir>
 #include <QFileInfo>
 #include <QFont>
 #include <QKeyEvent>
+#include <QProcess>
 #include <QSocketNotifier>
 #include <QStyleHints>
 #include <QTimer>
@@ -284,6 +286,22 @@ void Application::registerGlobalActions()
 
     m_registry->registerAction(QStringLiteral("toggle_sidebar"), tr("Show or hide the sidebar"),
                                ActionCategory::View, [this] { m_mainWindow->toggleSidebar(); });
+
+    m_registry->registerAction(QStringLiteral("toggle_theme_dark_light"),
+                               tr("Switch between the light and dark theme"), ActionCategory::View,
+                               [this] { toggleLightDark(); });
+
+    m_registry->registerAction(QStringLiteral("focus_on_process_bar"),
+                               tr("Focus the running-jobs panel"), ActionCategory::View,
+                               [this] { focusProcessBar(); });
+
+    m_registry->registerAction(QStringLiteral("open_command_line"),
+                               tr("Run a shell command in this directory"), ActionCategory::General,
+                               [this] { promptForShellCommand(); });
+
+    m_registry->registerAction(QStringLiteral("open_panefile_prompt"),
+                               tr("Run a Panefile action by name"), ActionCategory::General,
+                               [this] { promptForAction(); });
 
     // Opening a place from the sidebar goes through the controller, so it obeys
     // the same placement rules as a path from the command line.
@@ -676,6 +694,136 @@ void Application::installSignalHandling()
     // negotiate at runtime.
     (void)std::signal(SIGTERM, &onTerminationSignal);
     (void)std::signal(SIGINT, &onTerminationSignal);
+}
+
+ui::InputModal *Application::shellPromptModal()
+{
+    if (m_shellPrompt == nullptr) {
+        m_shellPrompt = new ui::InputModal(m_mainWindow.get());
+        connect(m_shellPrompt, &ui::InputModal::submitted, this, [this](const QString &command) {
+            const ui::FilePanel *panel = m_mainWindow->panelStrip()->focusedPanel();
+            if (panel == nullptr || command.trimmed().isEmpty()) {
+                return;
+            }
+
+            // Through a shell, because the whole point of a command line is
+            // that pipes, redirection and globs work. Detached, because
+            // Panefile is not a terminal and has nowhere to show the output —
+            // a command that wants to be watched belongs in `T`.
+            const QString shell = qEnvironmentVariable("SHELL", QStringLiteral("/bin/sh"));
+            if (QProcess::startDetached(shell, {QStringLiteral("-c"), command}, panel->path())) {
+                m_mainWindow->showStatusMessage(tr("Running: %1").arg(command));
+            } else {
+                m_mainWindow->showStatusMessage(tr("Could not run: %1").arg(command));
+            }
+        });
+    }
+    return m_shellPrompt;
+}
+
+ui::InputModal *Application::actionPromptModal()
+{
+    if (m_actionPrompt == nullptr) {
+        m_actionPrompt = new ui::InputModal(m_mainWindow.get());
+        connect(m_actionPrompt, &ui::InputModal::submitted, this, [this](const QString &id) {
+            const QString wanted = id.trimmed();
+            if (wanted.isEmpty()) {
+                return;
+            }
+            if (!m_registry->ids().contains(wanted)) {
+                m_mainWindow->showStatusMessage(tr("No such action: %1").arg(wanted));
+                return;
+            }
+            m_registry->invoke(wanted);
+        });
+    }
+    return m_actionPrompt;
+}
+
+void Application::toggleLightDark()
+{
+    // Swap to the counterpart of whatever is showing, and write it to
+    // theme.toml — otherwise the next desktop appearance change would undo it,
+    // since following the desktop is only the behaviour while the user has not
+    // chosen. Pressing this key *is* choosing.
+    const bool dark = !ui::currentPalette().isLight();
+    const QString name = dark ? QStringLiteral("macos-light") : QStringLiteral("macos-dark");
+
+    const config::ThemeLoadResult loaded = config::loadThemeByName(name);
+    if (!loaded.issues.isEmpty()) {
+        m_mainWindow->showStatusMessage(tr("Could not load the %1 theme").arg(name));
+        return;
+    }
+
+    applyTheme(loaded.theme);
+
+    const QString path = platform::configDir() + QStringLiteral("/theme.toml");
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QFile file(path);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        file.write(QStringLiteral("# Written by toggle_theme_dark_light. Delete this file to go\n"
+                                  "# back to following the desktop's own light/dark setting.\n"
+                                  "name = \"%1\"\n")
+                       .arg(name)
+                       .toUtf8());
+    }
+
+    m_mainWindow->showStatusMessage(tr("Theme: %1").arg(loaded.theme.name));
+}
+
+void Application::applyTheme(const config::Theme &theme)
+{
+    ui::setCurrentPalette(theme);
+    setStyleSheet(config::buildStyleSheet(theme));
+
+    QFont themeFont = font();
+    if (!theme.fontFamily.isEmpty()) {
+        themeFont.setFamily(theme.fontFamily);
+    }
+    themeFont.setPointSize(theme.fontSize);
+    setFont(themeFont);
+
+    // A stylesheet change does not reach a QStyledItemDelegate, which paints
+    // from the palette directly, so rows would keep the old colours until
+    // something else invalidated them.
+    if (m_mainWindow != nullptr) {
+        m_mainWindow->update();
+        for (ui::FilePanel *panel : m_mainWindow->panelStrip()->panels()) {
+            panel->update();
+            panel->view()->viewport()->update();
+        }
+    }
+}
+
+void Application::focusProcessBar()
+{
+    // Constructing it here would put an empty jobs list on screen for a user who
+    // has never run one, so this reports rather than conjures.
+    if (m_processBar == nullptr) {
+        m_mainWindow->showStatusMessage(tr("No jobs have run yet"));
+        return;
+    }
+    m_mainWindow->showProcessBar(m_processBar);
+    m_processBar->setExpanded(true);
+    m_processBar->setFocus(Qt::OtherFocusReason);
+}
+
+void Application::promptForShellCommand()
+{
+    const ui::FilePanel *panel = m_mainWindow->panelStrip()->focusedPanel();
+    if (panel == nullptr) {
+        return;
+    }
+    const QString directory = panel->path();
+
+    ui::InputModal *modal = shellPromptModal();
+    modal->ask(tr("Run a command"), tr("Runs in %1").arg(QDir(directory).dirName()));
+}
+
+void Application::promptForAction()
+{
+    ui::InputModal *modal = actionPromptModal();
+    modal->ask(tr("Run an action"), tr("An action id, such as “bulk_rename”"));
 }
 
 void Application::saveSession() const

@@ -19,27 +19,16 @@ namespace {
 
 /// Actions the default keymap binds that nothing implements yet.
 ///
-/// Every entry here is a key a user can press today that does nothing at all.
-/// They are listed rather than quietly tolerated so that the count can only go
-/// down: implementing one means deleting its line, and binding a *new* key to
-/// nothing fails this test immediately.
+/// Empty, and meant to stay that way. Every entry was a key a user could press
+/// that did nothing at all — thirteen of them when this test was written, of
+/// which compress_file and extract_file were the reason for writing it: §7.10's
+/// archive support was fully built and tested and then never registered, so no
+/// key reached any of it.
 ///
-/// The two that used to be here — compress_file and extract_file — were the
-/// reason it was written. §7.10's archive support was fully built and tested
-/// and then never registered, so no key reached any of it.
-const QStringList kNotImplementedYet{
-    QStringLiteral("focus_on_process_bar"),
-    QStringLiteral("go_previous"),
-    QStringLiteral("go_trash"),
-    QStringLiteral("open_command_line"),
-    QStringLiteral("open_current_directory_with_editor"),
-    QStringLiteral("open_file_with_editor"),
-    QStringLiteral("open_panefile_prompt"),
-    QStringLiteral("open_sort_options_menu"),
-    QStringLiteral("open_terminal_here"),
-    QStringLiteral("open_with_default_app"),
-    QStringLiteral("toggle_theme_dark_light"),
-};
+/// The list is kept rather than deleted because a new binding added without an
+/// implementation is exactly the mistake this catches, and an empty list is the
+/// clearest possible statement that there is nothing outstanding.
+const QStringList kNotImplementedYet{};
 
 /// Registered by Application itself rather than by one of the controllers.
 ///
@@ -52,6 +41,10 @@ const QStringList kRegisteredByTheCompositionRoot{
     QStringLiteral("quit"),
     QStringLiteral("toggle_sidebar"),
     QStringLiteral("open_help_menu"),
+    QStringLiteral("toggle_theme_dark_light"),
+    QStringLiteral("focus_on_process_bar"),
+    QStringLiteral("open_command_line"),
+    QStringLiteral("open_panefile_prompt"),
 };
 
 } // namespace

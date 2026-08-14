@@ -4,7 +4,8 @@
 
 namespace pf::config {
 class ConfigWatcher;
-}
+struct Theme;
+} // namespace pf::config
 
 namespace pf::fs {
 class JobEngine;
@@ -26,6 +27,7 @@ class Keymap;
 namespace pf::ui {
 class FilePanel;
 class HelpModal;
+class InputModal;
 class MainWindow;
 class ProcessBar;
 } // namespace pf::ui
@@ -116,6 +118,25 @@ private:
 
     void saveSession() const;
 
+    /// §6.3's `Ctrl+T`: swap between the light and dark theme, and record the
+    /// choice so the desktop stops overriding it.
+    void toggleLightDark();
+
+    /// Applies a theme to a running application — palette, stylesheet, font,
+    /// and a repaint of the delegates that read the palette directly.
+    void applyTheme(const config::Theme &theme);
+
+    /// §6.3's `p`: show the running-jobs panel and put focus in it.
+    void focusProcessBar();
+
+    /// §6.3's `:` and `>`: a shell command in the panel's directory, and a
+    /// Panefile action by id.
+    void promptForShellCommand();
+    void promptForAction();
+
+    ui::InputModal *shellPromptModal();
+    ui::InputModal *actionPromptModal();
+
     /// Makes SIGTERM and SIGINT quit cleanly, so the session survives a logout.
     ///
     /// A session manager ends a session with SIGTERM, and Qt's default
@@ -146,6 +167,8 @@ private:
     /// §3.4: created when the first job starts, not at startup. A user who
     /// copies nothing never pays for it.
     ui::ProcessBar *m_processBar = nullptr;
+    ui::InputModal *m_shellPrompt = nullptr;
+    ui::InputModal *m_actionPrompt = nullptr;
 
     /// §3.4: modals are constructed on first invocation, then cached. The help
     /// modal builds a tree of every action, which is not work to do at startup

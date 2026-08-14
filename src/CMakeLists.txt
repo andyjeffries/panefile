@@ -26,6 +26,7 @@ target_include_directories(pf_core PUBLIC "${CMAKE_CURRENT_BINARY_DIR}")
 # ---------------------------------------------------------------------------
 set(PF_PLATFORM_SOURCES
     platform/FileOpsCommon.cpp
+    platform/LauncherCommon.cpp
     platform/MountTable.cpp
     platform/Paths.cpp
     platform/WatchBackend.cpp
@@ -38,6 +39,7 @@ set(PF_PLATFORM_SOURCES
 if(PF_PLATFORM_LINUX)
     list(APPEND PF_PLATFORM_SOURCES
         platform/linux/FileOps_linux.cpp
+        platform/linux/Launcher_linux.cpp
         platform/linux/MountTable_linux.cpp
         platform/linux/Paths_linux.cpp
         platform/linux/VolumeMonitor_linux.cpp
@@ -45,6 +47,7 @@ if(PF_PLATFORM_LINUX)
 elseif(PF_PLATFORM_DARWIN)
     list(APPEND PF_PLATFORM_SOURCES
         platform/darwin/FileOps_darwin.cpp
+        platform/darwin/Launcher_darwin.cpp
         platform/darwin/MountTable_darwin.cpp
         platform/darwin/Paths_darwin.cpp
         platform/darwin/VolumeMonitor_darwin.cpp

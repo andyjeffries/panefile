@@ -91,7 +91,12 @@ FilePanel::FilePanel(QWidget *parent)
     auto *headerRow = new QWidget(this);
     headerRow->setObjectName(QStringLiteral("panelHeaderRow"));
     auto *headerLayout = new QHBoxLayout(headerRow);
-    headerLayout->setContentsMargins(0, 0, 0, 0);
+    // Set here rather than in the stylesheet: `padding` on a plain QWidget
+    // styles the widget's own painting and does not inset the layout inside it,
+    // so the count sat hard against the panel's right edge while the rule
+    // claimed ten pixels of clearance.
+    const int headerPadding = currentPalette().panelPadding;
+    headerLayout->setContentsMargins(headerPadding, 6, headerPadding, 6);
     headerLayout->setSpacing(8);
     headerLayout->addWidget(m_header, 1);
 

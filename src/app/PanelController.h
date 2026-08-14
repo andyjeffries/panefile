@@ -51,6 +51,9 @@ Q_SIGNALS:
     void panelModeChanged();
 
 private:
+    /// §6.3's `o` menu: the sort key, plus whether it runs backwards.
+    void showSortMenu(ui::FilePanel *panel);
+
     ui::FilePanel *focused() const;
 
     ui::MainWindow *m_window = nullptr;

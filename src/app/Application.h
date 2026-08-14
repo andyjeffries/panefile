@@ -28,6 +28,7 @@ namespace pf::ui {
 class FilePanel;
 class HelpModal;
 class InputModal;
+class SettingsWindow;
 class MainWindow;
 class ProcessBar;
 } // namespace pf::ui
@@ -134,6 +135,7 @@ private:
     void promptForShellCommand();
     void promptForAction();
 
+    ui::SettingsWindow *settingsWindow();
     ui::InputModal *shellPromptModal();
     ui::InputModal *actionPromptModal();
 
@@ -167,6 +169,7 @@ private:
     /// §3.4: created when the first job starts, not at startup. A user who
     /// copies nothing never pays for it.
     ui::ProcessBar *m_processBar = nullptr;
+    ui::SettingsWindow *m_settingsWindow = nullptr;
     ui::InputModal *m_shellPrompt = nullptr;
     ui::InputModal *m_actionPrompt = nullptr;
 

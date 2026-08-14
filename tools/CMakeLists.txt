@@ -3,7 +3,7 @@
 # for them.
 
 qt_add_executable(pf-screenshot screenshot.cpp)
-target_link_libraries(pf-screenshot PRIVATE Qt6::Widgets pf_ui pf_config)
+target_link_libraries(pf-screenshot PRIVATE Qt6::Widgets pf_ui pf_config pf_input pf_app)
 target_include_directories(pf-screenshot PRIVATE "${PROJECT_SOURCE_DIR}/src")
 set_target_properties(pf-screenshot PROPERTIES MACOSX_BUNDLE OFF)
 

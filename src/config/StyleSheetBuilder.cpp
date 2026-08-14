@@ -16,6 +16,15 @@ QString hex(const QColor &colour)
 /// Hard-coded lighter() would produce an invisible hover on a light theme and a
 /// washed-out one on a dark theme. Deriving the direction from the theme means
 /// a shade reads the same way in both.
+/// Black or white, whichever the given background can carry. Rec. 709 luma,
+/// which tracks perceived brightness far better than a mean of the channels.
+QColor readableOn(const QColor &background)
+{
+    const double luma = (0.2126 * background.redF()) + (0.7152 * background.greenF()) +
+                        (0.0722 * background.blueF());
+    return luma > 0.55 ? QColor(0, 0, 0) : QColor(255, 255, 255);
+}
+
 QString shade(const QColor &colour, bool towardsLight, int percent)
 {
     return hex(towardsLight ? colour.lighter(100 + percent) : colour.darker(100 + percent));
@@ -272,6 +281,88 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
     width: 0px;
 }
 
+/* Settings --------------------------------------------------------------- */
+
+/* A macOS preferences toolbar: a centred row of icon-over-label tabs, with a
+   hairline separating it from the content. Not a sidebar list, which is a web
+   idiom, and not a tab bar, which is for documents. */
+QWidget#settingsToolbar {
+    background-color: %{sidebar_bg};
+    border-bottom: 1px solid %{seam};
+}
+
+QPushButton#settingsTab {
+    background-color: transparent;
+    border: none;
+    border-radius: %{small_radius}px;
+    min-width: 76px;
+}
+
+QPushButton#settingsTab:hover {
+    background-color: %{hover};
+}
+
+/* The selected tab is the accent, as Terminal.app draws it: the glyph and its
+   label take the colour, on a background barely different from the toolbar. A
+   filled accent block here would shout, and the tab strip is navigation rather
+   than the thing being looked at. */
+QPushButton#settingsTab:checked {
+    background-color: %{hover};
+}
+
+QLabel#settingsTabGlyph {
+    background-color: transparent;
+    color: %{subtext};
+    font-size: %{glyph_font_size}pt;
+}
+
+QLabel#settingsTabLabel {
+    background-color: transparent;
+    color: %{subtext};
+    font-size: %{small_font_size}pt;
+}
+
+/* The selected tab is the accent, and its label goes with it: a coloured glyph
+   over a grey word reads as a decoration rather than as a selection. */
+QPushButton#settingsTab:checked QLabel#settingsTabGlyph,
+QPushButton#settingsTab:checked QLabel#settingsTabLabel {
+    color: %{accent};
+}
+
+QStackedWidget#settingsPages {
+    background-color: %{background};
+}
+
+QLabel#settingsHeading {
+    background-color: transparent;
+    color: %{text};
+    font-weight: 600;
+}
+
+QLabel#settingsNote {
+    background-color: transparent;
+    color: %{overlay};
+    font-size: %{small_font_size}pt;
+}
+
+QListWidget#settingsThemeList, QTreeWidget#settingsKeyTable {
+    background-color: %{surface};
+    border: 1px solid %{seam};
+    border-radius: %{small_radius}px;
+    outline: none;
+}
+
+QListWidget#settingsThemeList::item {
+    color: %{text};
+    padding: 5px 8px;
+    border-radius: %{small_radius}px;
+}
+
+QListWidget#settingsThemeList::item:selected {
+    background-color: %{selection_bg};
+    color: %{on_selection};
+}
+
 /* Modals ---------------------------------------------------------------- */
 
 QWidget#modalContent {
@@ -439,6 +530,10 @@ QProgressBar::chunk {
         .replace(QLatin1String("%{sidebar_bg}"), shade(theme.background, !light, 5))
         .replace(QLatin1String("%{mono_family}"),
                  QStringLiteral("'SF Mono', ui-monospace, Menlo, Consolas, monospace"))
+        // White or black against the accent, whichever the accent can carry —
+        // a light theme's accent may need dark text on it.
+        .replace(QLatin1String("%{on_selection}"), hex(readableOn(theme.selectionBackground)))
+        .replace(QLatin1String("%{glyph_font_size}"), QString::number(theme.fontSize + 4))
         .replace(QLatin1String("%{chrome_font_size}"), QString::number(theme.fontSize - 1))
         .replace(QLatin1String("%{small_font_size}"), QString::number(theme.fontSize - 2))
         .replace(QLatin1String("%{font_size}"), QString::number(theme.fontSize))

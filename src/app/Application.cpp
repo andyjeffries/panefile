@@ -35,6 +35,7 @@
 #include "ui/ThemePalette.h"
 #include "ui/modals/HelpModal.h"
 #include "ui/modals/InputModal.h"
+#include "ui/modals/SettingsWindow.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -298,6 +299,9 @@ void Application::registerGlobalActions()
     m_registry->registerAction(QStringLiteral("open_command_line"),
                                tr("Run a shell command in this directory"), ActionCategory::General,
                                [this] { promptForShellCommand(); });
+
+    m_registry->registerAction(QStringLiteral("open_settings"), tr("Settings"),
+                               ActionCategory::General, [this] { settingsWindow()->present(); });
 
     m_registry->registerAction(QStringLiteral("open_panefile_prompt"),
                                tr("Run a Panefile action by name"), ActionCategory::General,
@@ -694,6 +698,29 @@ void Application::installSignalHandling()
     // negotiate at runtime.
     (void)std::signal(SIGTERM, &onTerminationSignal);
     (void)std::signal(SIGINT, &onTerminationSignal);
+}
+
+ui::SettingsWindow *Application::settingsWindow()
+{
+    if (m_settingsWindow == nullptr) {
+        m_settingsWindow =
+            new ui::SettingsWindow(m_registry.get(), m_keymap.get(), m_mainWindow.get());
+
+        // Live preview: a theme is judged by looking at it, so it changes under
+        // the pointer rather than when the window closes. An empty name means
+        // "go back to following the desktop".
+        connect(m_settingsWindow, &ui::SettingsWindow::themePreviewRequested, this,
+                [this](const QString &name) {
+                    const config::Theme theme = name.isEmpty()
+                                                    ? config::defaultThemeForDesktop()
+                                                    : config::loadThemeByName(name).theme;
+                    applyTheme(theme);
+                });
+
+        connect(m_settingsWindow, &ui::SettingsWindow::settingsChanged, m_mainWindow.get(),
+                &ui::MainWindow::showStatusMessage);
+    }
+    return m_settingsWindow;
 }
 
 ui::InputModal *Application::shellPromptModal()

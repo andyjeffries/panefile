@@ -102,6 +102,7 @@ pf_layer_library(pf_config
         config/DefaultConfig.cpp
         config/Hotkeys.cpp
         config/StyleSheetBuilder.cpp
+        config/TomlWriter.cpp
         config/Theme.cpp
     PUBLIC_DEPENDS Qt6::Core Qt6::Gui pf_core pf_platform pf_input
     DEPENDS pf::tomlplusplus)
@@ -205,6 +206,7 @@ pf_layer_library(pf_ui
         ui/modals/InputModal.cpp
         ui/modals/HelpModal.cpp
         ui/modals/RenameModal.cpp
+        ui/modals/SettingsWindow.cpp
         ui/modals/Modal.cpp
     PUBLIC_DEPENDS
         Qt6::Core Qt6::Gui Qt6::Widgets

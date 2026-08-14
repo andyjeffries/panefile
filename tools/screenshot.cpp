@@ -20,6 +20,18 @@
 #include <QApplication>
 #include <QCommandLineOption>
 #include <QCommandLineParser>
+#include "ui/modals/SettingsWindow.h"
+#include "app/PanelController.h"
+#include "app/FileOperations.h"
+#include "app/QuickLookController.h"
+#include "app/SearchController.h"
+#include "fs/JobEngine.h"
+#include "fs/UndoStack.h"
+#include "input/ActionRegistry.h"
+#include "input/DefaultKeymap.h"
+#include "input/Keymap.h"
+#include <QAbstractButton>
+#include <QLabel>
 #include <QDir>
 #include <array>
 #include <QLinearGradient>
@@ -176,8 +188,11 @@ int main(int argc, char **argv)
                                           "Draw a macOS window frame and shadow around it.");
     const QCommandLineOption titleOption("title", "Title shown in the chrome.", "text",
                                          "Panefile");
+    const QCommandLineOption settingsOption("settings",
+                                            "Open the settings window over the panels.", "tab",
+                                            "");
     parser.addOptions({themeOption, outOption, widthOption, heightOption, scaleOption, pathsOption,
-                       chromeOption, titleOption});
+                       chromeOption, titleOption, settingsOption});
     parser.process(app);
 
     // The theme, through the same path the application uses: a Theme compiled
@@ -220,6 +235,61 @@ int main(int argc, char **argv)
     // hover highlight on "Home" that looked like a selection and was reported
     // as one. A Leave event to each widget clears WA_UnderMouse, which is what
     // moving a real pointer away would do.
+    std::unique_ptr<pf::input::ActionRegistry> registry;
+    std::unique_ptr<pf::input::Keymap> keymap;
+    std::unique_ptr<pf::PanelController> panels;
+    std::unique_ptr<pf::FileOperations> operations;
+    std::unique_ptr<pf::QuickLookController> quickLook;
+    std::unique_ptr<pf::SearchController> search;
+    std::unique_ptr<pf::fs::JobEngine> engine;
+    std::unique_ptr<pf::fs::UndoStack> undo;
+    pf::ui::SettingsWindow *settings = nullptr;
+    if (parser.isSet(settingsOption)) {
+        // Enough of the application to populate the window: the registry gives
+        // the keys tab its rows, the keymap gives them their bindings.
+        registry = std::make_unique<pf::input::ActionRegistry>();
+        keymap = std::make_unique<pf::input::Keymap>();
+        pf::input::installDefaultKeymap(*keymap);
+
+        // The real actions, registered the way the application registers them,
+        // so the Keys tab shows what a user would actually see rather than an
+        // empty table.
+        panels = std::make_unique<pf::PanelController>(&window, window.panelStrip(),
+                                                       window.sidebar(), registry.get());
+        panels->registerActions();
+
+        engine = std::make_unique<pf::fs::JobEngine>();
+        undo = std::make_unique<pf::fs::UndoStack>();
+        operations = std::make_unique<pf::FileOperations>(&window, window.panelStrip(),
+                                                          registry.get(), engine.get(),
+                                                          undo.get());
+        operations->registerActions();
+
+        quickLook = std::make_unique<pf::QuickLookController>(&window, registry.get());
+        quickLook->registerActions();
+
+        search = std::make_unique<pf::SearchController>(&window, window.panelStrip(),
+                                                        registry.get());
+        search->registerActions();
+
+        settings = new pf::ui::SettingsWindow(registry.get(), keymap.get(), &window);
+        settings->present();
+
+        const QString tab = parser.value(settingsOption);
+        if (!tab.isEmpty()) {
+            for (QAbstractButton *button : settings->findChildren<QAbstractButton *>()) {
+                if (button->findChild<QLabel *>() != nullptr) {
+                    for (QLabel *label : button->findChildren<QLabel *>()) {
+                        if (label->text().compare(tab, Qt::CaseInsensitive) == 0) {
+                            button->click();
+                        }
+                    }
+                }
+            }
+        }
+        settle(300);
+    }
+
     for (QWidget *widget : window.findChildren<QWidget *>()) {
         QEvent leave(QEvent::Leave);
         QApplication::sendEvent(widget, &leave);

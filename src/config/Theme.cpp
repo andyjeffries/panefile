@@ -330,6 +330,26 @@ ThemeLoadResult loadActiveTheme(const QString &themeFilePath)
         return result;
     }
 
+    // follow_system wins over name, and is checked first.
+    //
+    // Without it, "follow the desktop" was implicit — no theme.toml meant
+    // follow, any theme.toml meant do not — so the only way back to following
+    // was to delete a file, which is not something an interface can offer as a
+    // checkbox. An explicit key makes the intent storable, which is what lets
+    // the settings window show it as one.
+    //
+    // The [ui] block is still applied over the top, so somebody can follow the
+    // desktop *and* set their own row height.
+    if (const auto follow = (*table)["follow_system"].value<bool>(); follow && *follow) {
+        result.theme = defaultThemeForDesktop();
+        // The whole table, so following the desktop still allows a personal row
+        // height — but the name is put back, since the desktop chose the theme.
+        const QString chosen = result.theme.name;
+        applyThemeTable(*table, result.theme, fileName, &result.issues);
+        result.theme.name = chosen;
+        return result;
+    }
+
     // §8: theme.toml holds "the active theme name, or inline overrides". Both
     // at once is the useful case — name a shipped theme and change two colours
     // — which works because the named theme is loaded first and this file is

@@ -60,6 +60,12 @@ constexpr DefaultBinding kDefaults[] = {
     // toggle was registered but never bound, so the sidebar could be hidden
     // only by shrinking the window past 600 px.
     {KeymapLayer::Global, "toggle_sidebar", "Ctrl+S"},
+
+    // Both, deliberately. Ctrl+, is what Qt maps to Cmd+, on macOS and is what
+    // every other desktop application uses; a bare `,` matches how the rest of
+    // Panefile's single-key bindings work. §6.3 spends neither.
+    {KeymapLayer::Global, "open_settings", "Ctrl+,"},
+    {KeymapLayer::Normal, "open_settings", ","},
     // §7.11: "`u` on a mounted device unmounts."
     {KeymapLayer::Normal, "unmount_device", "u"},
     {KeymapLayer::Normal, "focus_on_process_bar", "p"},

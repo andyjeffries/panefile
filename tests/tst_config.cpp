@@ -45,6 +45,7 @@ private Q_SLOTS:
     // theme.toml
     void themeDefaultsAreCatppuccinMocha();
     void noThemeFileFollowsTheDesktop();
+    void followSystemOverridesTheNamedTheme();
     void themeColoursAreApplied();
     void invalidColourKeepsTheDefault();
     void themeUiMetricsAreClamped();
@@ -264,6 +265,34 @@ void TestConfig::noThemeFileFollowsTheDesktop()
     QVERIFY(result.issues.isEmpty());
     QVERIFY2(result.theme.background != QColor(0x1e, 0x1e, 0x2e),
              qPrintable(result.theme.background.name()));
+}
+
+void TestConfig::followSystemOverridesTheNamedTheme()
+{
+    // The settings window needs "follow the desktop" to be storable. It used to
+    // be implicit — no theme.toml meant follow, any theme.toml meant do not —
+    // so the only way back to following was to delete a file, which is not
+    // something a checkbox can offer.
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("theme.toml"));
+
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+    file.write("follow_system = true\nname = \"gruvbox-dark\"\n\n[ui]\nrow_height = 33\n");
+    file.close();
+
+    const ThemeLoadResult result = loadActiveTheme(path);
+
+    QVERIFY(result.issues.isEmpty());
+
+    // Not Gruvbox: follow_system wins over a name left in the file, which is
+    // what happens when someone ticks the box after having chosen a theme.
+    QVERIFY2(!result.theme.name.contains(QStringLiteral("Gruvbox")), qPrintable(result.theme.name));
+
+    // But the [ui] block still applies, so following the desktop does not mean
+    // giving up a personal row height.
+    QCOMPARE(result.theme.rowHeight, 33);
 }
 
 void TestConfig::themeColoursAreApplied()

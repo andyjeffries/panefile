@@ -1,6 +1,10 @@
-# Settings dialog — plan
+# Settings window — plan, and what was built
 
-Not implemented. This is the design, for review before any of it is built.
+**Built.** The window, all four tabs, the TOML writer, `follow_system`, and both
+key bindings. What is deliberately not built is noted at the end.
+
+This document was the design; it is kept because the reasoning is still the
+reason the code looks the way it does.
 
 ## Why
 
@@ -86,6 +90,32 @@ a first version.
    through the parser, and the first real test of preserving comments.
 4. **Keys.** Read-only first — the whole table, searchable, which is most of the
    value and none of the risk. The recorder after that.
+
+## What was built
+
+All of steps 0–4, except the chord recorder. The Keys tab lists every registered
+action with its bindings in the platform's own notation and a search box, and
+says to edit hotkeys.toml to change them.
+
+Two things worth recording because they were not obvious:
+
+**Opening the window must write nothing.** Every control writes when it changes,
+and populating them *is* changing them — so without a guard, merely looking at
+the settings would author a fully-populated config.toml for someone who had
+never configured anything, and would flatten the carefully partial file of
+someone who had. `tst_settings` asserts that opening the window creates neither
+file.
+
+**`follow_system` had to become real.** The plan proposed it and it is now a key
+the theme loader honours, ahead of any `name` left in the file. The `[ui]` block
+still applies over the top, so following the desktop does not mean giving up a
+personal row height.
+
+## Still to build
+
+- The chord recorder in the Keys tab, which is the fiddly part described above.
+- Thumbnails, search and operations settings, which have no tab yet. They are
+  the least-asked-for third of §8.1 and the window has room for a fifth tab.
 
 ## What needs deciding
 

@@ -10,6 +10,7 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
@@ -35,12 +36,17 @@ constexpr int kPanelSeamWidth = 1;
 /// moves between panels.
 constexpr int kPanelFocusEdgeHeight = 2;
 
+/// The list body's inset from the panel edges, so rows and the selection pill
+/// float inside the pane rather than touching its seams.
+constexpr int kListInsetVertical = 4;
+constexpr int kListInsetHorizontal = 6;
+
 } // namespace
 
 FilePanel::FilePanel(QWidget *parent)
     : QWidget(parent), m_model(new DirectoryModel(this)), m_proxy(new FilterSortProxy(this)),
       m_view(new PanelView(this)), m_delegate(new FileItemDelegate(this)),
-      m_header(new QLabel(this)), m_status(new QLabel(this))
+      m_header(new QLabel(this)), m_headerCount(new QLabel(this)), m_status(new QLabel(this))
 {
     setObjectName(QStringLiteral("filePanel"));
     // Narrow enough that ten panels fit §7.1's maximum on a normal display,
@@ -75,7 +81,26 @@ FilePanel::FilePanel(QWidget *parent)
     // the text is elided to fit.
     m_header->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     m_header->setMinimumWidth(0);
-    layout->addWidget(m_header);
+
+    // Path left, count right, rather than both bunched against the left edge.
+    // They answer different questions — "where am I" and "how much is here" —
+    // and putting them at opposite ends lets the eye go straight to either.
+    //
+    // The row carries the hairline and the background so the two labels sit on
+    // one continuous surface; styling them separately left a seam between them.
+    auto *headerRow = new QWidget(this);
+    headerRow->setObjectName(QStringLiteral("panelHeaderRow"));
+    auto *headerLayout = new QHBoxLayout(headerRow);
+    headerLayout->setContentsMargins(0, 0, 0, 0);
+    headerLayout->setSpacing(8);
+    headerLayout->addWidget(m_header, 1);
+
+    m_headerCount->setObjectName(QStringLiteral("panelHeaderCount"));
+    m_headerCount->setTextFormat(Qt::PlainText);
+    m_headerCount->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    headerLayout->addWidget(m_headerCount, 0);
+
+    layout->addWidget(headerRow);
 
     m_view->setObjectName(QStringLiteral("panelView"));
     m_view->setViewMode(QListView::ListMode);
@@ -88,6 +113,14 @@ FilePanel::FilePanel(QWidget *parent)
     m_view->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_view->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_view->setFrameShape(QFrame::NoFrame);
+
+    // The list body sits inset from the panel's edges.
+    //
+    // Full-bleed rows running edge to edge are what makes a pane read as a list
+    // widget dropped into a window rather than as part of the window; the
+    // selection needs somewhere to be a pill *inside* a surface instead of a
+    // band welded to both sides. 4px above and below, 6px each side.
+    m_view->setBodyInset(kListInsetHorizontal, kListInsetVertical);
     // The delegate paints the cursor row itself, in theme colours; leaving the
     // style's focus rectangle on top of that gives a doubled highlight.
     m_view->setFocusPolicy(Qt::StrongFocus);
@@ -860,6 +893,11 @@ QString FilePanel::headerText() const
     return m_headerText;
 }
 
+QString FilePanel::headerCountText() const
+{
+    return m_headerCount->text();
+}
+
 QStringList FilePanel::selectedPaths() const
 {
     QStringList paths;
@@ -900,6 +938,22 @@ void FilePanel::setActive(bool active)
     setProperty("panelActive", active);
     style()->unpolish(this);
     style()->polish(this);
+
+    // The header labels have to be re-polished too, and carry the property
+    // themselves.
+    //
+    // A descendant selector — QWidget#filePanel[panelActive="true"] QLabel —
+    // is not re-evaluated when an *ancestor's* property changes; Qt only
+    // restyles the widget it is told about. So the header kept the colour it
+    // had when it was first polished, and the focused and unfocused panels'
+    // paths looked identical no matter which one had focus.
+    for (QWidget *label :
+         {static_cast<QWidget *>(m_header), static_cast<QWidget *>(m_headerCount)}) {
+        label->setProperty("panelActive", active);
+        label->style()->unpolish(label);
+        label->style()->polish(label);
+    }
+
     update();
 }
 
@@ -978,7 +1032,8 @@ void FilePanel::updateHeader()
                       .arg(counted(static_cast<int>(m_selection.size()), tr("item"), tr("items")));
     }
 
-    m_headerText = QStringLiteral("%1    %2").arg(display, counts);
+    m_headerText = display;
+    m_headerCount->setText(counts);
     applyHeaderElision();
 }
 

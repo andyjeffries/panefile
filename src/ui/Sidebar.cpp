@@ -49,6 +49,10 @@ Sidebar::Sidebar(QWidget *parent) : QWidget(parent), m_list(new QListWidget(this
     m_list->setFrameShape(QFrame::NoFrame);
     m_list->setUniformItemSizes(true);
     m_list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    // The sidebar is a short fixed list of shortcuts. A scrollbar track running
+    // down it is chrome for a problem it does not have.
+    m_list->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    m_list->setFrameShape(QFrame::NoFrame);
     layout->addWidget(m_list);
 
     // Colours come from the stylesheet; only the item-view roles the style

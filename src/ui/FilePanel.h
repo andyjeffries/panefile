@@ -118,9 +118,13 @@ public:
     /// Falling back to the cursor is what makes every file operation work
     /// without a selection first — §6.3's bindings act on "the selection", and
     /// a user who has not made one means the thing under the cursor.
-    /// The panel header's full text, before elision. For the tests, and for
-    /// anything that needs to know what the panel is claiming about itself.
+    /// The panel header's path, before elision. For the tests, and for anything
+    /// that needs to know what the panel is claiming about itself.
     QString headerText() const;
+
+    /// The item count shown at the right of the header — "17 items", or
+    /// "1 of 3" when a filter is hiding something.
+    QString headerCountText() const;
 
     QStringList selectedPaths() const;
     int selectionCount() const;
@@ -195,6 +199,7 @@ private:
     PanelView *m_view = nullptr;
     FileItemDelegate *m_delegate = nullptr;
     QLabel *m_header = nullptr;
+    QLabel *m_headerCount = nullptr;
     QLabel *m_status = nullptr;
 
     /// §3.4: built on the first `/`, not at startup. A user who never filters

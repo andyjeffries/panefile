@@ -40,6 +40,12 @@ public:
     /// go is.
     QString destinationFor(const QPoint &position) const;
 
+    /// Insets the list body from the view's edges.
+    ///
+    /// QAbstractScrollArea::setViewportMargins is protected, and this is the
+    /// subclass, so the panel asks for the inset rather than reaching for it.
+    void setBodyInset(int horizontal, int vertical);
+
     /// The action a drop should perform.
     ///
     /// `sameFilesystem` is what makes the default sensible rather than merely

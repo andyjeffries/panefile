@@ -75,21 +75,47 @@ QWidget#filePanel[panelActive="true"] {
 
 /* A hairline under the header rather than a filled bar: the path and the count
    are labels on the list, not a toolbar above it. */
-QLabel#panelHeader {
+QWidget#panelHeaderRow {
     background-color: transparent;
-    color: %{subtext};
-    font-size: %{chrome_font_size}pt;
-    font-weight: 600;
-    padding: %{half_padding}px %{padding}px;
-    border-bottom: 1px solid %{seam};
+    border-bottom: 1px solid %{header_rule};
+    min-height: 34px;
+    padding: 0px %{padding}px;
 }
 
+QLabel#panelHeader {
+    background-color: transparent;
+    color: %{overlay};
+    font-size: %{chrome_font_size}pt;
+    font-weight: 600;
+    padding: 7px 0px;
+}
+
+/* Near-black in the focused panel against a mid grey in the other. Along with
+   the accent edge and the filled cursor pill, that is the third place the same
+   answer is given to "which pane am I in". */
 QLabel#panelHeader[panelActive="true"] {
     color: %{text};
 }
 
+QLabel#panelHeaderCount[panelActive="true"] {
+    color: %{subtext};
+}
+
+/* The count is a step quieter than the path, and both are a step quieter in a
+   panel that is not focused — which is a second reading of the same signal the
+   accent edge gives, for anyone whose eye is on the list rather than its top. */
+QLabel#panelHeaderCount {
+    background-color: transparent;
+    color: %{overlay};
+    font-size: %{small_font_size}pt;
+}
+
 QWidget#filePanel[panelActive="true"] QLabel#panelHeader {
     color: %{text};
+}
+
+QWidget#filePanel[panelActive="true"] QLabel#panelHeaderCount {
+    color: %{subtext};
 }
 
 QLabel#panelStatus {
@@ -115,26 +141,28 @@ QWidget#sidebar {
 }
 
 QLabel#sidebarSection {
-    color: %{subtext};
+    color: %{overlay};
     font-size: %{small_font_size}pt;
     font-weight: 600;
-    padding: %{padding}px %{padding}px %{half_padding}px %{padding}px;
+    padding: 12px 14px 6px 14px;
 }
 
 QListWidget#sidebarList {
     background-color: %{sidebar_bg};
     border: none;
     outline: none;
-    padding: 0px %{half_padding}px %{half_padding}px %{half_padding}px;
+    padding: 0px 8px 8px 8px;
 }
 
 /* Inset from the sidebar's edges so the selection reads as a pill on a surface
    rather than a band running edge to edge. */
+/* 26px rows inset from the sidebar's edges, so the selection reads as a pill on
+   a surface rather than a band running from one edge to the other. */
 QListWidget#sidebarList::item {
     color: %{text};
     font-size: %{chrome_font_size}pt;
-    padding: 4px %{half_padding}px;
-    min-height: 18px;
+    padding: 4px 10px;
+    min-height: 22px;
     border-radius: %{small_radius}px;
 }
 
@@ -187,6 +215,15 @@ QLabel#pendingKeys {
 /* An overlay scrollbar, not a widget with a track. A thick bar with a visible
    groove is a Motif-era affordance; macOS shows a thin thumb over the content
    and nothing else. */
+/* The square where a vertical and a horizontal scrollbar would meet. With the
+   list body inset, that square is inside the panel and was drawing itself as a
+   small bordered box in the bottom corner — an empty widget the user cannot
+   interact with, which is exactly the kind of thing that reads as unfinished. */
+QAbstractScrollArea::corner {
+    background: transparent;
+    border: none;
+}
+
 QScrollBar:vertical {
     background: transparent;
     border: none;
@@ -310,6 +347,15 @@ QSplitter#panelSplitter::handle:hover {
     background-color: %{border_focused};
 }
 
+/* The square where a vertical and a horizontal scrollbar would meet. With the
+   list body inset, that square is inside the panel and was drawing itself as a
+   small bordered box in the bottom corner — an empty widget the user cannot
+   interact with, which is exactly the kind of thing that reads as unfinished. */
+QAbstractScrollArea::corner {
+    background: transparent;
+    border: none;
+}
+
 QScrollBar:vertical {
     background: transparent;
     width: 10px;
@@ -360,14 +406,30 @@ QProgressBar::chunk {
         // §9's "subtly lighter background" for the focused panel. Subtle is the
         // operative word: a strong difference competes with the cursor row for
         // attention, and the border is already doing the work.
-        .replace(QLatin1String("%{panel_active_bg}"), shade(theme.background, !light, 6))
+        // The focused panel is `surface`, not a shade of the background.
+        //
+        // It was shade(background, !light, 6), and in a light theme !light is
+        // false — so the focused panel was *darkened*, turning the pane the user
+        // is working in grey while the one they are not stayed near-white.
+        // Exactly backwards, and it made the whole window look grey.
+        //
+        // surface is already the right colour in both macOS themes by
+        // construction: #ffffff over #fbfbfc, and #22232a over #1f2026.
+        .replace(QLatin1String("%{panel_active_bg}"), hex(theme.surface))
         // The seam between panels and under a header: a hairline, darker than
         // the panel in a dark theme and lighter in a light one, so it reads as a
         // join rather than as a drawn border.
         .replace(QLatin1String("%{seam}"), shade(theme.background, light, 14))
+        // The rule under a panel header is internal to the panel, so it is far
+        // fainter than the seam *between* panels — a hairline, not a border.
+        .replace(QLatin1String("%{header_rule}"), shade(theme.background, light, 6))
         // The sidebar is a shade off the content so it reads as chrome, without
         // becoming a second colour in its own right.
-        .replace(QLatin1String("%{sidebar_bg}"), shade(theme.background, light, 4))
+        // Away from the content in both directions: darker under a light
+        // theme, lifted under a dark one. `light` rather than `!light` sent it
+        // towards white in a light theme, which is how the sidebar stopped
+        // reading as a separate surface at all.
+        .replace(QLatin1String("%{sidebar_bg}"), shade(theme.background, !light, 5))
         .replace(QLatin1String("%{mono_family}"),
                  QStringLiteral("'SF Mono', ui-monospace, Menlo, Consolas, monospace"))
         .replace(QLatin1String("%{chrome_font_size}"), QString::number(theme.fontSize - 1))

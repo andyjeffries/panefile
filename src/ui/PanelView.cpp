@@ -50,6 +50,11 @@ PanelView::PanelView(QWidget *parent) : QListView(parent)
     viewport()->setAcceptDrops(true);
 }
 
+void PanelView::setBodyInset(int horizontal, int vertical)
+{
+    setViewportMargins(horizontal, vertical, horizontal, vertical);
+}
+
 int PanelView::dropTargetRow() const
 {
     return m_dropTargetRow;

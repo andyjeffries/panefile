@@ -105,8 +105,8 @@ private Q_SLOTS:
         QTRY_COMPARE_WITH_TIMEOUT(panel.view()->model()->rowCount(), 1, 5000);
 
         // One of three, not one of four: the dotfile was never on offer.
-        QVERIFY2(panel.headerText().contains(QStringLiteral("1 of 3")),
-                 qPrintable(panel.headerText()));
+        QVERIFY2(panel.headerCountText().contains(QStringLiteral("1 of 3")),
+                 qPrintable(panel.headerCountText()));
     }
 
     /// Navigating clears the filter.

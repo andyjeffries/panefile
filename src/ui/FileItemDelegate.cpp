@@ -19,6 +19,25 @@ namespace pf::ui {
 namespace {
 
 constexpr int kIconSize = 16;
+
+/// The cursor and selection pill: inset from the row's edges and rounded, the
+/// way a macOS list selection is drawn.
+constexpr int kPillInset = 4;
+constexpr int kPillRadius = 6;
+
+/// Black or white, whichever the given background can actually carry.
+///
+/// The cursor pill in a focused panel is filled with the accent, and an accent
+/// light enough to need dark text is a real theme (Solarized Light's is), so
+/// this cannot be hard-coded to white.
+QColor readableOn(const QColor &background)
+{
+    // Rec. 709 luma, which tracks perceived brightness far better than a plain
+    // mean of the channels.
+    const double luma = (0.2126 * background.redF()) + (0.7152 * background.greenF()) +
+                        (0.0722 * background.blueF());
+    return luma > 0.55 ? QColor(0, 0, 0) : QColor(255, 255, 255);
+}
 constexpr int kSelectionMarkerWidth = 3;
 
 /// The row's horizontal rhythm, derived from the theme's panel padding rather
@@ -154,11 +173,32 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
     // Background. The cursor row and an explicitly selected row are different
     // states and must look different: in Selection mode the cursor moves
     // through rows that are already selected, and a user needs to see both.
-    if (isCursor) {
-        painter->fillRect(row, palette.cursorBackground);
-    } else if (isSelected) {
-        painter->fillRect(row, palette.selectionBackground);
+    //
+    // A filled pill rather than a full-bleed band: a 6px radius inset from the
+    // row's edges is what macOS uses for a list selection, and it reads as a
+    // thing the cursor is *on* rather than as a stripe painted across the panel.
+    //
+    // In a focused panel the cursor pill is filled with the accent; in an
+    // unfocused one it stays the muted cursor colour. That difference is the
+    // cheapest possible answer to "which panel am I typing into", and it works
+    // even when the panel border is off the edge of your attention.
+    const bool panelActive = (option.state & QStyle::State_Active) != 0;
+    const QColor cursorFill = panelActive ? palette.accent : palette.cursorBackground;
+
+    if (isCursor || isSelected) {
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing, true);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(isCursor ? cursorFill : palette.selectionBackground);
+        painter->drawRoundedRect(row.adjusted(kPillInset, 1, -kPillInset, -1), kPillRadius,
+                                 kPillRadius);
+        painter->restore();
     }
+
+    // Everything drawn on top of a filled pill has to be legible against it
+    // rather than against the panel.
+    const bool onFill = (isCursor && panelActive) || isSelected;
+    const QColor onFillColour = readableOn(isCursor ? cursorFill : palette.selectionBackground);
 
     const Metrics spacing = metricsFor(palette);
     int x = row.left() + spacing.gutter;
@@ -186,9 +226,24 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
         painter->fillRect(marker, palette.accent);
     }
 
-    // Icon, tinted to the same colour the name is painted in, so the row reads
-    // as one thing rather than as a picture next to some text.
-    const QColor nameColour = colourFor(entry);
+    // The icon carries the entry's colour; the name does not.
+    //
+    // Both used to be tinted, so a panel of directories was a panel of blue
+    // text — which reads as a page of hyperlinks, and spends contrast on
+    // something the glyph beside it already says. Names now sit in the primary
+    // label colour, and the folder, archive or image tint lives in the icon.
+    //
+    // A broken symlink is the exception, because there is no icon state that
+    // says "this points nowhere" as plainly as the name being struck through in
+    // the error colour.
+    const QColor iconColour = onFill ? onFillColour : colourFor(entry);
+
+    QColor nameColour = palette.text;
+    if (onFill) {
+        nameColour = onFillColour;
+    } else if (entry.isBroken) {
+        nameColour = palette.broken;
+    }
     const QRect iconRect(x, row.top() + ((row.height() - kIconSize) / 2), kIconSize, kIconSize);
 
     // §7.7: a generated thumbnail replaces the icon for the row it belongs to.
@@ -203,7 +258,7 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
                                  iconRect.y() + ((iconRect.height() - scaled.height()) / 2),
                                  scaled.width(), scaled.height()),
                            image);
-    } else if (const QIcon icon = IconProvider::instance().iconFor(entry, nameColour);
+    } else if (const QIcon icon = IconProvider::instance().iconFor(entry, iconColour);
                !icon.isNull()) {
         icon.paint(painter, iconRect, Qt::AlignCenter,
                    entry.isBroken ? QIcon::Disabled : QIcon::Normal);
@@ -220,7 +275,13 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
     const QFontMetrics metrics = option.fontMetrics;
 
     if (!entry.statFailed) {
-        painter->setPen(palette.subtext);
+        // Dimmed against the pill rather than against the panel, so the date
+        // stays a step quieter than the name in both states.
+        QColor metaColour = onFill ? onFillColour : palette.subtext;
+        if (onFill) {
+            metaColour.setAlpha(200);
+        }
+        painter->setPen(metaColour);
 
         if (!entry.isDir) {
             const QRect sizeRect(sizeLeft, row.top(), kSizeColumnWidth, row.height());
@@ -243,10 +304,9 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
     painter->setFont(nameFont);
     painter->setPen(nameColour);
 
-    QString name = entry.name;
-    if (entry.isDir) {
-        name += QLatin1Char('/');
-    }
+    // No trailing slash. The icon has already said it is a directory, and the
+    // slash is a second answer to a question nobody asked twice.
+    const QString name = entry.name;
 
     const QString elidedName = metrics.elidedText(name, Qt::ElideMiddle, nameRect.width());
     painter->drawText(nameRect, Qt::AlignLeft | Qt::AlignVCenter, elidedName);

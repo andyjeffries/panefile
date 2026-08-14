@@ -84,6 +84,12 @@ Metrics metricsFor(const ThemePalette &palette)
 /// measured per row: a column whose width depends on its widest visible value
 /// shifts as you scroll, and §11's frame budget does not have room for a
 /// QFontMetrics pass over every row anyway.
+/// The narrowest a name may be squeezed before a column is dropped instead.
+///
+/// Roughly ten characters at the default size: enough to tell two entries apart,
+/// which is the least a filename can usefully do.
+constexpr int kMinimumNameWidth = 96;
+
 constexpr int kSizeColumnWidth = 64;
 constexpr int kTimeColumnWidth = 78;
 
@@ -156,6 +162,46 @@ QColor FileItemDelegate::colourFor(const FileEntry &entry)
         return palette.image;
     }
     return palette.text;
+}
+
+FileItemDelegate::RowColumns FileItemDelegate::columnsFor(int nameLeft, int rowRight, int columnGap,
+                                                          bool hasSize, bool hasTime)
+{
+    // Which columns there is room for is decided per row, and the name wins.
+    //
+    // Both used to be reserved unconditionally, so a directory — which prints
+    // no size — still had 64px held back for one, and "Applications" came out
+    // as "Ap…ns" in a panel with room to spare. Narrower still and the name's
+    // width went negative, which is why five panels showed no filenames at all
+    // rather than short ones.
+    //
+    // A file manager whose columns are legible and whose filenames are not has
+    // its priorities backwards. The size column goes first, then the date,
+    // before the name is squeezed below what it takes to tell two entries
+    // apart.
+    RowColumns columns;
+    columns.showSize = hasSize;
+    columns.showTime = hasTime;
+    columns.timeLeft = rowRight - kTimeColumnWidth;
+    columns.sizeLeft = columns.timeLeft - columnGap - kSizeColumnWidth;
+
+    if (columns.showSize && (columns.sizeLeft - columnGap - nameLeft) < kMinimumNameWidth) {
+        columns.showSize = false;
+    }
+    if (columns.showTime && (columns.timeLeft - columnGap - nameLeft) < kMinimumNameWidth) {
+        columns.showTime = false;
+    }
+
+    if (!columns.showTime) {
+        columns.timeLeft = rowRight;
+    }
+    if (!columns.showSize) {
+        columns.sizeLeft = columns.timeLeft;
+    }
+
+    columns.nameRight =
+        columns.showSize || columns.showTime ? columns.sizeLeft - columnGap : rowRight;
+    return columns;
 }
 
 void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option,
@@ -293,8 +339,24 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
     // Right-hand columns are laid out first so the name knows how much room it
     // has left, rather than being elided against the full row width and then
     // overdrawn.
-    const int timeLeft = row.right() - spacing.rightMargin - kTimeColumnWidth;
-    const int sizeLeft = timeLeft - spacing.columnGap - kSizeColumnWidth;
+    //
+    // Which columns there is room for is decided per row, and the name wins.
+    // Both used to be reserved unconditionally: a directory, which prints no
+    // size, still had 64px held back for one — so "Applications" came out as
+    // "Ap…ns" in a panel with room to spare. Narrower still and the name's
+    // width went negative, which is why five panels showed no filenames at all
+    // rather than short ones.
+    //
+    // A file manager whose columns are legible and whose filenames are not has
+    // its priorities backwards. The date goes before the name is squeezed, and
+    // the size goes before that.
+    const int rowRight = row.right() - spacing.rightMargin;
+    const RowColumns columns =
+        columnsFor(x, rowRight, spacing.columnGap, !entry.isDir, !entry.statFailed);
+    const bool showSize = columns.showSize;
+    const bool showTime = columns.showTime;
+    const int sizeLeft = columns.sizeLeft;
+    const int timeLeft = columns.timeLeft;
 
     const QFontMetrics metrics = option.fontMetrics;
 
@@ -313,21 +375,22 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
         // looks untidy even when every one of them is correctly aligned.
         painter->setFont(metadataFont(option.font));
 
-        if (!entry.isDir) {
+        if (showSize) {
             const QRect sizeRect(sizeLeft, row.top(), kSizeColumnWidth, row.height());
             painter->drawText(sizeRect, Qt::AlignRight | Qt::AlignVCenter, formatSize(entry.size));
         }
 
-        const QRect timeRect(timeLeft, row.top(), kTimeColumnWidth, row.height());
-        painter->drawText(timeRect, Qt::AlignRight | Qt::AlignVCenter,
-                          formatListTime(entry.modified));
+        if (showTime) {
+            const QRect timeRect(timeLeft, row.top(), kTimeColumnWidth, row.height());
+            painter->drawText(timeRect, Qt::AlignRight | Qt::AlignVCenter,
+                              formatListTime(entry.modified));
+        }
     }
 
     painter->setFont(option.font);
 
     // Name, plus the symlink target if there is room for it.
-    const int nameRight = sizeLeft - spacing.columnGap;
-    const QRect nameRect(x, row.top(), nameRight - x, row.height());
+    const QRect nameRect(x, row.top(), std::max(0, columns.nameRight - x), row.height());
 
     QFont nameFont = option.font;
     if (entry.isBroken) {

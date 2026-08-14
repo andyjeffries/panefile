@@ -27,6 +27,26 @@ class FileItemDelegate : public QStyledItemDelegate
     Q_OBJECT
 
 public:
+    /// Where a row's right-hand columns go, and whether there is room for them.
+    ///
+    /// Pure, and public, because this is the part that decides whether a
+    /// filename is readable — and it got that wrong in two ways at once: a
+    /// directory reserved space for a size it never prints, and nothing stopped
+    /// the name's width going negative in a narrow panel. Testing it through
+    /// painted pixels would be testing QPainter.
+    struct RowColumns {
+        bool showSize = false;
+        bool showTime = false;
+        int sizeLeft = 0;
+        int timeLeft = 0;
+        int nameRight = 0;
+    };
+
+    /// `nameLeft` is where the name starts, `rowRight` where the row's content
+    /// ends. `hasSize` is false for directories, which print no size.
+    static RowColumns columnsFor(int nameLeft, int rowRight, int columnGap, bool hasSize,
+                                 bool hasTime);
+
     explicit FileItemDelegate(QObject *parent = nullptr);
 
     void paint(QPainter *painter, const QStyleOptionViewItem &option,

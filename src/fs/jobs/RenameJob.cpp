@@ -1,4 +1,5 @@
 #include "fs/jobs/RenameJob.h"
+#include "core/Format.h"
 
 #include "core/Logging.h"
 #include "fs/FsError.h"
@@ -17,7 +18,8 @@ RenameJob::RenameJob(QString directory, RenamePlan plan, QObject *parent)
 
 QString RenameJob::description() const
 {
-    return tr("Renaming %n item(s)", nullptr, static_cast<int>(m_plan.changes.size()));
+    return tr("Renaming %1")
+        .arg(counted(static_cast<int>(m_plan.changes.size()), tr("item"), tr("items")));
 }
 
 QList<QPair<QString, QString>> RenameJob::completedRenames() const

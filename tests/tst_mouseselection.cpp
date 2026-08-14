@@ -19,6 +19,46 @@ class TestMouseSelection : public QObject
 
 private Q_SLOTS:
 
+    /// Pressing v selects the row you are standing on.
+    ///
+    /// It used to select nothing at all, and then — on the first movement —
+    /// select the row you had just left. So `v` looked inert, the first `j`
+    /// marked the wrong file, and the row under the cursor was never in the
+    /// selection it appeared to be building.
+    void enteringSelectionModeSelectsTheCursorRow()
+    {
+        m_panel->setCursorName(QStringLiteral("b.txt"));
+        m_panel->setSelectionMode(true);
+
+        QCOMPARE(selectedNames(), QStringList{QStringLiteral("b.txt")});
+    }
+
+    /// And movement extends a range from there, so going down and back up
+    /// leaves exactly the row you started on.
+    void selectionModeMovementIsARangeFromTheAnchor()
+    {
+        m_panel->setCursorName(QStringLiteral("b.txt"));
+        m_panel->setSelectionMode(true);
+
+        m_panel->moveCursor(1);
+        m_panel->extendSelectionTo(m_panel->cursorName());
+        const QStringList two{QStringLiteral("b.txt"), QStringLiteral("c.txt")};
+        QCOMPARE(selectedNames(), two);
+
+        m_panel->moveCursor(1);
+        m_panel->extendSelectionTo(m_panel->cursorName());
+        QCOMPARE(m_panel->selectionCount(), 3);
+
+        // Back up, and the range narrows rather than the extra row lingering.
+        m_panel->moveCursor(-1);
+        m_panel->extendSelectionTo(m_panel->cursorName());
+        QCOMPARE(selectedNames(), two);
+
+        m_panel->moveCursor(-1);
+        m_panel->extendSelectionTo(m_panel->cursorName());
+        QCOMPARE(selectedNames(), QStringList{QStringLiteral("b.txt")});
+    }
+
     void initTestCase()
     {
         m_dir = std::make_unique<QTemporaryDir>();

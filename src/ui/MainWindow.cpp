@@ -158,7 +158,8 @@ void MainWindow::setSelectionCount(int count)
 {
     // Nothing at all rather than "0 selected": a field that is always present
     // but usually zero is noise, and the status bar has to stay scannable.
-    m_selectionCount->setText(count > 0 ? tr("%n selected", nullptr, count) : QString());
+    m_selectionCount->setText(
+        count > 0 ? tr("%1 selected").arg(counted(count, tr("item"), tr("items"))) : QString());
 }
 
 void MainWindow::showStatusMessage(const QString &message)

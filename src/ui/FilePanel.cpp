@@ -1,4 +1,5 @@
 #include "ui/FilePanel.h"
+#include "core/Format.h"
 
 #include "core/Logging.h"
 #include "model/DirectoryModel.h"
@@ -634,8 +635,9 @@ void FilePanel::updateFilterStatus()
     // identical to an empty directory and to a failed scan. Saying which it is
     // costs one line.
     if (!filterText().isEmpty() && m_proxy->rowCount() == 0 && m_model->rowCount() > 0) {
-        m_status->setText(tr("No matches for “%1” among %n item(s)", nullptr, m_model->rowCount())
-                              .arg(filterText()));
+        m_status->setText(
+            tr("No matches for “%1” among %2")
+                .arg(filterText(), counted(m_model->rowCount(), tr("item"), tr("items"))));
         m_status->show();
         m_showingFilterStatus = true;
         return;
@@ -673,6 +675,25 @@ void FilePanel::setSelectionMode(bool on)
         return;
     }
     m_selectionMode = on;
+
+    // Entering the mode selects the row you are standing on, and anchors the
+    // range there.
+    //
+    // It used to select nothing until you moved, and then select the row you
+    // had just *left* — so `v` looked like it had done nothing, the first press
+    // of `j` marked the wrong file, and the row under the cursor was never in
+    // the selection it appeared to be building. Anchoring here makes every
+    // subsequent movement a range from this row to the cursor, which is what
+    // makes `j` then `k` return to exactly one selected row rather than two.
+    if (on) {
+        m_selection.clear();
+        m_selectionAnchor = cursorName();
+        if (!m_selectionAnchor.isEmpty()) {
+            m_selection.insert(m_selectionAnchor);
+        }
+        m_view->viewport()->update();
+        Q_EMIT selectionChanged(static_cast<int>(m_selection.size()));
+    }
 
     // Leaving Selection mode keeps the selection.
     //
@@ -936,10 +957,10 @@ void FilePanel::updateHeader()
     // the whole story.
     QString counts;
     if (filterText().isEmpty()) {
-        counts = tr("%n item(s)", nullptr, shown);
+        counts = counted(shown, tr("item"), tr("items"));
     } else {
         const int total = m_proxy->countPassingHiddenRule();
-        counts = shown == total ? tr("%n item(s)", nullptr, shown)
+        counts = shown == total ? counted(shown, tr("item"), tr("items"))
                                 : tr("%1 of %2").arg(shown).arg(total);
     }
 
@@ -949,11 +970,12 @@ void FilePanel::updateHeader()
 
     // §6.1: "a badge shows in the panel header" while Selection mode is on.
     if (m_selectionMode) {
-        counts += m_selection.isEmpty()
-                      ? tr("   [SELECT]")
-                      : tr("   [SELECT %n]", nullptr, static_cast<int>(m_selection.size()));
+        counts += m_selection.isEmpty() ? tr("   [SELECT]")
+                                        : tr("   [SELECT %1]").arg(m_selection.size());
     } else if (!m_selection.isEmpty()) {
-        counts += tr("   %n selected", nullptr, static_cast<int>(m_selection.size()));
+        counts += QStringLiteral("   ") +
+                  tr("%1 selected")
+                      .arg(counted(static_cast<int>(m_selection.size()), tr("item"), tr("items")));
     }
 
     m_headerText = QStringLiteral("%1    %2").arg(display, counts);

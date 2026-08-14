@@ -35,6 +35,11 @@ QString formatSize(quint64 bytes)
         .arg(QLatin1String(kUnits.at(unit)));
 }
 
+QString counted(int count, const QString &singular, const QString &plural)
+{
+    return QStringLiteral("%1 %2").arg(QString::number(count), count == 1 ? singular : plural);
+}
+
 QString formatListTime(const QDateTime &when)
 {
     if (!when.isValid()) {

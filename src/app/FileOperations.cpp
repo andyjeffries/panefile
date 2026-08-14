@@ -1,4 +1,5 @@
 #include "app/FileOperations.h"
+#include "core/Format.h"
 
 #include "input/ActionRegistry.h"
 #include "core/Logging.h"
@@ -325,33 +326,34 @@ void FileOperations::runRenamePlan(const QString &directory, const fs::RenamePla
 
     const int jobId = m_engine->submit(std::move(job));
 
-    connect(m_engine, &fs::JobEngine::jobFinished, this,
-            [this, jobId, raw](int id, const fs::JobResult &result) {
-                if (id != jobId) {
-                    return;
-                }
+    connect(
+        m_engine, &fs::JobEngine::jobFinished, this,
+        [this, jobId, raw](int id, const fs::JobResult &result) {
+            if (id != jobId) {
+                return;
+            }
 
-                if (!result.cancelled && !raw->completedRenames().isEmpty()) {
-                    // §7.9 step 6, and §7.13's Rename/BulkRename kinds: one
-                    // entry for the whole thing, so Ctrl+Z reverses the rename
-                    // the user made rather than one file of it.
-                    const bool bulk = raw->requestedChanges().size() > 1;
-                    m_undoStack->push(
-                        fs::UndoEntry{.kind = bulk ? fs::UndoEntry::Kind::BulkRename
-                                                   : fs::UndoEntry::Kind::Rename,
-                                      .description = bulk ? tr("Bulk rename") : tr("Rename"),
-                                      .movedPairs = raw->completedRenames(),
-                                      .trashedItems = {}});
-                }
+            if (!result.cancelled && !raw->completedRenames().isEmpty()) {
+                // §7.9 step 6, and §7.13's Rename/BulkRename kinds: one
+                // entry for the whole thing, so Ctrl+Z reverses the rename
+                // the user made rather than one file of it.
+                const bool bulk = raw->requestedChanges().size() > 1;
+                m_undoStack->push(fs::UndoEntry{
+                    .kind = bulk ? fs::UndoEntry::Kind::BulkRename : fs::UndoEntry::Kind::Rename,
+                    .description = bulk ? tr("Bulk rename") : tr("Rename"),
+                    .movedPairs = raw->completedRenames(),
+                    .trashedItems = {}});
+            }
 
-                if (!result.errors.isEmpty()) {
-                    Q_EMIT statusMessage(tr("Rename failed: %1").arg(result.errors.first().reason));
-                    return;
-                }
+            if (!result.errors.isEmpty()) {
+                Q_EMIT statusMessage(tr("Rename failed: %1").arg(result.errors.first().reason));
+                return;
+            }
 
-                Q_EMIT statusMessage(tr("Renamed %n item(s)", nullptr,
-                                        static_cast<int>(raw->requestedChanges().size())));
-            });
+            Q_EMIT statusMessage(tr("Renamed %1")
+                                     .arg(counted(static_cast<int>(raw->requestedChanges().size()),
+                                                  tr("item"), tr("items"))));
+        });
 }
 
 QStringList FileOperations::clipboardPaths()
@@ -372,6 +374,18 @@ QStringList FileOperations::clipboardPaths()
         }
     }
     return paths;
+}
+
+void FileOperations::clearCopySourceSelection()
+{
+    // Guarded by the strip's own list rather than trusting the pointer: the
+    // panel may have been closed between the copy and the paste, and a raw
+    // pointer to a deleted FilePanel is not something to dereference on the
+    // strength of it being non-null.
+    if (m_copySourcePanel != nullptr && m_strip->panels().contains(m_copySourcePanel)) {
+        m_copySourcePanel->clearSelection();
+    }
+    m_copySourcePanel = nullptr;
 }
 
 void FileOperations::setClipboardPaths(const QStringList &paths, bool cut)
@@ -456,8 +470,9 @@ void FileOperations::copySelection(bool cut)
     setClipboardPaths(m_pendingPaths, cut);
 
     const int count = static_cast<int>(m_pendingPaths.size());
-    Q_EMIT statusMessage(cut ? tr("Cut %n item(s) — Ctrl+V to move them", nullptr, count)
-                             : tr("Copied %n item(s) — Ctrl+V to paste them", nullptr, count));
+    Q_EMIT statusMessage(
+        cut ? tr("Cut %1 — Ctrl+V to move them").arg(counted(count, tr("item"), tr("items")))
+            : tr("Copied %1 — Ctrl+V to paste them").arg(counted(count, tr("item"), tr("items"))));
 }
 
 void FileOperations::clearClipboard()
@@ -469,6 +484,7 @@ void FileOperations::clearClipboard()
     m_pendingPaths.clear();
     m_pastedSinceCopy = false;
     setClipboardPaths({}, false);
+    clearCopySourceSelection();
 
     Q_EMIT statusMessage(tr("Copy list cleared"));
 }
@@ -499,6 +515,12 @@ void FileOperations::pasteIntoFocusedPanel()
     m_pendingPaths.clear();
     m_pastedSinceCopy = true;
     setClipboardPaths({}, cut);
+
+    // And the selection the list was gathered from goes with it. Those four
+    // rows kept their accent bars and their "4 selected" after the paste had
+    // consumed them — marked as pending when nothing was pending, and the next
+    // operation would silently have acted on them again.
+    clearCopySourceSelection();
 }
 
 void FileOperations::onFilesDropped(const QStringList &paths, const QString &destination,
@@ -589,9 +611,10 @@ void FileOperations::runTransfer(const QStringList &paths, const QString &destin
                 }
 
                 if (!result.errors.isEmpty()) {
-                    Q_EMIT statusMessage(tr("%n item(s) could not be transferred: %1", nullptr,
-                                            static_cast<int>(result.errors.size()))
-                                             .arg(result.errors.first().reason));
+                    Q_EMIT statusMessage(tr("%1 could not be transferred: %2")
+                                             .arg(counted(static_cast<int>(result.errors.size()),
+                                                          tr("item"), tr("items")),
+                                                  result.errors.first().reason));
                     return;
                 }
 
@@ -611,9 +634,11 @@ void FileOperations::runTransfer(const QStringList &paths, const QString &destin
                 const QString where = QDir(destination).dirName();
                 Q_EMIT statusMessage(
                     move
-                        ? tr("Moved %n item(s) to %1 — %2 to undo", nullptr, result.filesProcessed)
+                        ? tr("Moved %1 to %2 — %3 to undo")
+                              .arg(counted(result.filesProcessed, tr("item"), tr("items")))
                               .arg(where, undoShortcut())
-                        : tr("Copied %n item(s) to %1", nullptr, result.filesProcessed).arg(where));
+                        : tr("Copied %1 to %2")
+                              .arg(counted(result.filesProcessed, tr("item"), tr("items")), where));
             });
 }
 
@@ -639,10 +664,10 @@ void FileOperations::deleteSelection(bool permanent)
         // delete are not undoable and must be labelled as such in the
         // confirmation."
         const QString question =
-            permanent
-                ? tr("Permanently delete %n item(s)? This cannot be undone.", nullptr,
-                     static_cast<int>(paths.size()))
-                : tr("Move %n item(s) to the trash?", nullptr, static_cast<int>(paths.size()));
+            permanent ? tr("Permanently delete %1? This cannot be undone.")
+                            .arg(counted(static_cast<int>(paths.size()), tr("item"), tr("items")))
+                      : tr("Move %1 to the trash?")
+                            .arg(counted(static_cast<int>(paths.size()), tr("item"), tr("items")));
 
         if (QMessageBox::question(m_window, tr("Panefile"), question,
                                   QMessageBox::Yes | QMessageBox::No,
@@ -651,11 +676,11 @@ void FileOperations::deleteSelection(bool permanent)
         }
 
         if (permanent &&
-            QMessageBox::question(m_window, tr("Panefile"),
-                                  tr("Really? %n item(s) will be destroyed with no way back.",
-                                     nullptr, static_cast<int>(paths.size())),
-                                  QMessageBox::Yes | QMessageBox::No,
-                                  QMessageBox::No) != QMessageBox::Yes) {
+            QMessageBox::question(
+                m_window, tr("Panefile"),
+                tr("Really? %1 will be destroyed with no way back.")
+                    .arg(counted(static_cast<int>(paths.size()), tr("item"), tr("items"))),
+                QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) {
             return;
         }
     }
@@ -756,14 +781,16 @@ void FileOperations::registerActions()
     // run it passes over.
     m_registry->registerAction(QStringLiteral("select_down"), tr("Extend the selection downwards"),
                                ActionCategory::Selection, onPanel([](ui::FilePanel *panel) {
-                                   panel->toggleSelectionAt(panel->cursorName());
+                                   // Move first, then take everything from the
+                                   // anchor to where the cursor now is.
                                    panel->moveCursor(1);
+                                   panel->extendSelectionTo(panel->cursorName());
                                }));
 
     m_registry->registerAction(QStringLiteral("select_up"), tr("Extend the selection upwards"),
                                ActionCategory::Selection, onPanel([](ui::FilePanel *panel) {
-                                   panel->toggleSelectionAt(panel->cursorName());
                                    panel->moveCursor(-1);
+                                   panel->extendSelectionTo(panel->cursorName());
                                }));
 }
 

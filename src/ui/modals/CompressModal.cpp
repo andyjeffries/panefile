@@ -1,4 +1,5 @@
 #include "ui/modals/CompressModal.h"
+#include "core/Format.h"
 
 #include "ui/ThemePalette.h"
 
@@ -104,9 +105,11 @@ void CompressModal::start(const QStringList &sources, const QString &destination
     m_directory = destinationDirectory;
     m_problem->hide();
 
-    m_summary->setText(sources.size() == 1
-                           ? tr("Archiving “%1”").arg(QFileInfo(sources.constFirst()).fileName())
-                           : tr("Archiving %n item(s)", nullptr, static_cast<int>(sources.size())));
+    m_summary->setText(
+        sources.size() == 1
+            ? tr("Archiving “%1”").arg(QFileInfo(sources.constFirst()).fileName())
+            : tr("Archiving %1")
+                  .arg(counted(static_cast<int>(sources.size()), tr("item"), tr("items"))));
 
     // §7.10: "if supported". Asked of libarchive rather than assumed, because
     // zstd and 7z are compile-time options and offering a format that then

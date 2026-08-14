@@ -150,7 +150,8 @@ void ProcessBar::onFinished(int jobId, const fs::JobResult &result)
             // §12: "Non-fatal job errors accumulate into a summary shown at job
             // end, listing failures with reasons." The count goes here; the
             // list is one click away in the expanded view.
-            item->setText(1, tr("%n error(s)", nullptr, static_cast<int>(result.errors.size())));
+            item->setText(
+                1, counted(static_cast<int>(result.errors.size()), tr("error"), tr("errors")));
             item->setText(2, result.errors.first().reason);
             item->setForeground(1, currentPalette().error);
         } else {
@@ -193,7 +194,7 @@ void ProcessBar::onAggregate(quint64 bytesDone, quint64 bytesTotal, int activeJo
         // counting pass finishes there is no honest percentage to show, and a
         // bar sitting at zero reads as stuck rather than as counting.
         m_progress->setRange(0, 0);
-        m_summary->setText(tr("Preparing %n job(s)…", nullptr, activeJobs));
+        m_summary->setText(tr("Preparing %1…").arg(counted(activeJobs, tr("job"), tr("jobs"))));
         return;
     }
 
@@ -204,7 +205,8 @@ void ProcessBar::onAggregate(quint64 bytesDone, quint64 bytesTotal, int activeJo
 
     // The rate is omitted for the first half-second rather than shown as a wild
     // figure derived from too little data.
-    QString summary = tr("%n job(s) · %1 of %2", nullptr, activeJobs)
+    QString summary = tr("%1 · %2 of %3")
+                          .arg(counted(activeJobs, tr("job"), tr("jobs")))
                           .arg(formatSize(bytesDone), formatSize(bytesTotal));
     if (!rate.isEmpty()) {
         summary += QStringLiteral(" · ") + rate;

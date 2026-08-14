@@ -25,6 +25,19 @@ QString formatSize(quint64 bytes);
 /// the full timestamp.
 QString formatListTime(const QDateTime &when);
 
+/// "0 items", "1 item", "2012 items".
+///
+/// Qt's tr("%n item(s)", nullptr, n) needs a translator to choose between the
+/// forms. Without one — which is every build we ship — it falls back to the
+/// source text with %n substituted, so the window said "2012 item(s)". The
+/// parenthesis is a translator's placeholder leaking into the interface, and it
+/// appeared in thirty-odd strings.
+///
+/// Both forms still pass through tr() at the call site, so this stays
+/// translatable; it just stops English depending on a translator being present
+/// to read correctly.
+QString counted(int count, const QString &singular, const QString &plural);
+
 /// Full timestamp for the footer, e.g. "2026-08-11 14:02".
 QString formatFullTime(const QDateTime &when);
 

@@ -1,4 +1,5 @@
 #include "app/Application.h"
+#include "core/Format.h"
 
 #include "input/ActionRegistry.h"
 #include "input/DefaultKeymap.h"
@@ -444,10 +445,11 @@ void Application::reloadConfiguration(const QStringList &changedFiles)
     }
 
     if (m_mainWindow != nullptr) {
-        m_mainWindow->showStatusMessage(m_configIssues.isEmpty()
-                                            ? tr("Configuration reloaded")
-                                            : tr("Configuration reloaded, with %n problem(s)",
-                                                 nullptr, static_cast<int>(m_configIssues.size())));
+        m_mainWindow->showStatusMessage(
+            m_configIssues.isEmpty() ? tr("Configuration reloaded")
+                                     : tr("Configuration reloaded, with %1")
+                                           .arg(counted(static_cast<int>(m_configIssues.size()),
+                                                        tr("problem"), tr("problems"))));
     }
 }
 
@@ -543,8 +545,10 @@ void Application::startUp(const CommandLineOptions &options)
     // first paint for, and the application is already running on defaults.
     if (!m_configIssues.isEmpty()) {
         postStartupTask([this] {
-            m_mainWindow->showStatusMessage(tr("%n problem(s) in your configuration — see the log",
-                                               nullptr, static_cast<int>(m_configIssues.size())));
+            m_mainWindow->showStatusMessage(
+                tr("%1 in your configuration — see the log")
+                    .arg(counted(static_cast<int>(m_configIssues.size()), tr("problem"),
+                                 tr("problems"))));
         });
     }
 }
@@ -785,9 +789,11 @@ void Application::openRequest(const InstanceMessage &message)
             if (panel == nullptr) {
                 // §10.2: "beyond that, extra paths are dropped with a footer
                 // warning."
-                m_mainWindow->showStatusMessage(tr("At most %1 panels — %n path(s) not opened",
-                                                   nullptr, static_cast<int>(usable.size() - i))
-                                                    .arg(ui::PanelStrip::kMaxPanels));
+                m_mainWindow->showStatusMessage(
+                    tr("At most %1 panels — %2 not opened")
+                        .arg(
+                            QString::number(ui::PanelStrip::kMaxPanels),
+                            counted(static_cast<int>(usable.size() - i), tr("path"), tr("paths"))));
                 break;
             }
         }

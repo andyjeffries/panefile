@@ -203,8 +203,11 @@ private Q_SLOTS:
     /// before the drag can start, which is the press half of the click handling.
     void draggingAnUnselectedRowLeavesTheOldSelectionBehind()
     {
-        m_panel->clearSelection();
         m_panel->setSelectionMode(true);
+
+        // Entering the mode now selects the cursor row, so start from a known
+        // state: exactly beta.txt selected, and the cursor elsewhere.
+        m_panel->clearSelection();
         m_panel->toggleSelectionAt(QStringLiteral("beta.txt"));
         QCOMPARE(m_panel->selectionCount(), 1);
 

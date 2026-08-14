@@ -1,4 +1,5 @@
 #include "ui/modals/FindModal.h"
+#include "core/Format.h"
 
 #include "ui/ThemePalette.h"
 
@@ -182,11 +183,13 @@ void FindModal::refreshList()
     if (m_truncated) {
         // §7.8 caps the walk; saying so is the difference between "there are no
         // more" and "we stopped looking".
-        m_status->setText(tr("%n match(es), search stopped at the limit", nullptr, found));
+        m_status->setText(
+            tr("%1, search stopped at the limit").arg(counted(found, tr("match"), tr("matches"))));
     } else if (m_finder.isRunning()) {
-        m_status->setText(tr("%n match(es), still searching…", nullptr, found));
+        m_status->setText(
+            tr("%1, still searching…").arg(counted(found, tr("match"), tr("matches"))));
     } else {
-        m_status->setText(tr("%n match(es)", nullptr, found));
+        m_status->setText(counted(found, tr("match"), tr("matches")));
     }
 }
 

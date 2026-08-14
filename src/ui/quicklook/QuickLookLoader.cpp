@@ -80,7 +80,9 @@ void loadDirectory(QuickLookContent &content, const std::atomic<bool> &cancelled
                                                         : QString()});
     }
 
-    content.text = QObject::tr("%n item(s) · %1", nullptr, static_cast<int>(children.size()))
+    content.text = QStringLiteral("%1 · %2")
+                       .arg(counted(static_cast<int>(children.size()), QObject::tr("item"),
+                                    QObject::tr("items")))
                        .arg(formatSize(total));
 
     if (children.size() > DirectoryRenderer::kMaxChildren) {
@@ -112,7 +114,8 @@ void loadArchive(QuickLookContent &content)
     }
 
     QStringList summary;
-    summary << QObject::tr("%n entries", nullptr, static_cast<int>(listing.entries.size()));
+    summary << counted(static_cast<int>(listing.entries.size()), QObject::tr("entry"),
+                       QObject::tr("entries"));
     if (!listing.format.isEmpty()) {
         summary << listing.format;
     }

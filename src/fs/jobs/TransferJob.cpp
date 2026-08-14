@@ -1,4 +1,5 @@
 #include "fs/jobs/TransferJob.h"
+#include "core/Format.h"
 
 #include "core/Logging.h"
 #include "fs/FsError.h"
@@ -74,8 +75,8 @@ TransferJob::TransferJob(Mode mode, QStringList sources, const QString &destinat
 QString TransferJob::description() const
 {
     const int count = m_filesTotal > 0 ? m_filesTotal : static_cast<int>(m_sources.size());
-    return m_mode == Mode::Copy ? tr("Copying %n item(s)", nullptr, count)
-                                : tr("Moving %n item(s)", nullptr, count);
+    return m_mode == Mode::Copy ? tr("Copying %1").arg(counted(count, tr("item"), tr("items")))
+                                : tr("Moving %1").arg(counted(count, tr("item"), tr("items")));
 }
 
 QStringList TransferJob::createdPaths() const

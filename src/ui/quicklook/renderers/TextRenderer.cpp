@@ -84,7 +84,8 @@ void TextRenderer::setContent(QuickLookContent &&content)
     m_view->setPlainText(content.text);
 
     const int lines = static_cast<int>(content.text.count(QLatin1Char('\n'))) + 1;
-    m_status = tr("%n line(s) · %1", nullptr, lines).arg(formatSize(content.entry.size));
+    m_status = QStringLiteral("%1 · %2").arg(counted(lines, tr("line"), tr("lines")),
+                                             formatSize(content.entry.size));
 
     if (content.metadataOnly) {
         // §7.6: above max_decode_mb the file is not read at all, and saying so

@@ -1,4 +1,5 @@
 #include "ui/PanelView.h"
+#include "core/Format.h"
 
 #include "model/DirectoryModel.h"
 #include "model/FileEntry.h"
@@ -217,7 +218,7 @@ QPixmap PanelView::dragPixmap(const QStringList &paths) const
         // §7.12's "+N" badge.
         painter.setPen(theme.subtext);
         const QRect row(kDragPadding, y, width - (2 * kDragPadding), kDragRowHeight);
-        painter.drawText(row, Qt::AlignLeft | Qt::AlignVCenter, tr("+%n more", nullptr, extra));
+        painter.drawText(row, Qt::AlignLeft | Qt::AlignVCenter, tr("+%1 more").arg(extra));
     }
 
     return pixmap;

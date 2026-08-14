@@ -24,6 +24,7 @@ class ConflictModal;
 class InputModal;
 class RenameModal;
 class MainWindow;
+class FilePanel;
 class PanelStrip;
 class ProcessBar;
 } // namespace pf::ui
@@ -101,6 +102,10 @@ private:
     /// without either knowing about the other.
     static QStringList clipboardPaths();
     void setClipboardPaths(const QStringList &paths, bool cut);
+
+    /// Clears the selection in whichever panel the copy list was gathered from,
+    /// once that list has been used or abandoned.
+    void clearCopySourceSelection();
     bool clipboardIsCut() const;
 
     ui::ConflictModal *conflictModal();
@@ -130,6 +135,11 @@ private:
     /// built. Mirrored onto the system clipboard after every change, so another
     /// application sees the same set.
     QStringList m_pendingPaths;
+
+    /// The panel the current copy list came from, so its selection can be
+    /// cleared when the list is consumed. Never dereferenced without checking
+    /// the strip still owns it.
+    ui::FilePanel *m_copySourcePanel = nullptr;
 
     /// True once the set has been pasted, which makes the next copy start a new
     /// one instead of adding to a set the user has finished with.

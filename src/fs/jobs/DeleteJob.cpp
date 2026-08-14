@@ -1,4 +1,5 @@
 #include "fs/jobs/DeleteJob.h"
+#include "core/Format.h"
 
 #include "core/Logging.h"
 #include "fs/FsError.h"
@@ -29,8 +30,9 @@ QString DeleteJob::description() const
     // The wording distinguishes the reversible operation from the irreversible
     // one. §7.13 makes trashing undoable and permanent deletion not, and the
     // process bar is the last place a user sees which one is running.
-    return m_mode == Mode::Trash ? tr("Moving %n item(s) to the trash", nullptr, count)
-                                 : tr("Deleting %n item(s)", nullptr, count);
+    return m_mode == Mode::Trash
+               ? tr("Moving %1 to the trash").arg(counted(count, tr("item"), tr("items")))
+               : tr("Deleting %1").arg(counted(count, tr("item"), tr("items")));
 }
 
 QList<TrashedItem> DeleteJob::trashedItems() const

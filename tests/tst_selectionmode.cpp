@@ -68,8 +68,10 @@ private Q_SLOTS:
                                 [&panel] { panel.toggleSelectionMode(); });
         registry.registerAction(QStringLiteral("select_down"), QStringLiteral("down"),
                                 ActionCategory::Selection, [&panel] {
-                                    panel.toggleSelectionAt(panel.cursorName());
+                                    // The real handler: move, then take the
+                                    // range from the anchor to the cursor.
                                     panel.moveCursor(1);
+                                    panel.extendSelectionTo(panel.cursorName());
                                 });
         registry.registerAction(QStringLiteral("list_down"), QStringLiteral("move"),
                                 ActionCategory::Movement, [&panel] { panel.moveCursor(1); });
@@ -91,18 +93,22 @@ private Q_SLOTS:
         QVERIFY(press(dispatcher, Qt::Key_V, QStringLiteral("v")));
         QVERIFY(panel.isSelectionMode());
 
-        // In the mode, the same key extends the selection.
-        QVERIFY(press(dispatcher, Qt::Key_J, QStringLiteral("j")));
+        // Entering the mode selects the row under the cursor. It used to select
+        // nothing until you moved, so `v` looked as though it had done nothing.
         QCOMPARE(panel.selectionCount(), 1);
 
+        // Movement extends a range from there.
         QVERIFY(press(dispatcher, Qt::Key_J, QStringLiteral("j")));
         QCOMPARE(panel.selectionCount(), 2);
 
-        // Leaving the mode gives `j` back to movement.
+        QVERIFY(press(dispatcher, Qt::Key_J, QStringLiteral("j")));
+        QCOMPARE(panel.selectionCount(), 3);
+
+        // Leaving the mode gives `j` back to movement, and keeps the selection.
         QVERIFY(press(dispatcher, Qt::Key_V, QStringLiteral("v")));
         QVERIFY(!panel.isSelectionMode());
         QVERIFY(press(dispatcher, Qt::Key_J, QStringLiteral("j")));
-        QCOMPARE(panel.selectionCount(), 2);
+        QCOMPARE(panel.selectionCount(), 3);
     }
 
     /// §6.2: "Current panel mode (Selection before Normal)" — the Selection

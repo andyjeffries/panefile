@@ -1,29 +1,58 @@
+# The palette from the Claude Design polish pass, verbatim where the schema has
+# somewhere to put each value.
+#
+# Two of the design's colours are computed rather than stored, because they are
+# derived rather than chosen: the focused panel's #22232a is `background`
+# lifted six steps, and the seam is `background` darkened. Both land within a
+# shade of the mockup.
 name = "macOS Dark"
 
 [colors]
-background     = "#1e1e1e"
-surface        = "#2c2c2e"
-overlay        = "#8e8e93"
-text           = "#f5f5f7"
-subtext        = "#aeaeb2"
-accent         = "#0a84ff"
-selection_bg   = "#0a84ff"
-cursor_bg      = "#3a3a3c"
-directory      = "#0a84ff"
+# The window body and an unfocused panel. The focused panel lifts off this by
+# about 1.5% — enough to register, never enough to read as a second surface.
+background     = "#1f2026"
+surface        = "#22232a"
+overlay        = "#8d8f99"
+
+# Row names, not chrome: the design sets filenames a step below the window
+# title so the list reads quieter than the frame around it.
+text           = "#e8e9ee"
+subtext        = "#8d8f99"
+
+accent         = "#4a8cff"
+
+# The cursor row in an unfocused panel: rgba(255,255,255,0.075) over the
+# background. Flat here because the schema stores colours, not compositions.
+selection_bg   = "#2b2c32"
+cursor_bg      = "#2b2c32"
+
+# Type is carried by the icon, so these tint glyphs rather than filenames.
+directory      = "#4a8cff"
 executable     = "#32d74b"
 symlink        = "#6ac4dc"
 broken         = "#ff453a"
 archive        = "#ff9f0a"
-image          = "#ffd60a"
+image          = "#c4a35a"
+
 error          = "#ff453a"
 warning        = "#ff9f0a"
 success        = "#32d74b"
-border         = "#3a3a3c"
-border_focused = "#0a84ff"
+
+# rgba(0,0,0,0.45) over the background — a seam between panels, not a drawn
+# border around them.
+border         = "#111114"
+border_focused = "#4a8cff"
 
 [ui]
+# Geometry and type are not part of a theme's identity — a palette is. These
+# values are identical in every bundled theme on purpose: switching from Nord to
+# Gruvbox should recolour the window, not resize its rows and restyle its text.
+#
+# They come from the Claude Design polish pass: 13px names, 28px rows, a 6px
+# radius for the cursor pill and 10px of panel padding.
 font_family       = ""
 font_size         = 13
-row_height        = 26
+row_height        = 28
 border_radius     = 6
 panel_padding     = 10
+alternating_rows  = true

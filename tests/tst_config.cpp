@@ -44,6 +44,7 @@ private Q_SLOTS:
 
     // theme.toml
     void themeDefaultsAreCatppuccinMocha();
+    void noThemeFileFollowsTheDesktop();
     void themeColoursAreApplied();
     void invalidColourKeepsTheDefault();
     void themeUiMetricsAreClamped();
@@ -244,7 +245,25 @@ void TestConfig::themeDefaultsAreCatppuccinMocha()
     QVERIFY(result.issues.isEmpty());
     QCOMPARE(result.theme.background, QColor(0x1e, 0x1e, 0x2e));
     QCOMPARE(result.theme.accent, QColor(0x89, 0xb4, 0xfa));
-    QCOMPARE(result.theme.rowHeight, 24);
+    QCOMPARE(result.theme.rowHeight, 28);
+}
+
+void TestConfig::noThemeFileFollowsTheDesktop()
+{
+    // A fresh install has no theme.toml. That used to fall through to the Theme
+    // struct's member initialisers — Catppuccin Mocha — so a Mac in light mode
+    // opened a dark window with nothing on screen to explain it or undo it.
+    //
+    // It now resolves to macOS Light or macOS Dark by the desktop's colour
+    // scheme, falling back to the palette-derived system theme when the bundled
+    // files cannot be found. This asserts the property that matters and holds
+    // either way: whatever comes back, it is not the hard-coded dark default.
+    const ThemeLoadResult result =
+        loadActiveTheme(QStringLiteral("/nonexistent/panefile/theme.toml"));
+
+    QVERIFY(result.issues.isEmpty());
+    QVERIFY2(result.theme.background != QColor(0x1e, 0x1e, 0x2e),
+             qPrintable(result.theme.background.name()));
 }
 
 void TestConfig::themeColoursAreApplied()

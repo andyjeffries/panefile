@@ -63,6 +63,35 @@ class TestActions : public QObject
 
 private Q_SLOTS:
 
+    /// Shutdown work has to be connected to shutdown.
+    ///
+    /// Application::saveSession and WorkerPools::drainAll were both written and
+    /// tested and then never called from anywhere. The session file therefore
+    /// kept whatever was last written to it — reopening the application put you
+    /// back in a directory you had left days before — and the drain that exists
+    /// to stop a scanner thread reaching QMimeDatabase during static
+    /// destruction was dead code, so that crash was never actually fixed.
+    ///
+    /// Read from the source because the alternative is constructing an
+    /// Application and quitting it, which needs a session file, a socket and a
+    /// window; this checks the wiring exists at all, which is the part that was
+    /// missing.
+    void shutdownWorkIsConnectedToShutdown()
+    {
+        QFile source(QStringLiteral(PF_SOURCE_DIR "/src/app/Application.cpp"));
+        QVERIFY2(source.open(QIODevice::ReadOnly | QIODevice::Text), qPrintable(source.fileName()));
+        const QString text = QString::fromUtf8(source.readAll());
+
+        const qsizetype hook = text.indexOf(QStringLiteral("aboutToQuit"));
+        QVERIFY2(hook >= 0, "nothing is connected to aboutToQuit");
+
+        // Both calls must appear after the connection, not merely exist.
+        const QString afterHook = text.mid(hook);
+        QVERIFY2(afterHook.contains(QStringLiteral("saveSession()")), "session is never saved");
+        QVERIFY2(afterHook.contains(QStringLiteral("WorkerPools::drainAll()")),
+                 "worker pools are never drained");
+    }
+
     /// A binding whose action was never registered is a dead key: it looks
     /// supported in the help modal and in §6.3's table, and pressing it does
     /// nothing whatsoever. That is how an entire implemented feature — archive

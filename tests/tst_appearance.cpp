@@ -211,16 +211,19 @@ private Q_SLOTS:
 
         QVERIFY2(inactive != active, "the focused panel must be visibly different");
 
-        // And specifically at the border, which is where §9 puts the
-        // difference.
-        int differingBorderPixels = 0;
-        for (int y = 0; y < active.height(); ++y) {
-            if (active.pixel(0, y) != inactive.pixel(0, y)) {
-                ++differingBorderPixels;
+        // And specifically along the top edge, which is where the affordance
+        // now lives. §9 asked for a border around the panel; a rectangle of
+        // colour drawn around a pane is the least native-looking thing the
+        // window can do, so it is a 2px accent bar across the top instead —
+        // backed by the lifted panel background and the filled cursor pill.
+        int differingTopPixels = 0;
+        for (int x = 0; x < active.width(); ++x) {
+            if (active.pixel(x, 0) != inactive.pixel(x, 0)) {
+                ++differingTopPixels;
             }
         }
-        QVERIFY2(differingBorderPixels > active.height() / 2,
-                 "the focused border must run down the panel's edge");
+        QVERIFY2(differingTopPixels > active.width() / 2,
+                 "the focus accent must run across the panel's top edge");
     }
 
     /// The row spacing scales with the theme rather than being fixed, so a

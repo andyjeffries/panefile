@@ -16,9 +16,6 @@
 #
 # Every stage runs even if an earlier one fails, so one invocation reports
 # everything that is wrong rather than only the first thing.
-#
-# Tests and clang-tidy run one process per core. Set PF_JOBS to throttle that
-# if you want the machine back while it runs.
 
 set -uo pipefail
 
@@ -26,20 +23,6 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 stage="${1:-all}"
 failures=()
-
-# ctest and clang-tidy are both a queue of independent processes, and neither
-# parallelises itself by default: serially they use one core out of however
-# many the machine has.
-detect_cores() {
-    if command -v nproc >/dev/null 2>&1; then
-        nproc
-    elif command -v sysctl >/dev/null 2>&1; then
-        sysctl -n hw.ncpu
-    else
-        echo 4
-    fi
-}
-parallelism="${PF_JOBS:-$(detect_cores)}"
 
 bold=$'\033[1m'
 red=$'\033[31m'
@@ -67,32 +50,14 @@ find_tool() {
 
 # clang-tidy needs to be told where the SDK is when it is a Homebrew build
 # reading Apple's headers, otherwise every translation unit fails on <type_traits>.
-tidy_sysroot=""
+tidy_extra_args=()
 if [[ "$(uname -s)" == "Darwin" ]] && command -v xcrun >/dev/null 2>&1; then
-    tidy_sysroot="$(xcrun --show-sdk-path)"
+    tidy_extra_args=(--extra-arg=-isysroot "--extra-arg=$(xcrun --show-sdk-path)")
 fi
 
 sources() {
     find src tests \( -name '*.cpp' -o -name '*.h' \) -not -path '*/build/*'
 }
-
-# One translation unit, into a log of its own. The workers run concurrently and
-# a diagnostic is several lines long, so sharing one stream between them would
-# interleave the lines of one finding into the middle of another. Exported
-# because xargs runs it in a fresh shell; its inputs arrive by environment for
-# the same reason.
-tidy_one() {
-    local file="$1"
-    local extra=()
-    if [[ -n "${PF_TIDY_SYSROOT:-}" ]]; then
-        extra=(--extra-arg=-isysroot "--extra-arg=$PF_TIDY_SYSROOT")
-    fi
-    # A clean file means grep matches nothing and exits 1; that is a pass, not a
-    # failure, and xargs would otherwise colour the whole run with it.
-    "$PF_TIDY_TOOL" -p build/dev "${extra[@]}" --warnings-as-errors='*' "$file" 2>/dev/null \
-        | grep -E '(error|warning):' > "$PF_TIDY_LOGS/${file//\//_}.log" || true
-}
-export -f tidy_one
 
 # --- stages -----------------------------------------------------------------
 
@@ -129,7 +94,7 @@ run_build() {
     fi
     ok "build"
 
-    if ctest --preset dev -j "$parallelism"; then
+    if ctest --preset dev; then
         ok "tests"
     else
         fail "tests"
@@ -154,17 +119,18 @@ run_tidy() {
         fi
     fi
 
-    local lintable=()
+    local output=""
     local skipped=()
     local file
     while IFS= read -r file; do
         # Only files the build knows about; a source not yet added to a
         # CMakeLists has no compile command and would report a spurious error.
-        if grep -q "\"$PWD/$file\"" build/dev/compile_commands.json 2>/dev/null; then
-            lintable+=("$file")
-        else
+        if ! grep -q "\"$PWD/$file\"" build/dev/compile_commands.json 2>/dev/null; then
             skipped+=("$file")
+            continue
         fi
+        output+="$("$tool" -p build/dev "${tidy_extra_args[@]}" \
+            --warnings-as-errors='*' "$file" 2>/dev/null | grep -E '(error|warning):' || true)"
     done < <(find src -name '*.cpp' -not -path '*/build/*')
 
     # The other platform's half of src/platform/ has no compile command here and
@@ -174,25 +140,6 @@ run_tidy() {
     if (( ${#skipped[@]} > 0 )); then
         printf '%s  not in this build, linted only by CI: %s%s\n' \
             "$dim" "${skipped[*]}" "$reset"
-    fi
-
-    local output=""
-    if (( ${#lintable[@]} > 0 )); then
-        printf '%s  %d files, %d at a time%s\n' \
-            "$dim" "${#lintable[@]}" "$parallelism" "$reset"
-
-        local logs
-        logs="$(mktemp -d)"
-        printf '%s\0' "${lintable[@]}" \
-            | PF_TIDY_TOOL="$tool" PF_TIDY_SYSROOT="$tidy_sysroot" PF_TIDY_LOGS="$logs" \
-              xargs -0 -P "$parallelism" -n 1 bash -c 'tidy_one "$1"' _
-
-        # Concatenated in the order the files were found, so the report does not
-        # reshuffle itself from run to run with whichever worker finished first.
-        for file in "${lintable[@]}"; do
-            output+="$(cat "$logs/${file//\//_}.log" 2>/dev/null)"
-        done
-        rm -rf "$logs"
     fi
 
     if [[ -n "$output" ]]; then
@@ -212,7 +159,7 @@ run_release() {
     fi
     ok "release build"
 
-    if ctest --preset release -j "$parallelism" >/dev/null; then
+    if ctest --preset release >/dev/null; then
         ok "release tests"
     else
         fail "release tests"

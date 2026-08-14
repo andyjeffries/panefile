@@ -114,7 +114,13 @@ void TestFormat::listTimeShowsYearForOlder()
     const QDateTime old(QDate(2019, 3, 4), QTime(11, 30));
     const QString text = formatListTime(old);
 
-    QVERIFY2(text.contains(QStringLiteral("2019")), qPrintable(text));
+    // "4 Mar 19", not "Mar 2019": one shape for the whole column, and the day
+    // survives — a four-digit year cost the day, so two files from different
+    // Novembers used to render identically.
+    QVERIFY2(text.contains(QStringLiteral("19")), qPrintable(text));
+    QVERIFY2(text.contains(QStringLiteral("Mar")), qPrintable(text));
+    QVERIFY2(text.startsWith(QStringLiteral("4 ")), qPrintable(text));
+    QVERIFY2(!text.contains(QStringLiteral("2019")), qPrintable(text));
 }
 
 void TestFormat::invalidTimeIsEmpty()

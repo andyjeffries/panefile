@@ -45,13 +45,21 @@ QString formatListTime(const QDateTime &when)
     const QDate today = now.date();
     const QDate date = when.date();
 
+    // One shape for the whole column, so its right edge stays straight and the
+    // eye can compare two rows without re-reading the format.
+    //
+    // It used to mix "07 Apr", "17:21" and "Nov 2025" — three different things
+    // in one column, the last of which quietly threw the day away, so a file
+    // from last November and one from the November before were indistinguishable.
     if (date == today) {
         return when.toString(QStringLiteral("HH:mm"));
     }
     if (date.year() == today.year()) {
-        return when.toString(QStringLiteral("dd MMM"));
+        // No leading zero: "7 Apr", not "07 Apr". The column is right-aligned,
+        // so the zero pads nothing and only adds noise.
+        return when.toString(QStringLiteral("d MMM"));
     }
-    return when.toString(QStringLiteral("MMM yyyy"));
+    return when.toString(QStringLiteral("d MMM yy"));
 }
 
 QString formatFullTime(const QDateTime &when)

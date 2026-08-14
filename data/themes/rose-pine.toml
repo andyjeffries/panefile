@@ -22,8 +22,15 @@ border         = "#26233a"
 border_focused = "#c4a7e7"
 
 [ui]
+# Geometry and type are not part of a theme's identity — a palette is. These
+# values are identical in every bundled theme on purpose: switching from Nord to
+# Gruvbox should recolour the window, not resize its rows and restyle its text.
+#
+# They come from the Claude Design polish pass: 13px names, 28px rows, a 6px
+# radius for the cursor pill and 10px of panel padding.
 font_family       = ""
-font_size         = 10
-row_height        = 24
+font_size         = 13
+row_height        = 28
 border_radius     = 6
-panel_padding     = 8
+panel_padding     = 10
+alternating_rows  = true

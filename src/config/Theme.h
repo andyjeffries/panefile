@@ -49,7 +49,7 @@ struct Theme {
 
     QString fontFamily;
     int fontSize = 10;
-    int rowHeight = 24;
+    int rowHeight = 28;
     int borderRadius = 6;
     int panelPadding = 8;
 
@@ -85,6 +85,13 @@ ThemeLoadResult parseTheme(const QString &text, const QString &fileNameForIssues
 /// Loads a theme by name, searching the user's theme directory before the
 /// bundled ones (§8). Returns the defaults, and an issue, when not found.
 ThemeLoadResult loadThemeByName(const QString &name);
+
+/// The theme to use when the user has never chosen one: macOS Light or macOS
+/// Dark, following the desktop's own colour scheme.
+///
+/// Falls back to systemTheme() when the bundled files cannot be found, which is
+/// what a build tree looked like before the themes were staged into the bundle.
+Theme defaultThemeForDesktop();
 
 /// Reads `theme.toml`, which either names a theme or defines one inline (§8).
 ThemeLoadResult loadActiveTheme(const QString &themeFilePath);

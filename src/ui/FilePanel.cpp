@@ -26,7 +26,13 @@ namespace {
 /// The width of the border StyleSheetBuilder draws on QWidget#filePanel. The
 /// two have to agree: the stylesheet draws it and the layout has to leave room
 /// for it.
-constexpr int kPanelBorderWidth = 1;
+/// The hairline that joins one panel to the next.
+constexpr int kPanelSeamWidth = 1;
+
+/// The accent edge along a focused panel's top. Always occupies its space —
+/// transparent when the panel is not focused — so nothing reflows as focus
+/// moves between panels.
+constexpr int kPanelFocusEdgeHeight = 2;
 
 } // namespace
 
@@ -50,8 +56,12 @@ FilePanel::FilePanel(QWidget *parent)
     // point every banded row painted out its slice of the focused panel's blue
     // border and the border appeared to break in and out down the panel — one
     // 26-pixel segment per row, which is the row height.
-    layout->setContentsMargins(kPanelBorderWidth, kPanelBorderWidth, kPanelBorderWidth,
-                               kPanelBorderWidth);
+    //
+    // The borders are no longer uniform: a 1px seam on the left, a 2px accent
+    // edge along the top, nothing on the right or bottom. The insets have to
+    // match, or the list paints over the accent edge exactly as it used to
+    // paint over the old blue box.
+    layout->setContentsMargins(kPanelSeamWidth, kPanelFocusEdgeHeight, 0, 0);
     layout->setSpacing(0);
 
     m_header->setObjectName(QStringLiteral("panelHeader"));

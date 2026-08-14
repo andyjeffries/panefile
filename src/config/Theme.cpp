@@ -11,6 +11,7 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QPalette>
+#include <QStyleHints>
 
 #include <toml++/toml.hpp>
 
@@ -300,7 +301,15 @@ ThemeLoadResult loadActiveTheme(const QString &themeFilePath)
 {
     QFile file(themeFilePath);
     if (!file.exists()) {
-        return {};
+        // No theme.toml — a fresh install, which is most people most of the
+        // time. Follow the desktop rather than falling back to whatever the
+        // Theme struct's member initialisers happen to say.
+        //
+        // They said Catppuccin Mocha, so a Mac in light mode opened a dark
+        // window and there was nothing on screen explaining why or offering a
+        // way out. A file manager with no configuration should look like it
+        // belongs to the system it is running on.
+        return {.theme = defaultThemeForDesktop(), .issues = {}};
     }
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         ThemeLoadResult result;
@@ -342,6 +351,21 @@ ThemeLoadResult loadActiveTheme(const QString &themeFilePath)
     }
 
     return result;
+}
+
+Theme defaultThemeForDesktop()
+{
+    const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
+    const QString name = dark ? QStringLiteral("macos-dark") : QStringLiteral("macos-light");
+
+    // The bundled file if it can be found, and the palette-derived system theme
+    // if it cannot — a source build run before `cmake --install`, say. Better a
+    // window that follows the desktop imperfectly than one that ignores it.
+    const ThemeLoadResult loaded = loadThemeByName(name);
+    if (loaded.issues.isEmpty()) {
+        return loaded.theme;
+    }
+    return systemTheme();
 }
 
 Theme systemTheme()

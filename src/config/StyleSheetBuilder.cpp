@@ -54,23 +54,38 @@ QToolTip {
 /* §9: "The focused panel must be unmistakable — use border_focused on the
    panel border plus a subtly lighter background. This is the single most
    important visual affordance in the app." */
+/* A 2px accent edge along the top, not a box around the whole panel.
+   A rectangle of colour drawn around a pane is the least native-looking thing
+   the window can do, and it competes with the cursor pill for the same job.
+   The edge is always present and merely transparent when the panel is not
+   focused, so nothing reflows as focus moves. Panels butt together against a
+   hairline seam instead of floating as rounded cards over a backdrop. */
 QWidget#filePanel {
     background-color: %{background};
-    border: 1px solid %{border};
-    border-radius: %{radius}px;
+    border: none;
+    border-left: 1px solid %{seam};
+    border-top: 2px solid transparent;
+    border-radius: 0px;
 }
 
 QWidget#filePanel[panelActive="true"] {
-    border: 1px solid %{border_focused};
+    border-top: 2px solid %{border_focused};
     background-color: %{panel_active_bg};
 }
 
+/* A hairline under the header rather than a filled bar: the path and the count
+   are labels on the list, not a toolbar above it. */
 QLabel#panelHeader {
-    background-color: %{surface};
+    background-color: transparent;
     color: %{subtext};
+    font-size: %{chrome_font_size}pt;
+    font-weight: 600;
     padding: %{half_padding}px %{padding}px;
-    border-top-left-radius: %{radius}px;
-    border-top-right-radius: %{radius}px;
+    border-bottom: 1px solid %{seam};
+}
+
+QLabel#panelHeader[panelActive="true"] {
+    color: %{text};
 }
 
 QWidget#filePanel[panelActive="true"] QLabel#panelHeader {
@@ -91,20 +106,30 @@ QListView#panelView {
 /* Sidebar --------------------------------------------------------------- */
 
 QWidget#sidebar {
-    background-color: %{surface};
+    background-color: %{sidebar_bg};
     border: none;
+}
+
+QLabel#sidebarSection {
+    color: %{subtext};
+    font-size: %{small_font_size}pt;
+    font-weight: 600;
+    padding: %{padding}px %{padding}px %{half_padding}px %{padding}px;
 }
 
 QListWidget#sidebarList {
-    background-color: %{surface};
+    background-color: %{sidebar_bg};
     border: none;
     outline: none;
-    padding: %{half_padding}px 0px;
+    padding: 0px %{half_padding}px %{half_padding}px %{half_padding}px;
 }
 
+/* Inset from the sidebar's edges so the selection reads as a pill on a surface
+   rather than a band running edge to edge. */
 QListWidget#sidebarList::item {
-    color: %{subtext};
-    padding: 3px %{padding}px;
+    color: %{text};
+    font-size: %{chrome_font_size}pt;
+    padding: 4px %{half_padding}px;
     border-radius: %{small_radius}px;
 }
 
@@ -267,6 +292,15 @@ QProgressBar::chunk {
         // operative word: a strong difference competes with the cursor row for
         // attention, and the border is already doing the work.
         .replace(QLatin1String("%{panel_active_bg}"), shade(theme.background, !light, 6))
+        // The seam between panels and under a header: a hairline, darker than
+        // the panel in a dark theme and lighter in a light one, so it reads as a
+        // join rather than as a drawn border.
+        .replace(QLatin1String("%{seam}"), shade(theme.background, light, 14))
+        // The sidebar is a shade off the content so it reads as chrome, without
+        // becoming a second colour in its own right.
+        .replace(QLatin1String("%{sidebar_bg}"), shade(theme.background, !light, 3))
+        .replace(QLatin1String("%{chrome_font_size}"), QString::number(theme.fontSize - 1))
+        .replace(QLatin1String("%{small_font_size}"), QString::number(theme.fontSize - 2))
         .replace(QLatin1String("%{font_size}"), QString::number(theme.fontSize))
         .replace(QLatin1String("%{radius}"), QString::number(theme.borderRadius))
         .replace(QLatin1String("%{small_radius}"),

@@ -28,6 +28,7 @@
 #include "ui/FilePanel.h"
 #include "ui/MainWindow.h"
 #include "ui/PanelStrip.h"
+#include "ui/PanelView.h"
 #include "ui/ProcessBar.h"
 #include "ui/Sidebar.h"
 #include "ui/ThemePalette.h"
@@ -38,6 +39,7 @@
 #include <QFont>
 #include <QKeyEvent>
 #include <QSocketNotifier>
+#include <QStyleHints>
 #include <QTimer>
 #include <QWindow>
 
@@ -338,6 +340,34 @@ void Application::loadConfiguration()
 
     StartupTrace::mark(StartupPhase::StylesheetApplied);
 
+    // Follow the desktop when it changes, not only when it starts.
+    //
+    // Only when the user has not chosen a theme themselves: a theme.toml is an
+    // explicit decision, and overriding it every time the Mac flips to dark at
+    // sunset would be the application arguing with its own configuration.
+    //
+    // Restyling after widgets exist is the expensive pass §3.4 warns about, but
+    // this fires when the desktop's appearance changes — a handful of times a
+    // day at most — rather than on the startup path it protects.
+    if (!QFile::exists(platform::configDir() + QStringLiteral("/theme.toml"))) {
+        connect(styleHints(), &QStyleHints::colorSchemeChanged, this, [this] {
+            const config::Theme theme = config::defaultThemeForDesktop();
+            ui::setCurrentPalette(theme);
+            setStyleSheet(config::buildStyleSheet(theme));
+
+            // A stylesheet change does not reach a QStyledItemDelegate, which
+            // paints from the palette directly, so the rows would keep the old
+            // colours until something else invalidated them.
+            if (m_mainWindow != nullptr) {
+                m_mainWindow->update();
+                for (ui::FilePanel *panel : m_mainWindow->panelStrip()->panels()) {
+                    panel->update();
+                    panel->view()->viewport()->update();
+                }
+            }
+        });
+    }
+
     for (const config::ConfigIssue &issue : std::as_const(m_configIssues)) {
         qCWarning(pfConfig) << issue.toString();
     }
@@ -426,6 +456,27 @@ void Application::startUp(const CommandLineOptions &options)
     // handler is cheap and the window where it is missing should be as small as
     // it can be.
     installSignalHandling();
+
+    // Shutdown, in the one place that owns it.
+    //
+    // Both of these were written, tested and then never connected to anything.
+    // saveSession() explained in its own comment that aboutToQuit "is what
+    // writes the session" — and nothing did, so the session file kept whatever
+    // was in it the last time something wrote one, and every navigation since
+    // was lost. Reopening the application put you back in a directory you had
+    // left days earlier.
+    //
+    // WorkerPools::drainAll() is worse: it exists to stop a scanner thread
+    // reaching QMimeDatabase after static destruction has begun, which is a
+    // crash on exit, and it was dead code. That the crash became rare is a
+    // matter of timing, not of the fix being in place.
+    //
+    // Order matters. The session is written while the panels are still intact;
+    // the pools are drained after, so no worker outlives the event loop.
+    connect(this, &QCoreApplication::aboutToQuit, this, [this] {
+        saveSession();
+        WorkerPools::drainAll();
+    });
 
     loadConfiguration();
 

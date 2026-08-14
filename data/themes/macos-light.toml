@@ -1,29 +1,49 @@
+# The light half of the Claude Design polish pass. Same geometry and type as
+# macOS Dark throughout — only the palette changes.
 name = "macOS Light"
 
 [colors]
-background     = "#ffffff"
-surface        = "#f5f5f7"
-overlay        = "#8e8e93"
-text           = "#1d1d1f"
-subtext        = "#6e6e73"
-accent         = "#007aff"
-selection_bg   = "#dbeafe"
-cursor_bg      = "#e8e8ed"
-directory      = "#007aff"
-executable     = "#28cd41"
-symlink        = "#59adc4"
-broken         = "#ff3b30"
-archive        = "#ff9500"
-image          = "#ffcc00"
-error          = "#ff3b30"
-warning        = "#ff9500"
-success        = "#28cd41"
-border         = "#d2d2d7"
-border_focused = "#007aff"
+# An unfocused panel and the window body; the focused panel lifts to white.
+background     = "#fbfbfc"
+surface        = "#ffffff"
+overlay        = "#86868b"
+
+text           = "#2a2a2e"
+subtext        = "#86868b"
+
+# Darker than the dark theme's accent so white text on the filled cursor row
+# clears contrast against it.
+accent         = "#0a6cff"
+
+# rgba(0,0,0,0.075) over the background.
+selection_bg   = "#ececee"
+cursor_bg      = "#ececee"
+
+directory      = "#0a6cff"
+executable     = "#248a3d"
+symlink        = "#0071a4"
+broken         = "#d70015"
+archive        = "#c93400"
+image          = "#c4a35a"
+
+error          = "#d70015"
+warning        = "#c93400"
+success        = "#248a3d"
+
+# rgba(0,0,0,0.12).
+border         = "#e0e0e3"
+border_focused = "#0a6cff"
 
 [ui]
+# Geometry and type are not part of a theme's identity — a palette is. These
+# values are identical in every bundled theme on purpose: switching from Nord to
+# Gruvbox should recolour the window, not resize its rows and restyle its text.
+#
+# They come from the Claude Design polish pass: 13px names, 28px rows, a 6px
+# radius for the cursor pill and 10px of panel padding.
 font_family       = ""
 font_size         = 13
-row_height        = 26
+row_height        = 28
 border_radius     = 6
 panel_padding     = 10
+alternating_rows  = true

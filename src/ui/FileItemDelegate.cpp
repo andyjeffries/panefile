@@ -166,7 +166,14 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
     // Banded on the *view's* row, not the model's, so the stripes stay
     // alternating through a filter rather than developing gaps where rows were
     // removed.
-    if (palette.alternatingRows && (index.row() % 2) == 1) {
+    //
+    // Only in the focused panel. Banding is a reading aid for the list you are
+    // working in, and running it everywhere makes two panels compete for the
+    // eye; switching it off with focus turns it into a third quiet signal of
+    // where you are, alongside the accent pill and the top edge.
+    const bool panelActive = (option.state & QStyle::State_Active) != 0;
+
+    if (palette.alternatingRows && panelActive && (index.row() % 2) == 1) {
         painter->fillRect(row, palette.effectiveAlternateRowBackground());
     }
 
@@ -182,7 +189,6 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
     // unfocused one it stays the muted cursor colour. That difference is the
     // cheapest possible answer to "which panel am I typing into", and it works
     // even when the panel border is off the edge of your attention.
-    const bool panelActive = (option.state & QStyle::State_Active) != 0;
     const QColor cursorFill = panelActive ? palette.accent : palette.cursorBackground;
 
     if (isCursor || isSelected) {

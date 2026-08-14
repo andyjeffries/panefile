@@ -157,6 +157,11 @@ void Application::buildInputSystem()
 
 void Application::updateActiveLayers()
 {
+    if (m_mainWindow != nullptr) {
+        const ui::FilePanel *focused = m_mainWindow->panelStrip()->focusedPanel();
+        m_mainWindow->setSelectionCount(focused != nullptr ? focused->selectionCount() : 0);
+    }
+
     if (m_dispatcher == nullptr || m_mainWindow == nullptr) {
         return;
     }

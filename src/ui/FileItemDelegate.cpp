@@ -30,6 +30,24 @@ constexpr int kPillRadius = 6;
 /// The cursor pill in a focused panel is filled with the accent, and an accent
 /// light enough to need dark text is a real theme (Solarized Light's is), so
 /// this cannot be hard-coded to white.
+/// The row's metadata face: a step smaller than the name, with figures of equal
+/// width.
+///
+/// Proportional digits give a right-aligned column a ragged edge — "1" is
+/// narrower than "0" in most UI faces — which is most of why a list of dates
+/// looks untidy even when every entry is correctly aligned.
+QFont metadataFont(const QFont &base)
+{
+    QFont font = base;
+    if (base.pointSize() > 0) {
+        font.setPointSize(std::max(1, base.pointSize() - 1));
+    } else if (base.pixelSize() > 0) {
+        font.setPixelSize(std::max(1, base.pixelSize() - 1));
+    }
+    font.setFeature(QFont::Tag("tnum"), 1);
+    return font;
+}
+
 QColor readableOn(const QColor &background)
 {
     // Rec. 709 luma, which tracks perceived brightness far better than a plain
@@ -66,8 +84,8 @@ Metrics metricsFor(const ThemePalette &palette)
 /// measured per row: a column whose width depends on its widest visible value
 /// shifts as you scroll, and §11's frame budget does not have room for a
 /// QFontMetrics pass over every row anyway.
-constexpr int kSizeColumnWidth = 74;
-constexpr int kTimeColumnWidth = 84;
+constexpr int kSizeColumnWidth = 64;
+constexpr int kTimeColumnWidth = 78;
 
 bool isArchiveName(const QString &name)
 {
@@ -289,6 +307,12 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
         }
         painter->setPen(metaColour);
 
+        // A step smaller than the name, and figures of equal width. Proportional
+        // digits give a right-aligned column a ragged edge — "11" is narrower
+        // than "00" in most UI faces — which is most of why a list of dates
+        // looks untidy even when every one of them is correctly aligned.
+        painter->setFont(metadataFont(option.font));
+
         if (!entry.isDir) {
             const QRect sizeRect(sizeLeft, row.top(), kSizeColumnWidth, row.height());
             painter->drawText(sizeRect, Qt::AlignRight | Qt::AlignVCenter, formatSize(entry.size));
@@ -298,6 +322,8 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
         painter->drawText(timeRect, Qt::AlignRight | Qt::AlignVCenter,
                           formatListTime(entry.modified));
     }
+
+    painter->setFont(option.font);
 
     // Name, plus the symlink target if there is room for it.
     const int nameRight = sizeLeft - spacing.columnGap;

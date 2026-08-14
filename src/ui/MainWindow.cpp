@@ -35,7 +35,8 @@ constexpr int kStatusMessageMs = 4000;
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), m_splitter(new QSplitter(Qt::Horizontal)),
       m_contentSplitter(new QSplitter(Qt::Vertical)), m_sidebar(new Sidebar),
-      m_strip(new PanelStrip), m_footer(new QLabel), m_pending(new QLabel)
+      m_strip(new PanelStrip), m_footer(new QLabel), m_selectionCount(new QLabel),
+      m_pending(new QLabel)
 {
     setObjectName(QStringLiteral("mainWindow"));
     setWindowTitle(QStringLiteral("Panefile"));
@@ -70,13 +71,23 @@ MainWindow::MainWindow(QWidget *parent)
     // around as it appears and disappears.
     auto *footerRow = new QWidget(central);
     auto *footerLayout = new QHBoxLayout(footerRow);
-    footerLayout->setContentsMargins(currentPalette().panelPadding, 3,
-                                     currentPalette().panelPadding, 3);
-    footerLayout->setSpacing(12);
+    footerRow->setObjectName(QStringLiteral("footerRow"));
+    footerLayout->setContentsMargins(currentPalette().panelPadding, 4,
+                                     currentPalette().panelPadding, 4);
+    footerLayout->setSpacing(14);
 
     m_footer->setObjectName(QStringLiteral("footer"));
     m_footer->setTextFormat(Qt::PlainText);
     footerLayout->addWidget(m_footer, 1);
+
+    // The selection count, between the metadata and the pending chord. It
+    // belongs in the status bar rather than only in the panel header: the
+    // header answers "what is in this directory", this answers "what am I about
+    // to act on", and the second question is the one you ask just before
+    // pressing a key that moves files.
+    m_selectionCount->setObjectName(QStringLiteral("selectionCount"));
+    m_selectionCount->setTextFormat(Qt::PlainText);
+    footerLayout->addWidget(m_selectionCount, 0);
 
     m_pending->setObjectName(QStringLiteral("pendingKeys"));
     m_pending->setTextFormat(Qt::PlainText);
@@ -141,6 +152,13 @@ void MainWindow::connectPanel(FilePanel *panel)
 void MainWindow::showPendingKeys(const QString &text)
 {
     m_pending->setText(text);
+}
+
+void MainWindow::setSelectionCount(int count)
+{
+    // Nothing at all rather than "0 selected": a field that is always present
+    // but usually zero is noise, and the status bar has to stay scannable.
+    m_selectionCount->setText(count > 0 ? tr("%n selected", nullptr, count) : QString());
 }
 
 void MainWindow::showStatusMessage(const QString &message)

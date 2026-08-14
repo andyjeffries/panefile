@@ -7,6 +7,7 @@
 #include <QDir>
 #include <QEvent>
 #include <QFileInfo>
+#include <QLabel>
 #include <QListWidget>
 #include <QStandardPaths>
 #include <QVBoxLayout>
@@ -29,10 +30,20 @@ Sidebar::Sidebar(QWidget *parent) : QWidget(parent), m_list(new QListWidget(this
     setObjectName(QStringLiteral("sidebar"));
     setMinimumWidth(140);
     setMaximumWidth(280);
+    // The design's width. A sidebar of shortcuts does not earn more, and at
+    // less the longer XDG names start eliding.
+    resize(200, height());
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
+
+    // A section label, so the sidebar reads as a sidebar rather than as a
+    // column of words sharing an edge with the first panel.
+    auto *section = new QLabel(tr("Favourites"), this);
+    section->setObjectName(QStringLiteral("sidebarSection"));
+    section->setTextFormat(Qt::PlainText);
+    layout->addWidget(section);
 
     m_list->setObjectName(QStringLiteral("sidebarList"));
     m_list->setFrameShape(QFrame::NoFrame);

@@ -130,6 +130,7 @@ QListWidget#sidebarList::item {
     color: %{text};
     font-size: %{chrome_font_size}pt;
     padding: 4px %{half_padding}px;
+    min-height: 18px;
     border-radius: %{small_radius}px;
 }
 
@@ -150,12 +151,31 @@ QListWidget#sidebarList::item:selected {
 
 /* Status furniture ------------------------------------------------------ */
 
+/* A hairline along the top, so the status bar belongs to the window rather than
+   hanging off the bottom of it. */
+QWidget#footerRow {
+    background-color: %{sidebar_bg};
+    border-top: 1px solid %{seam};
+}
+
+/* The one place monospace survives. The permissions, owner, size and date are
+   fixed-shape facts read by column, and a proportional face makes drwxr-xr-x
+   harder to scan; everything else in the window is the system UI face, which is
+   what stops the application reading as a terminal utility. */
 QLabel#footer {
     color: %{subtext};
+    font-family: %{mono_family};
+    font-size: %{small_font_size}pt;
+}
+
+QLabel#selectionCount {
+    color: %{subtext};
+    font-size: %{small_font_size}pt;
 }
 
 QLabel#pendingKeys {
     color: %{accent};
+    font-size: %{small_font_size}pt;
     font-weight: bold;
 }
 
@@ -299,6 +319,8 @@ QProgressBar::chunk {
         // The sidebar is a shade off the content so it reads as chrome, without
         // becoming a second colour in its own right.
         .replace(QLatin1String("%{sidebar_bg}"), shade(theme.background, !light, 3))
+        .replace(QLatin1String("%{mono_family}"),
+                 QStringLiteral("'SF Mono', ui-monospace, Menlo, Consolas, monospace"))
         .replace(QLatin1String("%{chrome_font_size}"), QString::number(theme.fontSize - 1))
         .replace(QLatin1String("%{small_font_size}"), QString::number(theme.fontSize - 2))
         .replace(QLatin1String("%{font_size}"), QString::number(theme.fontSize))

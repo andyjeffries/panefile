@@ -34,6 +34,9 @@ public:
     /// Shows a transient message in the footer.
     void showStatusMessage(const QString &message);
 
+    /// The "n selected" field in the status bar. Empty text hides it.
+    void setSelectionCount(int count);
+
     /// Shows the pending chord prefix, e.g. `g-` (§6.2 step 3).
     void showPendingKeys(const QString &text);
 
@@ -97,6 +100,7 @@ private:
     Sidebar *m_sidebar = nullptr;
     PanelStrip *m_strip = nullptr;
     QLabel *m_footer = nullptr;
+    QLabel *m_selectionCount = nullptr;
     QLabel *m_pending = nullptr;
     QWidget *m_processBar = nullptr;
     QWidget *m_footerRow = nullptr;

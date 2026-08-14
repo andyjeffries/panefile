@@ -1,5 +1,5 @@
 /*
- * panefile.dev
+ * panefile.app
  *
  * Static CSS, no build step, no JavaScript. Light and dark come from
  * prefers-color-scheme alone — there is no toggle, because a toggle needs
@@ -244,16 +244,22 @@ header.site nav a:hover {
 
 .shot {
     display: block;
-    margin-top: 3rem;
+
+    /* Less than it looks: the screenshot carries about 60px of transparent
+       margin of its own, for the shadow to fall into. */
+    margin-top: 1.5rem;
 }
 
+/* No border, radius or shadow here.
+   The screenshot is drawn inside a macOS window frame — rounded corners,
+   hairline and shadow included — so anything added here is a second frame
+   around the first. Worse, the image is transparent around that window, so a
+   CSS border drew a hard rectangle out in the margin, well clear of the corners
+   it was supposed to be following. */
 .shot img {
     display: block;
     width: 100%;
     height: auto;
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    box-shadow: var(--shadow);
 }
 
 /* ------------------------------------------------------------------- grids */

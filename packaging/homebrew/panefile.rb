@@ -17,7 +17,7 @@
 # text renderer takes the plain-text fallback §2 already requires of it.
 class Panefile < Formula
   desc "Keyboard-driven, multi-panel file manager"
-  homepage "https://panefile.dev"
+  homepage "https://panefile.app"
   url "https://github.com/andyjeffries/panefile/archive/refs/tags/v1.0.0.tar.gz"
   sha256 "0" * 64 # replaced at release time
   license "MIT"

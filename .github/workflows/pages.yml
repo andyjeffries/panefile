@@ -1,4 +1,4 @@
-# Publishes docs/site to GitHub Pages, which serves panefile.dev through the
+# Publishes docs/site to GitHub Pages, which serves panefile.app through the
 # CNAME file in that directory.
 #
 # No build step: the site is static HTML and CSS, so the "build" is an upload.

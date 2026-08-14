@@ -279,7 +279,7 @@ load-time dependencies — OpenSSL, Kerberos, libcurl, nghttp2 and libproxy,
 which embeds a JavaScript interpreter — for a Unix domain socket. §3.4's
 dependency guard caught it.
 
-## M12 — panefile.dev ✅
+## M12 — panefile.app ✅
 
 - [x] Static HTML and CSS, no JavaScript, no build step
 - [x] Automatic light and dark from `prefers-color-scheme`, using the
@@ -291,9 +291,36 @@ dependency guard caught it.
       contrast passes 4.5:1 for body text and 3:1 for the rest in both schemes
 - [ ] **Yours to do: point the DNS at it.** The site is live at
       <https://andyjeffries.github.io/panefile/> and carries a `CNAME` for
-      `panefile.dev`; the domain needs `CNAME panefile.dev →
-      andyjeffries.github.io` (or the four A records for an apex domain) before
-      that name resolves.
+      `panefile.app`.
+
+      `panefile.app` is an apex domain, so it cannot be a CNAME — that record
+      type is not allowed alongside the SOA and NS records every zone apex has.
+      It needs A and AAAA records pointing at GitHub Pages:
+
+          A     @   185.199.108.153
+          A     @   185.199.109.153
+          A     @   185.199.110.153
+          A     @   185.199.111.153
+          AAAA  @   2606:50c0:8000::153
+          AAAA  @   2606:50c0:8001::153
+          AAAA  @   2606:50c0:8002::153
+          AAAA  @   2606:50c0:8003::153
+
+      All four of each, not one: they are separate edge sites, and a single
+      record makes the site depend on one of them staying up.
+
+      Optionally `CNAME www → andyjeffries.github.io.` so the www form
+      redirects rather than failing.
+
+      Then set the custom domain in the repository's Pages settings, which is
+      what makes GitHub request the certificate — the `CNAME` file in the
+      repository declares the name but does not on its own provision TLS.
+
+      **`.app` is on the HSTS preload list**, so browsers refuse plain HTTP for
+      it outright. There is no working http:// phase to fall back on: until the
+      certificate is issued the site will not load at all, which looks like a
+      DNS failure and is not. Wait for GitHub to report the certificate, then
+      tick "Enforce HTTPS".
 
 ---
 
@@ -383,6 +410,6 @@ they matter:
 - **A password prompt for encrypted archives (§7.10).**
 - **`Alt` for the copy/move/link drop menu (§7.12).**
 - **The default theme, and typography (M11)** — taste decisions, yours.
-- **DNS for panefile.dev** — the site is live and waiting for the record.
+- **DNS for panefile.app** — the site is live and waiting for the record.
 - **The Docker Arch packaging pass** — CI covers build, test and measurement on
   Arch already; `makepkg` and `namcap` are what a container run would add.

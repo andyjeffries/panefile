@@ -12,6 +12,7 @@
 #include "ui/ThemePalette.h"
 #include "ui/quicklook/QuickLookOverlay.h"
 
+#include <QDir>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QListView>
@@ -108,7 +109,7 @@ MainWindow::MainWindow(QWidget *parent)
         connectPanel(panel);
         updateFooter();
         if (panel != nullptr) {
-            setWindowTitle(QStringLiteral("%1 — Panefile").arg(panel->path()));
+            setWindowTitle(titleForPath(panel->path()));
         }
     });
     connect(m_strip, &PanelStrip::statusMessage, this, &MainWindow::showStatusMessage);
@@ -147,14 +148,39 @@ void MainWindow::connectPanel(FilePanel *panel)
     m_panelCursorConnection = connect(panel, &FilePanel::cursorChanged, this,
                                       [this](const QString &) { updateFooter(); });
     m_panelPathConnection =
-        connect(panel, &FilePanel::pathChanged, this, [this](const QString &path) {
-            setWindowTitle(QStringLiteral("%1 — Panefile").arg(path));
-        });
+        connect(panel, &FilePanel::pathChanged, this,
+                [this](const QString &path) { setWindowTitle(titleForPath(path)); });
 }
 
 void MainWindow::showPendingKeys(const QString &text)
 {
     m_pending->setText(text);
+}
+
+QString MainWindow::titleForPath(const QString &path)
+{
+    // The folder's name, not its path.
+    //
+    // macOS titles name the thing being looked at — Finder shows "Documents",
+    // not "/Users/andy/Documents" — and a full absolute path centred in a title
+    // bar is the most obviously non-native element a window can have. The path
+    // is already in the panel header, which is where it belongs: attached to
+    // the panel it describes rather than to the window, which may hold five of
+    // them.
+    if (path.isEmpty()) {
+        return QStringLiteral("Panefile");
+    }
+
+    const QString home = QDir::homePath();
+    if (path == home) {
+        return QStringLiteral("Home");
+    }
+    if (path == QStringLiteral("/")) {
+        return QStringLiteral("Computer");
+    }
+
+    const QString name = QDir(path).dirName();
+    return name.isEmpty() ? path : name;
 }
 
 void MainWindow::setSelectionCount(int count)

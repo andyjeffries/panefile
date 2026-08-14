@@ -107,6 +107,7 @@ protected:
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
 
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dragMoveEvent(QDragMoveEvent *event) override;
@@ -120,6 +121,10 @@ private:
     /// confused for an override that never fires.
     void beginPanelDrag();
 
+    /// Grows the bottom inset by whatever is left over after a whole number of
+    /// rows, so the list never ends in a sliced one.
+    void absorbPartialRow();
+
     /// The entry name at a viewport position, or empty for empty space.
     QString nameAt(const QPoint &position) const;
 
@@ -131,6 +136,9 @@ private:
     QPoint m_pressPosition;
     bool m_pressed = false;
     int m_dropTargetRow = -1;
+    int m_bodyInsetHorizontal = 0;
+    int m_bodyInsetVertical = 0;
+    int m_appliedBottomInset = -1;
 };
 
 } // namespace pf::ui

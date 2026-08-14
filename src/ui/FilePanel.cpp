@@ -120,6 +120,16 @@ FilePanel::FilePanel(QWidget *parent)
     m_view->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_view->setFrameShape(QFrame::NoFrame);
 
+    // Whole rows, never a sliced one.
+    //
+    // QListView scrolls per pixel by default, so a viewport whose height is not
+    // a multiple of the row height leaves a half-row sliced under the header
+    // and another under the status bar. A half-row is the classic sign of an
+    // unpolished list, and it costs nothing to align the scroll to items —
+    // which is also what makes a keyboard-driven list feel like it moves in
+    // discrete steps rather than gliding.
+    m_view->setVerticalScrollMode(QAbstractItemView::ScrollPerItem);
+
     // The list body sits inset from the panel's edges.
     //
     // Full-bleed rows running edge to edge are what makes a pane read as a list

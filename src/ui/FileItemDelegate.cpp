@@ -48,6 +48,15 @@ QFont metadataFont(const QFont &base)
     return font;
 }
 
+/// `amount` of the way from `from` towards `towards`.
+QColor blend(const QColor &from, const QColor &towards, double amount)
+{
+    const double keep = 1.0 - amount;
+    return QColor::fromRgbF((from.redF() * keep) + (towards.redF() * amount),
+                            (from.greenF() * keep) + (towards.greenF() * amount),
+                            (from.blueF() * keep) + (towards.blueF() * amount));
+}
+
 QColor readableOn(const QColor &background)
 {
     // Rec. 709 luma, which tracks perceived brightness far better than a plain
@@ -89,6 +98,10 @@ Metrics metricsFor(const ThemePalette &palette)
 /// Roughly ten characters at the default size: enough to tell two entries apart,
 /// which is the least a filename can usefully do.
 constexpr int kMinimumNameWidth = 96;
+
+/// Below this row height a thumbnail is smaller than the glyph it replaces and
+/// says less than it.
+constexpr int kThumbnailMinimumRowHeight = 40;
 
 constexpr int kSizeColumnWidth = 64;
 constexpr int kTimeColumnWidth = 78;
@@ -306,20 +319,39 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
     // A broken symlink is the exception, because there is no icon state that
     // says "this points nowhere" as plainly as the name being struck through in
     // the error colour.
-    const QColor iconColour = onFill ? onFillColour : colourFor(entry);
+    QColor iconColour = onFill ? onFillColour : colourFor(entry);
+    if (!onFill && !panelActive) {
+        // The accent belongs to the panel being worked in. A pane full of
+        // saturated blue folders pulls the eye whether or not it has focus,
+        // which is the opposite of what the colour is for.
+        iconColour = blend(iconColour, palette.background, 0.30);
+    }
 
     QColor nameColour = palette.text;
     if (onFill) {
         nameColour = onFillColour;
     } else if (entry.isBroken) {
         nameColour = palette.broken;
+    } else if (!panelActive) {
+        // A step quieter in a panel that is not focused. Two panels of
+        // identically-weighted text make the eye choose between them; this is
+        // the same signal the accent edge and the cursor pill give, said a
+        // third time for anyone reading the list rather than its frame.
+        nameColour = blend(palette.text, palette.background, 0.22);
     }
     const QRect iconRect(x, row.top() + ((row.height() - kIconSize) / 2), kIconSize, kIconSize);
 
     // §7.7: a generated thumbnail replaces the icon for the row it belongs to.
     // Served from the model's memory tier, which is why this stays a hash
     // lookup and not the file read a thumbnail would otherwise imply.
-    const QVariant thumbnail = index.data(DirectoryModel::ThumbnailRole);
+    //
+    // Only when a row is tall enough to show one. At 28 pixels a photograph
+    // scaled to 16 is an unreadable smudge that reads as a fourth icon style
+    // competing with the glyphs beside it — it costs the row's legibility and
+    // returns nothing. A taller row mode earns them back.
+    const bool thumbnailsFit = palette.rowHeight >= kThumbnailMinimumRowHeight;
+    const QVariant thumbnail =
+        thumbnailsFit ? index.data(DirectoryModel::ThumbnailRole) : QVariant();
     const auto image = thumbnail.canConvert<QImage>() ? thumbnail.value<QImage>() : QImage();
 
     if (!image.isNull()) {
@@ -366,6 +398,8 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
         QColor metaColour = onFill ? onFillColour : palette.subtext;
         if (onFill) {
             metaColour.setAlpha(200);
+        } else if (!panelActive) {
+            metaColour = blend(palette.subtext, palette.background, 0.25);
         }
         painter->setPen(metaColour);
 

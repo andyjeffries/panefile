@@ -10,6 +10,7 @@
 #include "input/Keymap.h"
 #include "app/KeyDispatcher.h"
 #include "ui/FilePanel.h"
+#include "ui/MainWindow.h"
 #include "ui/PanelStrip.h"
 
 #include <QDir>
@@ -62,6 +63,23 @@ private:
     void settle() { QTest::qWait(150); }
 
 private Q_SLOTS:
+
+    /// The window is titled with the folder's name, not its path.
+    ///
+    /// macOS titles name the thing being looked at — Finder shows "Documents",
+    /// never "/Users/andy/Documents" — and an absolute path centred in a title
+    /// bar is the most obviously non-native element a window can have. The path
+    /// is in the panel header, attached to the panel it describes rather than
+    /// to a window that may hold five of them.
+    void theWindowTitleIsAFolderNameNotAPath()
+    {
+        QCOMPARE(ui::MainWindow::titleForPath(QStringLiteral("/Users/andy/Documents")),
+                 QStringLiteral("Documents"));
+        QCOMPARE(ui::MainWindow::titleForPath(QDir::homePath()), QStringLiteral("Home"));
+        QCOMPARE(ui::MainWindow::titleForPath(QStringLiteral("/")), QStringLiteral("Computer"));
+        QCOMPARE(ui::MainWindow::titleForPath(QString()), QStringLiteral("Panefile"));
+    }
+
     void initTestCase();
     void init();
     void cleanup();

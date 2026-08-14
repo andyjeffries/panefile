@@ -37,6 +37,10 @@ public:
     /// The "n selected" field in the status bar. Empty text hides it.
     void setSelectionCount(int count);
 
+    /// The window title for a directory: its name, as macOS titles are, rather
+    /// than an absolute path.
+    static QString titleForPath(const QString &path);
+
     /// Shows the pending chord prefix, e.g. `g-` (§6.2 step 3).
     void showPendingKeys(const QString &text);
 

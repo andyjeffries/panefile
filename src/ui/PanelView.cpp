@@ -52,7 +52,39 @@ PanelView::PanelView(QWidget *parent) : QListView(parent)
 
 void PanelView::setBodyInset(int horizontal, int vertical)
 {
-    setViewportMargins(horizontal, vertical, horizontal, vertical);
+    m_bodyInsetHorizontal = horizontal;
+    m_bodyInsetVertical = vertical;
+    absorbPartialRow();
+}
+
+void PanelView::resizeEvent(QResizeEvent *event)
+{
+    QListView::resizeEvent(event);
+    absorbPartialRow();
+}
+
+void PanelView::absorbPartialRow()
+{
+    // A viewport whose height is not a whole number of rows ends in a sliced
+    // one, sitting under the status bar with its descenders cut off. Scrolling
+    // per item does not help: the remainder is at the bottom whatever the
+    // scroll position.
+    //
+    // So the leftover pixels are given to the bottom inset instead, and the
+    // list ends on a row boundary. Recomputed on every resize, because the
+    // remainder changes as the window does.
+    const int rowHeight = std::max(1, currentPalette().rowHeight);
+    const int available = height() - (m_bodyInsetVertical * 2);
+    const int leftover = available > rowHeight ? available % rowHeight : 0;
+
+    const int bottom = m_bodyInsetVertical + leftover;
+
+    // Guarded: setViewportMargins triggers a resize, and resizing calls this.
+    if (bottom == m_appliedBottomInset) {
+        return;
+    }
+    m_appliedBottomInset = bottom;
+    setViewportMargins(m_bodyInsetHorizontal, m_bodyInsetVertical, m_bodyInsetHorizontal, bottom);
 }
 
 int PanelView::dropTargetRow() const

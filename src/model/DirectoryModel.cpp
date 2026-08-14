@@ -366,7 +366,16 @@ QVariant DirectoryModel::data(const QModelIndex &index, int role) const
             // template, not a QString, so the conversion has to be explicit.
             return QString(entry->name + QStringLiteral(" → ") + entry->linkTarget);
         }
-        return entry->name;
+        // Nothing for an ordinary entry.
+        //
+        // Returning the name meant a large bordered box appeared over the list
+        // repeating a filename that was already fully readable in the row the
+        // pointer was resting on — four rows obscured to tell the user
+        // something they were already looking at. A tooltip earns its place by
+        // saying what the row cannot, which here is a symlink's target; the
+        // elided-name case is handled by the delegate, which knows whether it
+        // actually had to elide.
+        return {};
     default:
         return {};
     }

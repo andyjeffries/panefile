@@ -105,9 +105,13 @@ QListView#panelView {
 
 /* Sidebar --------------------------------------------------------------- */
 
+/* A step off the content and a seam against it. Finder's chrome feels layered
+   because the sidebar is a different surface; at the same white as the list it
+   is just an indented column of words. */
 QWidget#sidebar {
     background-color: %{sidebar_bg};
     border: none;
+    border-right: 1px solid %{seam};
 }
 
 QLabel#sidebarSection {
@@ -156,6 +160,7 @@ QListWidget#sidebarList::item:selected {
 QWidget#footerRow {
     background-color: %{sidebar_bg};
     border-top: 1px solid %{seam};
+    min-height: 26px;
 }
 
 /* The one place monospace survives. The permissions, owner, size and date are
@@ -177,6 +182,50 @@ QLabel#pendingKeys {
     color: %{accent};
     font-size: %{small_font_size}pt;
     font-weight: bold;
+}
+
+/* An overlay scrollbar, not a widget with a track. A thick bar with a visible
+   groove is a Motif-era affordance; macOS shows a thin thumb over the content
+   and nothing else. */
+QScrollBar:vertical {
+    background: transparent;
+    border: none;
+    width: 11px;
+    margin: 0px;
+}
+
+QScrollBar::handle:vertical {
+    background: %{scroll_handle};
+    border-radius: 3px;
+    min-height: 28px;
+    margin: 2px 4px 2px 3px;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: transparent;
+    border: none;
+    height: 0px;
+}
+
+QScrollBar:horizontal {
+    background: transparent;
+    border: none;
+    height: 11px;
+}
+
+QScrollBar::handle:horizontal {
+    background: %{scroll_handle};
+    border-radius: 3px;
+    min-width: 28px;
+    margin: 3px 2px 4px 2px;
+}
+
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal,
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+    background: transparent;
+    border: none;
+    width: 0px;
 }
 
 /* Modals ---------------------------------------------------------------- */
@@ -318,7 +367,7 @@ QProgressBar::chunk {
         .replace(QLatin1String("%{seam}"), shade(theme.background, light, 14))
         // The sidebar is a shade off the content so it reads as chrome, without
         // becoming a second colour in its own right.
-        .replace(QLatin1String("%{sidebar_bg}"), shade(theme.background, !light, 3))
+        .replace(QLatin1String("%{sidebar_bg}"), shade(theme.background, light, 4))
         .replace(QLatin1String("%{mono_family}"),
                  QStringLiteral("'SF Mono', ui-monospace, Menlo, Consolas, monospace"))
         .replace(QLatin1String("%{chrome_font_size}"), QString::number(theme.fontSize - 1))

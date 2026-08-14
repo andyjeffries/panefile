@@ -20,7 +20,7 @@ class TestFormat : public QObject
 private Q_SLOTS:
     void sizes_data();
     void sizes();
-    void sizeUnitsAreBinary();
+    void sizeUnitsAreDecimal();
     void sizePrecisionDropsWithMagnitude();
 
     void listTimeShowsTimeForToday();
@@ -42,15 +42,19 @@ void TestFormat::sizes_data()
     QTest::newRow("zero") << quint64(0) << "0 B";
     QTest::newRow("one") << quint64(1) << "1 B";
     // Exact up to the unit boundary, with no decimal point: a byte count is a
-    // whole number of bytes and "0.5 KiB" tells the reader less than "512 B".
+    // whole number of bytes and "0.5 KB" tells the reader less than "512 B".
     QTest::newRow("512") << quint64(512) << "512 B";
-    QTest::newRow("1023") << quint64(1023) << "1023 B";
-    QTest::newRow("1 KiB") << quint64(1024) << "1.0 KiB";
-    QTest::newRow("4.2 KiB") << quint64(4300) << "4.2 KiB";
-    QTest::newRow("1 MiB") << quint64(1024ULL * 1024) << "1.0 MiB";
-    QTest::newRow("1 GiB") << quint64(1024ULL * 1024 * 1024) << "1.0 GiB";
-    QTest::newRow("1 TiB") << quint64(1024ULL * 1024 * 1024 * 1024) << "1.0 TiB";
-    QTest::newRow("1 PiB") << quint64(1024ULL * 1024 * 1024 * 1024 * 1024) << "1.0 PiB";
+    QTest::newRow("999") << quint64(999) << "999 B";
+
+    // Decimal units, as Finder has used since 10.6 — 1 KB is 1000 bytes here,
+    // not 1024. "KiB" is correct and is also the single string in the window
+    // that most says "written by a systems programmer".
+    QTest::newRow("1 KB") << quint64(1000) << "1.0 KB";
+    QTest::newRow("4.3 KB") << quint64(4300) << "4.3 KB";
+    QTest::newRow("1 MB") << quint64(1000ULL * 1000) << "1.0 MB";
+    QTest::newRow("1 GB") << quint64(1000ULL * 1000 * 1000) << "1.0 GB";
+    QTest::newRow("1 TB") << quint64(1000ULL * 1000 * 1000 * 1000) << "1.0 TB";
+    QTest::newRow("1 PB") << quint64(1000ULL * 1000 * 1000 * 1000 * 1000) << "1.0 PB";
 }
 
 void TestFormat::sizes()
@@ -61,21 +65,29 @@ void TestFormat::sizes()
     QCOMPARE(formatSize(bytes), expected);
 }
 
-void TestFormat::sizeUnitsAreBinary()
+void TestFormat::sizeUnitsAreDecimal()
 {
-    // A file manager reports what the filesystem reports, and every tool a user
-    // cross-checks against — ls -lh, du -h, stat — uses binary units. Showing
-    // 1.0 KiB for 1000 bytes would make Panefile the odd one out.
-    QCOMPARE(formatSize(1000), QStringLiteral("1000 B"));
-    QCOMPARE(formatSize(1024), QStringLiteral("1.0 KiB"));
+    // This reverses an earlier decision, and the earlier reasoning was not
+    // wrong: ls -lh, du -h and stat all report binary units, so a user
+    // cross-checking Panefile against a terminal now sees two different numbers
+    // for the same file.
+    //
+    // Decimal wins anyway, because the comparison that happens far more often
+    // is against Finder and against the size printed on the box the disk came
+    // in, both of which are decimal — and because "KiB" is the single string in
+    // the window that most plainly announces the application was written by a
+    // systems programmer rather than for the person reading it.
+    QCOMPARE(formatSize(999), QStringLiteral("999 B"));
+    QCOMPARE(formatSize(1000), QStringLiteral("1.0 KB"));
+    QCOMPARE(formatSize(1024), QStringLiteral("1.0 KB"));
 }
 
 void TestFormat::sizePrecisionDropsWithMagnitude()
 {
     // One decimal below ten, none above: the extra digit stops carrying
     // information as the number grows, and dropping it keeps the column narrow.
-    QCOMPARE(formatSize(9ULL * 1024 * 1024 + 400 * 1024), QStringLiteral("9.4 MiB"));
-    QCOMPARE(formatSize(94ULL * 1024 * 1024), QStringLiteral("94 MiB"));
+    QCOMPARE(formatSize(9400ULL * 1000), QStringLiteral("9.4 MB"));
+    QCOMPARE(formatSize(94ULL * 1000 * 1000), QStringLiteral("94 MB"));
 }
 
 void TestFormat::listTimeShowsTimeForToday()

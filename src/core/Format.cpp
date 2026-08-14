@@ -11,11 +11,14 @@ namespace pf {
 
 QString formatSize(quint64 bytes)
 {
-    static constexpr std::array<const char *, 6> kUnits{"B", "KiB", "MiB", "GiB", "TiB", "PiB"};
-    static constexpr double kStep = 1024.0;
+    static constexpr std::array<const char *, 6> kUnits{"B", "KB", "MB", "GB", "TB", "PB"};
+    static constexpr double kStep = 1000.0;
 
-    if (bytes < 1024) {
-        // Exact, and without a decimal point: "512 B", never "0.5 KiB".
+    // Decimal units, not binary. Finder has shown KB/MB since 10.6, and "KiB"
+    // is the one string in the window that most plainly says it was written by
+    // a systems programmer rather than for the person reading it.
+    if (bytes < static_cast<quint64>(kStep)) {
+        // Exact, and without a decimal point: "512 B", never "0.5 KB".
         return QCoreApplication::translate("format", "%1 B").arg(bytes);
     }
 
@@ -26,7 +29,7 @@ QString formatSize(quint64 bytes)
         ++unit;
     }
 
-    // One decimal below 10, none above: "9.4 MiB" but "94 MiB". The extra digit
+    // One decimal below 10, none above: "9.4 MB" but "94 MB". The extra digit
     // stops mattering as the number grows, and dropping it keeps the column
     // narrow.
     const int precision = value < 10.0 ? 1 : 0;

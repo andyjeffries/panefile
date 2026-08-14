@@ -339,10 +339,19 @@ void Application::loadConfiguration()
     // application is already built.
     setStyleSheet(config::buildStyleSheet(themeResult.theme));
 
+    // Always, not only when the theme names a family.
+    //
+    // The stylesheet carries font-size too, but a QStyledItemDelegate paints
+    // from QStyleOptionViewItem::font — which comes from the widget, not from
+    // the stylesheet cascade — so row names were rendering at the platform
+    // default while everything around them followed the theme. Setting the
+    // application font makes the delegate agree with the chrome.
+    QFont themeFont = font();
     if (!themeResult.theme.fontFamily.isEmpty()) {
-        const QFont themeFont(themeResult.theme.fontFamily, themeResult.theme.fontSize);
-        setFont(themeFont);
+        themeFont.setFamily(themeResult.theme.fontFamily);
     }
+    themeFont.setPointSize(themeResult.theme.fontSize);
+    setFont(themeFont);
 
     StartupTrace::mark(StartupPhase::StylesheetApplied);
 

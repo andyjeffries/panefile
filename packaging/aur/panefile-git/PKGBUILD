@@ -2,7 +2,7 @@
 
 pkgname=panefile-git
 _pkgname=panefile
-pkgver=r1.0000000
+pkgver=r54.a1b837c
 pkgrel=1
 pkgdesc="Keyboard-driven, multi-panel file manager for Wayland (git)"
 arch=('x86_64' 'aarch64')
@@ -32,7 +32,6 @@ depends=(
   'udisks2'               # §7.11 removable media
 )
 makedepends=('git' 'cmake' 'ninja' 'gcc')
-checkdepends=('xorg-server-xvfb')
 provides=("$_pkgname=$pkgver")
 conflicts=("$_pkgname")
 source=("$_pkgname::git+https://github.com/andyjeffries/panefile.git")

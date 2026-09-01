@@ -81,7 +81,7 @@ which you are getting.
 Arch (AUR):
 
 ```sh
-paru -S panefile-git
+yay -S panefile-git
 ```
 
 macOS:

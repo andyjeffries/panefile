@@ -50,3 +50,15 @@ WRAPPER
 chmod +x "$target"
 
 echo "installed $target -> $binary"
+
+# Without a packaged install there is no .desktop entry, so launchers can't
+# find Panefile and it can't be picked as the folder handler. The generated
+# entry runs bare `pf`, which resolves to the wrapper above as long as
+# $destination is on the session PATH.
+if [[ $OSTYPE != darwin* ]]; then
+    data=${XDG_DATA_HOME:-$HOME/.local/share}
+    install -Dm644 "$root/build/$preset/data/panefile.desktop" "$data/applications/panefile.desktop"
+    install -Dm644 "$root/data/icons/panefile.svg" "$data/icons/hicolor/scalable/apps/panefile.svg"
+    update-desktop-database "$data/applications" 2>/dev/null || true
+    echo "installed $data/applications/panefile.desktop"
+fi

@@ -6,11 +6,15 @@
 // it did, and nothing in the application was connected to it — so on a real
 // desktop Enter and double-click on a file did nothing at all.
 //
+// It also drives the `o` sort menu, which broke in the same gap: the menu
+// works on its own, but the application's key dispatcher took its keys.
+//
 // xdg-open is replaced, through PATH, by a script that writes down what it was
 // asked to open, so the test launches nothing.
 
 #include "app/Application.h"
 #include "app/CommandLine.h"
+#include "model/FilterSortProxy.h"
 #include "ui/FilePanel.h"
 #include "ui/MainWindow.h"
 #include "ui/PanelStrip.h"
@@ -19,8 +23,10 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QMenu>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTimer>
 
 using namespace pf;
 
@@ -72,6 +78,50 @@ private Q_SLOTS:
         QTest::mouseDClick(m_panel->view()->viewport(), Qt::LeftButton, Qt::NoModifier, centre);
         QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(m_record), 5000);
         QCOMPARE(recorded(), m_root + QStringLiteral("/clip.mp4"));
+    }
+
+    // The `o` menu is opened from the keyboard, so it has to be usable from
+    // it: arrows move, Return chooses, Escape dismisses. The dispatcher sees
+    // every key first, and must leave an open popup's keys alone.
+    void sortMenuIsDrivenByTheKeyboard()
+    {
+        QCOMPARE(m_panel->sortKey(), SortKey::Name);
+
+        bool sawMenu = false;
+        QTimer::singleShot(100, this, [&sawMenu] {
+            QWidget *popup = QApplication::activePopupWidget();
+            sawMenu = qobject_cast<QMenu *>(popup) != nullptr;
+            if (popup != nullptr) {
+                // Name is current, so one step down is Size.
+                QTest::keyClick(popup, Qt::Key_Down);
+                QTest::keyClick(popup, Qt::Key_Return);
+                // A menu the keys never reached would block exec() forever;
+                // close it so the test fails rather than hangs.
+                if (QApplication::activePopupWidget() == popup) {
+                    popup->close();
+                }
+            }
+        });
+        m_panel->view()->setFocus();
+        QTest::keyClick(m_panel->view(), Qt::Key_O, Qt::NoModifier);
+
+        QVERIFY(sawMenu);
+        QCOMPARE(m_panel->sortKey(), SortKey::Size);
+
+        bool escapeClosed = false;
+        QTimer::singleShot(100, this, [&escapeClosed] {
+            if (QWidget *popup = QApplication::activePopupWidget(); popup != nullptr) {
+                QTest::keyClick(popup, Qt::Key_Escape);
+                escapeClosed = QApplication::activePopupWidget() != popup;
+                if (!escapeClosed) {
+                    popup->close();
+                }
+            }
+        });
+        QTest::keyClick(m_panel->view(), Qt::Key_O, Qt::NoModifier);
+
+        QVERIFY(escapeClosed);
+        QCOMPARE(m_panel->sortKey(), SortKey::Size);
     }
 
 private:

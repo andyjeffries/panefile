@@ -2,6 +2,7 @@
 
 #include "model/FileEntry.h"
 #include "model/FilterSortProxy.h"
+#include "ui/FolderSortMemory.h"
 
 #include <QSet>
 #include <QString>
@@ -69,6 +70,14 @@ public:
     bool showHidden() const;
     void toggleShowHidden();
 
+    /// `panels.default_sort`: the order for any directory the user has not
+    /// chosen one for. Takes effect at once unless the current directory has
+    /// an order of its own.
+    void setDefaultSortKey(SortKey key);
+
+    /// The user choosing an order. It belongs to the current directory — it is
+    /// remembered for it and restored on returning — and does not follow the
+    /// panel elsewhere (FolderSortMemory).
     void setSortKey(SortKey key);
     SortKey sortKey() const;
     void setReverseSort(bool reverse);
@@ -198,6 +207,13 @@ private:
     void rememberCursor();
     void setPathInternal(const QString &path, bool pushHistory);
 
+    /// The user picking an order: applied, keeping the cursor on its entry,
+    /// and recorded as the current directory's (or forgotten, if the default).
+    void chooseSortOrder(SortOrder order);
+
+    /// Applies an order without recording it or touching the cursor.
+    void applySortOrder(SortOrder order);
+
     // Declaration order is initialisation order, and these are constructed in
     // the member initialiser list, so it has to match it.
     DirectoryModel *m_model = nullptr;
@@ -213,6 +229,7 @@ private:
 
     QString m_path;
     QSet<QString> m_selection;
+    SortOrder m_defaultSort;
 
     /// Where a Shift+click range starts. Held by name rather than row because
     /// a sort or a filter can move a row out from under an index.

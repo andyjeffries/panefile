@@ -43,8 +43,6 @@ QString Session::toIni() const
         if (!panel.cursorName.isEmpty()) {
             text += QStringLiteral("cursor=%1\n").arg(panel.cursorName);
         }
-        text += QStringLiteral("sort=%1\n").arg(panel.sortKey);
-        text += QStringLiteral("reverse=%1\n").arg(panel.reverseSort ? 1 : 0);
         text += QStringLiteral("hidden=%1\n").arg(panel.showHidden ? 1 : 0);
     }
 
@@ -117,10 +115,6 @@ Session Session::fromIni(const QString &text)
                 panel.path = value;
             } else if (key == QLatin1String("cursor")) {
                 panel.cursorName = value;
-            } else if (key == QLatin1String("sort")) {
-                panel.sortKey = value;
-            } else if (key == QLatin1String("reverse")) {
-                panel.reverseSort = value.toInt() != 0;
             } else if (key == QLatin1String("hidden")) {
                 panel.showHidden = value.toInt() != 0;
             }

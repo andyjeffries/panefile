@@ -735,7 +735,7 @@ single_instance      = true
 default_count        = 1
 max_count            = 10
 directories_first    = true
-default_sort         = "name"       # name | size | modified | type
+default_sort         = "name"       # name | size | modified | type; `o` overrides it per folder
 show_hidden          = false
 
 [quicklook]

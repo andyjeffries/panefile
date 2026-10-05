@@ -7,8 +7,8 @@ mouse. On a tiling compositor that is a poor fit: windows are a scarce,
 compositor-managed resource, and reaching for the mouse breaks flow.
 
 Panefile puts **N independent directory panels side by side in one window**.
-Each panel keeps its own working directory, cursor, history, sort order and
-filter. You create, split, close and cycle panels with single keystrokes, and
+Each panel keeps its own working directory, cursor, history and filter, and
+any folder you sort differently remembers that order. You create, split, close and cycle panels with single keystrokes, and
 copy between them without ever opening a second window.
 
 ```

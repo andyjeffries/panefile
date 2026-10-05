@@ -10,6 +10,7 @@
 #include "input/Keymap.h"
 #include "app/KeyDispatcher.h"
 #include "ui/FilePanel.h"
+#include "ui/FolderSortMemory.h"
 #include "ui/MainWindow.h"
 #include "ui/PanelStrip.h"
 
@@ -92,6 +93,9 @@ private Q_SLOTS:
     void closingFocusesTheNeighbourOnTheLeft();
     void closingTheLeftmostFocusesTheRight();
     void splitCopiesViewSettingsButNotSelection();
+    void sortOrderBelongsToTheDirectory();
+    void sortOrderSetBackToTheDefaultIsForgotten();
+    void sortOrdersSurviveTheirFile();
     void navigatesWithHjkl();
     void sequenceNavigatesHome();
     void compactLayoutShowsOnlyTheFocusedPanel();
@@ -139,6 +143,10 @@ void TestPanels::initTestCase()
 {
     QVERIFY(m_root.isValid());
 
+    // Remembered sort orders are written to the state directory, which must be
+    // this test's rather than the developer's.
+    qputenv("PANEFILE_STATE_DIR", QFile::encodeName(path(QStringLiteral(".state"))));
+
     QDir root(m_root.path());
     QVERIFY(root.mkdir(QStringLiteral("alpha")));
     QVERIFY(root.mkdir(QStringLiteral("beta")));
@@ -154,6 +162,7 @@ void TestPanels::init()
 {
     m_keymap.clear();
     m_registry.clear();
+    ui::FolderSortMemory::instance().clear();
     installDefaultKeymap(m_keymap);
 
     m_strip = new ui::PanelStrip;
@@ -293,6 +302,61 @@ void TestPanels::splitCopiesViewSettingsButNotSelection()
     QCOMPARE(split->showHidden(), true);
     QCOMPARE(split->sortKey(), SortKey::Size);
     QCOMPARE(split->reverseSort(), true);
+}
+
+void TestPanels::sortOrderBelongsToTheDirectory()
+{
+    // A directory always listed newest first must not make every other
+    // directory newest first too — and must still be newest first on return.
+    ui::FilePanel *panel = m_strip->focusedPanel();
+    panel->setSortKey(SortKey::Modified);
+    panel->setReverseSort(true);
+
+    panel->navigateTo(path(QStringLiteral("alpha")));
+    QCOMPARE(panel->sortKey(), SortKey::Name);
+    QCOMPARE(panel->reverseSort(), false);
+
+    panel->goToParent();
+    QCOMPARE(panel->sortKey(), SortKey::Modified);
+    QCOMPARE(panel->reverseSort(), true);
+
+    // And a second panel opened on it gets its order, not the default.
+    ui::FilePanel *other = m_strip->addPanel(m_root.path());
+    QVERIFY(other != nullptr);
+    QCOMPARE(other->sortKey(), SortKey::Modified);
+    QCOMPARE(other->reverseSort(), true);
+}
+
+void TestPanels::sortOrderSetBackToTheDefaultIsForgotten()
+{
+    ui::FilePanel *panel = m_strip->focusedPanel();
+    panel->setSortKey(SortKey::Size);
+    QCOMPARE(ui::FolderSortMemory::instance().size(), 1);
+
+    panel->setSortKey(SortKey::Name);
+    QCOMPARE(ui::FolderSortMemory::instance().size(), 0);
+
+    // So the directory follows the default when that changes.
+    panel->setDefaultSortKey(SortKey::Type);
+    QCOMPARE(panel->sortKey(), SortKey::Type);
+}
+
+void TestPanels::sortOrdersSurviveTheirFile()
+{
+    const QHash<QString, ui::SortOrder> orders{
+        {QStringLiteral("/home/andy/Downloads"),
+         ui::SortOrder{.key = SortKey::Modified, .reverse = true}},
+        {QStringLiteral("/odd = [name]\nhere"), ui::SortOrder{.key = SortKey::Size}},
+    };
+    QCOMPARE(ui::FolderSortMemory::fromJson(ui::FolderSortMemory::toJson(orders)), orders);
+    QVERIFY(ui::FolderSortMemory::fromJson("not json").isEmpty());
+
+    // Choosing an order writes it at once, not only at a clean exit.
+    m_strip->focusedPanel()->setSortKey(SortKey::Size);
+    QFile file(path(QStringLiteral(".state/folder-sorts.json")));
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QCOMPARE(ui::FolderSortMemory::fromJson(file.readAll()).value(m_root.path()),
+             ui::SortOrder{.key = SortKey::Size});
 }
 
 void TestPanels::navigatesWithHjkl()

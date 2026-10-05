@@ -88,9 +88,8 @@ FilePanel *PanelStrip::splitFocusedPanel()
 
     // §7.1: copies the path, sort and filter settings but not the selection.
     // Carrying the selection across would mean a subsequent delete acted on
-    // files the user selected in a different panel.
-    panel->setSortKey(source->sortKey());
-    panel->setReverseSort(source->reverseSort());
+    // files the user selected in a different panel. The sort needs no copying:
+    // it belongs to the directory, and addPanel() has already restored it.
     panel->setShowHidden(source->showHidden());
     panel->setCursorName(source->cursorName());
     return panel;

@@ -310,14 +310,9 @@ private Q_SLOTS:
         session.panels = {
             SessionPanel{.path = QStringLiteral("/home/andy"),
                          .cursorName = QStringLiteral("notes.md"),
-                         .sortKey = QStringLiteral("modified"),
-                         .reverseSort = true,
                          .showHidden = false},
-            SessionPanel{.path = QStringLiteral("/tmp"),
-                         .cursorName = QString(),
-                         .sortKey = QStringLiteral("name"),
-                         .reverseSort = false,
-                         .showHidden = true},
+            SessionPanel{
+                .path = QStringLiteral("/tmp"), .cursorName = QString(), .showHidden = true},
         };
 
         const Session restored = Session::fromIni(session.toIni());

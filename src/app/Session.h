@@ -11,8 +11,6 @@ namespace pf {
 struct SessionPanel {
     QString path;
     QString cursorName;
-    QString sortKey = QStringLiteral("name");
-    bool reverseSort = false;
     bool showHidden = false;
 
     bool operator==(const SessionPanel &other) const = default;

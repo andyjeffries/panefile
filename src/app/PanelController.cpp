@@ -52,7 +52,8 @@ void PanelController::openPath(const QString &path, bool inNewPanel)
 void PanelController::showSortMenu(ui::FilePanel *panel)
 {
     // A menu rather than a modal: there are five choices and a checkmark says
-    // which one is current, which is the entire content of the decision.
+    // which one is current, which is the entire content of the decision. The
+    // choice is the current directory's alone; FilePanel remembers it.
     QMenu menu(m_window);
 
     struct Option {
@@ -67,10 +68,14 @@ void PanelController::showSortMenu(ui::FilePanel *panel)
         {.key = SortKey::Random, .label = tr("Random")},
     }};
 
+    QAction *current = nullptr;
     for (const Option &option : options) {
         QAction *action = menu.addAction(option.label);
         action->setCheckable(true);
         action->setChecked(panel->sortKey() == option.key);
+        if (action->isChecked()) {
+            current = action;
+        }
         connect(action, &QAction::triggered, panel,
                 [panel, key = option.key] { panel->setSortKey(key); });
     }
@@ -81,6 +86,10 @@ void PanelController::showSortMenu(ui::FilePanel *panel)
     reverse->setChecked(panel->reverseSort());
     connect(reverse, &QAction::triggered, panel,
             [panel] { panel->setReverseSort(!panel->reverseSort()); });
+
+    // Opened from a key, so it is driven by keys: the highlight starts on the
+    // current order, and Up/Down move from there rather than from nothing.
+    menu.setActiveAction(current);
 
     // Under the panel's own header, so it is obvious which panel is being
     // sorted when several are open.

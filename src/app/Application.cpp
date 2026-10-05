@@ -236,7 +236,7 @@ void Application::configurePanel(ui::FilePanel *panel) const
     });
 
     panel->setShowHidden(m_settings.panels.showHidden);
-    panel->setSortKey(sortKeyFromName(m_settings.panels.defaultSort));
+    panel->setDefaultSortKey(sortKeyFromName(m_settings.panels.defaultSort));
 
     // §7.7: thumbnails are a panel-level facility, so a build with them
     // disabled never constructs the cache's memory tier at all.
@@ -744,8 +744,6 @@ void Application::restoreSessionOrOpenInitialPanel(const CommandLineOptions &opt
         if (!session.isEmpty()) {
             const SessionPanel &first = session.panels.constFirst();
             if (ui::FilePanel *panel = strip->addPanel(first.path); panel != nullptr) {
-                panel->setSortKey(sortKeyFromName(first.sortKey));
-                panel->setReverseSort(first.reverseSort);
                 panel->setShowHidden(first.showHidden);
                 panel->setCursorName(first.cursorName);
             }
@@ -762,8 +760,6 @@ void Application::restoreSessionOrOpenInitialPanel(const CommandLineOptions &opt
                 for (qsizetype i = 1; i < session.panels.size(); ++i) {
                     const SessionPanel &saved = session.panels.at(i);
                     if (ui::FilePanel *panel = strip->addPanel(saved.path); panel != nullptr) {
-                        panel->setSortKey(sortKeyFromName(saved.sortKey));
-                        panel->setReverseSort(saved.reverseSort);
                         panel->setShowHidden(saved.showHidden);
                         panel->setCursorName(saved.cursorName);
                     }
@@ -1018,8 +1014,6 @@ void Application::saveSession() const
     for (const ui::FilePanel *panel : m_mainWindow->panelStrip()->panels()) {
         session.panels.append(SessionPanel{.path = panel->path(),
                                            .cursorName = panel->cursorName(),
-                                           .sortKey = sortKeyName(panel->sortKey()),
-                                           .reverseSort = panel->reverseSort(),
                                            .showHidden = panel->showHidden()});
     }
 
@@ -1292,7 +1286,12 @@ void Application::startAsDbusService()
 
 bool Application::notify(QObject *receiver, QEvent *event)
 {
-    if (event->type() == QEvent::KeyPress && m_dispatcher != nullptr) {
+    // An open popup — the `o` sort menu, a context menu — owns the keyboard
+    // until it closes. Offering its keys to the dispatcher first would let `j`,
+    // the arrows and Escape act on the panel behind it, leaving the menu
+    // unnavigable and impossible to dismiss from the keyboard.
+    if (event->type() == QEvent::KeyPress && m_dispatcher != nullptr &&
+        activePopupWidget() == nullptr) {
         auto *keyEvent = static_cast<QKeyEvent *>(event);
 
         // §6.2 step 2: while a text input has focus, bare printable keys belong

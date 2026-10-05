@@ -5,6 +5,7 @@
 #include "model/DirectoryModel.h"
 #include "ui/CursorMemory.h"
 #include "ui/FileItemDelegate.h"
+#include "ui/FolderSortMemory.h"
 #include "ui/PanelView.h"
 #include "ui/ThemePalette.h"
 
@@ -271,6 +272,10 @@ void FilePanel::setPathInternal(const QString &path, bool pushHistory)
     // §5.2: the cursor lands on the remembered entry for this directory, which
     // for the common case of navigating up is the directory just left.
     m_pendingCursorName = CursorMemory::instance().recall(m_path);
+
+    // Before the scan delivers rows, so they arrive in this directory's order
+    // rather than being sorted once in the last directory's and then again.
+    applySortOrder(FolderSortMemory::instance().recall(m_path).value_or(m_defaultSort));
 
     m_scanError.clear();
     m_model->setPath(m_path);
@@ -631,14 +636,17 @@ void FilePanel::toggleShowHidden()
     setShowHidden(!showHidden());
 }
 
+void FilePanel::setDefaultSortKey(SortKey key)
+{
+    m_defaultSort = SortOrder{.key = key};
+    if (!FolderSortMemory::instance().recall(m_path).has_value()) {
+        applySortOrder(m_defaultSort);
+    }
+}
+
 void FilePanel::setSortKey(SortKey key)
 {
-    const QString name = cursorName();
-    m_proxy->setSortKey(key);
-    if (!name.isEmpty()) {
-        setCursorName(name);
-    }
-    updateHeader();
+    chooseSortOrder(SortOrder{.key = key, .reverse = reverseSort()});
 }
 
 SortKey FilePanel::sortKey() const
@@ -648,11 +656,32 @@ SortKey FilePanel::sortKey() const
 
 void FilePanel::setReverseSort(bool reverse)
 {
+    chooseSortOrder(SortOrder{.key = sortKey(), .reverse = reverse});
+}
+
+void FilePanel::chooseSortOrder(SortOrder order)
+{
+    // The rows move under the cursor, so it follows its entry rather than
+    // staying on a row number that now names something else.
     const QString name = cursorName();
-    m_proxy->setReverseSort(reverse);
+    applySortOrder(order);
     if (!name.isEmpty()) {
         setCursorName(name);
     }
+
+    // Only departures from the default are kept, so a directory set back to it
+    // follows the default again if that is later changed in the settings.
+    if (order == m_defaultSort) {
+        FolderSortMemory::instance().forget(m_path);
+    } else {
+        FolderSortMemory::instance().remember(m_path, order);
+    }
+}
+
+void FilePanel::applySortOrder(SortOrder order)
+{
+    m_proxy->setSortKey(order.key);
+    m_proxy->setReverseSort(order.reverse);
     updateHeader();
 }
 

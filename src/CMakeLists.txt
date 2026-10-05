@@ -201,6 +201,7 @@ pf_layer_library(pf_ui
         ui/DefaultFileManagerBar.cpp
         ui/FileItemDelegate.cpp
         ui/FilePanel.cpp
+        ui/FolderSortMemory.cpp
         ui/Keycaps.cpp
         ui/MainWindow.cpp
         ui/PanefileStyle.cpp

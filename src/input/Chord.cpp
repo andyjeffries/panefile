@@ -76,9 +76,26 @@ std::optional<Chord> parseChord(const QString &text)
     }
 
     // A literal comma is Qt's own sequence separator, so a chord containing one
-    // would parse as several elements. Rejecting it gives a clear error rather
-    // than a binding that silently means something else.
+    // would parse as several elements if it went near QKeySequence. Two shapes
+    // are a key rather than a separator and are handled here: a bare comma, and
+    // modifiers ending in one ("Ctrl+,", Settings on every platform). Anything
+    // else with a comma in it is Qt's multi-element syntax, and is rejected
+    // with a clear error rather than bound to something it does not mean.
+    //
+    // Rejecting every comma, as this did, dropped both of Settings' default
+    // bindings at start-up with only a log line to say so.
     if (trimmed.contains(QLatin1Char(','))) {
+        if (trimmed == QLatin1String(",")) {
+            return Chord{.modifiers = Qt::NoModifier, .key = 0, .text = trimmed};
+        }
+        if (trimmed.endsWith(QLatin1String("+,")) && trimmed.count(QLatin1Char(',')) == 1) {
+            // The modifiers, parsed against a stand-in key.
+            const std::optional<Chord> stand = parseChord(trimmed.chopped(1) + QLatin1Char('A'));
+            if (stand.has_value() && stand->key == Qt::Key_A &&
+                stand->modifiers != Qt::NoModifier) {
+                return Chord{.modifiers = stand->modifiers, .key = Qt::Key_Comma, .text = {}};
+            }
+        }
         return std::nullopt;
     }
 

@@ -38,9 +38,12 @@ ProcessBar::ProcessBar(fs::JobEngine *engine, QWidget *parent)
       m_lingerTimer(new QTimer(this)), m_appearTimer(new QTimer(this))
 {
     setObjectName(QStringLiteral("processBar"));
+    // A plain QWidget does not paint the stylesheet's background or its top
+    // hairline without being told to.
+    setAttribute(Qt::WA_StyledBackground, true);
 
     auto *layout = new QVBoxLayout(this);
-    layout->setContentsMargins(currentPalette().panelPadding, 4, currentPalette().panelPadding, 4);
+    layout->setContentsMargins(currentPalette().panelPadding, 6, currentPalette().panelPadding, 6);
     layout->setSpacing(4);
 
     auto *row = new QWidget(this);
@@ -53,7 +56,9 @@ ProcessBar::ProcessBar(fs::JobEngine *engine, QWidget *parent)
     rowLayout->addWidget(m_summary, 1);
 
     m_progress->setObjectName(QStringLiteral("processProgress"));
-    m_progress->setTextVisible(true);
+    // A slim bar with no percentage printed over it: the summary beside it
+    // already says how far along it is, in words.
+    m_progress->setTextVisible(false);
     m_progress->setFixedWidth(220);
     rowLayout->addWidget(m_progress, 0);
 
@@ -198,16 +203,18 @@ void ProcessBar::onAggregate(quint64 bytesDone, quint64 bytesTotal, int activeJo
         return;
     }
 
+    const int percent = static_cast<int>(bytesDone * 100 / bytesTotal);
     m_progress->setRange(0, 100);
-    m_progress->setValue(static_cast<int>(bytesDone * 100 / bytesTotal));
+    m_progress->setValue(percent);
 
     const QString rate = elapsed.isValid() ? formatRate(bytesDone, elapsed.elapsed()) : QString();
 
     // The rate is omitted for the first half-second rather than shown as a wild
     // figure derived from too little data.
-    QString summary = tr("%1 · %2 of %3")
+    QString summary = tr("%1 · %2 of %3 · %4%")
                           .arg(counted(activeJobs, tr("job"), tr("jobs")))
-                          .arg(formatSize(bytesDone), formatSize(bytesTotal));
+                          .arg(formatSize(bytesDone), formatSize(bytesTotal))
+                          .arg(percent);
     if (!rate.isEmpty()) {
         summary += QStringLiteral(" · ") + rate;
     }

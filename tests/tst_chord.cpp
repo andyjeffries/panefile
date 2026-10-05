@@ -25,6 +25,7 @@ private Q_SLOTS:
     void cmdAndCommandAreAliasesForMeta();
     void unparseableChordsAreRejected_data();
     void unparseableChordsAreRejected();
+    void aCommaIsAKeyWhenItStandsAlone();
 
     void sequencesSplitOnWhitespace();
     void longSequencesAreRejected();
@@ -128,12 +129,28 @@ void TestChord::unparseableChordsAreRejected_data()
     // because whitespace is the sequence separator and the two would collide.
     QTest::newRow("qt sequence syntax") << "Ctrl+C,Ctrl+V";
     QTest::newRow("dangling modifier") << "Ctrl+";
+    QTest::newRow("comma between chords") << "Ctrl+,,";
+    QTest::newRow("trailing comma separator") << "Ctrl+C,";
 }
 
 void TestChord::unparseableChordsAreRejected()
 {
     QFETCH(QString, text);
     QVERIFY(!parseChord(text).has_value());
+}
+
+void TestChord::aCommaIsAKeyWhenItStandsAlone()
+{
+    // Settings is "," and "Ctrl+," by default, and both were rejected because
+    // a comma is Qt's sequence separator.
+    const auto bare = parseChord(QStringLiteral(","));
+    QVERIFY(bare.has_value());
+    QCOMPARE(bare->text, QStringLiteral(","));
+
+    const auto modified = parseChord(QStringLiteral("Ctrl+,"));
+    QVERIFY(modified.has_value());
+    QCOMPARE(modified->key, int(Qt::Key_Comma));
+    QCOMPARE(modified->modifiers, Qt::KeyboardModifiers(Qt::ControlModifier));
 }
 
 void TestChord::sequencesSplitOnWhitespace()
@@ -203,6 +220,9 @@ void TestChord::keyEventsMatchParsedChords_data()
                                << Qt::KeyboardModifiers(Qt::ShiftModifier) << "\t";
     QTest::newRow("Alt+Home") << "Alt+Home" << int(Qt::Key_Home)
                               << Qt::KeyboardModifiers(Qt::AltModifier) << QString();
+    QTest::newRow(",") << "," << int(Qt::Key_Comma) << Qt::KeyboardModifiers(Qt::NoModifier) << ",";
+    QTest::newRow("Ctrl+,") << "Ctrl+," << int(Qt::Key_Comma)
+                            << Qt::KeyboardModifiers(Qt::ControlModifier) << QString();
 }
 
 void TestChord::keyEventsMatchParsedChords()

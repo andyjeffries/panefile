@@ -26,11 +26,11 @@ border_focused = "#61afef"
 # values are identical in every bundled theme on purpose: switching from Nord to
 # Gruvbox should recolour the window, not resize its rows and restyle its text.
 #
-# They come from the Claude Design polish pass: 13px names, 28px rows, a 6px
-# radius for the cursor pill and 10px of panel padding.
+# 13px names on 30px rows, a 6px radius for the cursor pill and 10px of panel
+# padding. No banding: the hover and the cursor carry the row.
 font_family       = ""
 font_size         = 13
-row_height        = 28
+row_height        = 30
 border_radius     = 6
 panel_padding     = 10
-alternating_rows  = true
+alternating_rows  = false

@@ -3,6 +3,7 @@
 #include <QColor>
 #include <QHash>
 #include <QIcon>
+#include <QLatin1String>
 #include <QString>
 
 namespace pf {
@@ -11,50 +12,96 @@ struct FileEntry;
 
 /// Resolves and caches the icon for a directory entry (§4.3).
 ///
-/// Two costs are being managed here, and they are different costs:
+/// Every platform uses the bundled set in data/icons/files, compiled in as
+/// `:/icons/files/<name>.svg`. The desktop's icon theme is deliberately not
+/// consulted. §4.3 originally asked for QIcon::fromTheme with the bundled set
+/// as a fallback, and in practice that gave a listing whose icons depended on
+/// whether Qt had found a platform theme: when it had, the rows bypassed the
+/// tint, the unfocused-panel dimming and the white-on-pill treatment — all of
+/// which need a glyph that is one colour — and sat in a different visual style
+/// from everything else in the window. One set drawn for the job, the same on
+/// Linux and macOS, is what lets the delegate's colour rules always apply.
 ///
-///   * QMimeDatabase's first call populates the shared-mime-info caches. That
-///     is unavoidable, but it must not happen at startup (§3.4), so the scanner
-///     warms it on a worker thread and nothing here touches it until a row is
-///     about to be painted.
+/// Two costs are managed here:
 ///
-///   * QIcon::fromTheme walks the icon theme's directory list. Doing that once
-///     per row in a 100,000-entry directory would dominate scrolling, hence the
-///     process-wide cache keyed on icon name that §4.3 asks for. Entries
-///     sharing a MIME type — which in a source tree is most of them — resolve
-///     to the same QIcon, and QIcon is itself implicitly shared.
+///   * Classification runs once per painted row, so it is a hash lookup on the
+///     suffix — never a QMimeDatabase query, whose first call populates the
+///     shared-mime-info caches and which §3.4 keeps off the GUI thread. A MIME
+///     type is only consulted when the entry already carries one.
 ///
-/// §4.3 also calls for a bundled fallback set. On Linux that is a safety net
-/// for an incomplete icon theme; on macOS, where there is no freedesktop icon
-/// theme at all, it is the entire icon set. The bundled glyphs are monochrome
-/// and tinted to the entry's own colour, so one file covers every kind and the
-/// icon agrees with the colour the delegate paints the name in.
+///   * Rendering is TintedIcon's, which renders each glyph at the device size
+///     it is painted at and keeps the pixmaps in QPixmapCache. The QIcons here
+///     are only engines, cached per (kind, link badge, tint) so that a
+///     directory of a thousand source files shares one.
 class IconProvider
 {
 public:
     /// Broad visual kinds. Coarser than MIME on purpose: the icon column is
     /// glanced at, so the useful distinction is "archive or image or code", not
     /// "gzip versus zstd".
+    ///
+    /// A symlink is not a kind. It is drawn as what it points at, with a link
+    /// badge — a link to a folder is still something you open like a folder.
     enum class Kind {
         Directory,
-        Archive,
-        Image,
-        Executable,
-        Symlink,
-        Code,
-        Text,
         Generic,
+        Text,
+        Code,
+        Markdown,
+        Image,
+        Audio,
+        Video,
+        Pdf,
+        Document,
+        Spreadsheet,
+        Presentation,
+        Archive,
+        DiskImage,
+        Package,
+        Executable,
+        Font,
+        Web,
+        Database,
+        Config,
+    };
+
+    /// Every kind, for anything that has to cover them all (tests, previews).
+    static constexpr Kind kAllKinds[] = {
+        Kind::Directory,   Kind::Generic,      Kind::Text,    Kind::Code,      Kind::Markdown,
+        Kind::Image,       Kind::Audio,        Kind::Video,   Kind::Pdf,       Kind::Document,
+        Kind::Spreadsheet, Kind::Presentation, Kind::Archive, Kind::DiskImage, Kind::Package,
+        Kind::Executable,  Kind::Font,         Kind::Web,     Kind::Database,  Kind::Config,
     };
 
     static IconProvider &instance();
 
-    /// The icon for an entry: the desktop icon theme where there is one,
-    /// otherwise the bundled glyph tinted to `tint`.
+    /// The bundled icon for an entry, tinted to `tint`, with a link badge when
+    /// the entry is a symlink. Never null for a valid build.
     QIcon iconFor(const FileEntry &entry, const QColor &tint);
 
-    /// The visual kind of an entry, from its name and stat flags only — no MIME
-    /// lookup, because this runs once per painted row.
+    /// The icon for a kind, without an entry. `linked` adds the symlink badge.
+    QIcon iconFor(Kind kind, const QColor &tint, bool linked = false);
+
+    /// The visual kind of an entry: from its name, its stat flags and — only
+    /// when the entry already carries one — its MIME type. Never opens the file
+    /// and never queries the MIME database, because this runs once per painted
+    /// row. A symlink is classified as its target (FileEntry::isDir already
+    /// follows links).
+    ///
+    /// Public so that the delegate can colour rows by the same classification
+    /// the icon uses.
     static Kind kindOf(const FileEntry &entry);
+
+    /// The kind a file name alone implies — whole-name matches such as
+    /// "Makefile", then the suffix. Generic when the name says nothing.
+    static Kind kindForName(const QString &name);
+
+    /// The kind for a MIME type name, e.g. "image/png". Generic when nothing
+    /// more specific applies.
+    static Kind kindForMimeType(const QString &mimeName);
+
+    /// The bundled file stem for a kind, e.g. "folder" for Directory.
+    static QLatin1String iconNameFor(Kind kind);
 
     /// The MIME type name for an entry, resolved by extension only.
     ///
@@ -64,17 +111,15 @@ public:
     /// only once the entry becomes visible.
     static QString mimeNameFor(const QString &directory, const FileEntry &entry);
 
-    /// Drops the cached icons. Called when the icon theme or the theme colours
-    /// change, since the tint is baked into the cached pixmaps.
+    /// Drops the cached icons. The tint is part of each cache key, so this is
+    /// never needed for correctness; it only releases engines for tints a
+    /// replaced theme will not ask for again.
     void clear();
 
 private:
     IconProvider() = default;
 
-    QIcon bundledIcon(Kind kind, const QColor &tint);
-
-    QHash<QString, QIcon> m_themeCache;
-    QHash<QString, QIcon> m_bundledCache;
+    QHash<QString, QIcon> m_cache;
 };
 
 } // namespace pf

@@ -254,7 +254,7 @@ Symlink resolution uses `lstat` then `stat`; a failing `stat` on a successful `l
 ### 4.3 MIME and icons
 
 - MIME type from `QMimeDatabase`, content-sniffing **disabled by default** (extension only) for speed. Sniff only for extensionless files, and only when the entry becomes visible.
-- Icons from `QIcon::fromTheme(mime.iconName(), QIcon::fromTheme(mime.genericIconName()))`, with a bundled fallback set.
+- Icons from a bundled, compiled-in set (`data/icons/files`, ~20 kinds), on every platform, classified by name and suffix (and by MIME type only when an entry already carries one). The desktop icon theme is not consulted: theme icons are multi-colour and bypass the delegate's tint, unfocused dimming and on-pill colouring, and whether Qt finds one at all depends on the platform theme. Symlinks are drawn as their target's kind with a link badge.
 - Cache resolved `QIcon`s in a process-wide `QHash<QString, QIcon>` keyed on icon name.
 
 ### 4.4 `FilterSortProxy`

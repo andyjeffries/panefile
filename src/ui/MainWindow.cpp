@@ -5,6 +5,7 @@
 #include "core/StartupTrace.h"
 #include "model/DirectoryModel.h"
 #include "model/FileEntry.h"
+#include "ui/ChordHint.h"
 #include "ui/FilePanel.h"
 #include "ui/PanelStrip.h"
 #include "ui/PanelView.h"
@@ -81,7 +82,9 @@ MainWindow::MainWindow(QWidget *parent)
     footerLayout->setSpacing(14);
 
     m_footer->setObjectName(QStringLiteral("footer"));
-    m_footer->setTextFormat(Qt::PlainText);
+    // Rich, so the permission string alone can be set in monospace; every
+    // message put here is escaped on the way in.
+    m_footer->setTextFormat(Qt::RichText);
     footerLayout->addWidget(m_footer, 1);
 
     // The selection count, between the metadata and the pending chord. It
@@ -95,6 +98,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_pending->setObjectName(QStringLiteral("pendingKeys"));
     m_pending->setTextFormat(Qt::PlainText);
+    // Drawn as a keycap, so it is hidden rather than left as an empty one.
+    m_pending->hide();
     footerLayout->addWidget(m_pending, 0);
 
     layout->addWidget(footerRow);
@@ -155,6 +160,19 @@ void MainWindow::connectPanel(FilePanel *panel)
 void MainWindow::showPendingKeys(const QString &text)
 {
     m_pending->setText(text);
+    m_pending->setVisible(!text.isEmpty());
+    if (text.isEmpty() && m_chordHint != nullptr) {
+        m_chordHint->hide();
+    }
+}
+
+void MainWindow::showChordHint(const QString &pending, const QList<QPair<QString, QString>> &rows)
+{
+    // Built on first use (§3.4): most sessions never pause mid-sequence.
+    if (m_chordHint == nullptr) {
+        m_chordHint = new ChordHint(centralWidget());
+    }
+    m_chordHint->present(pending, rows, m_contentSplitter->geometry());
 }
 
 QString MainWindow::titleForPath(const QString &path)
@@ -193,10 +211,11 @@ void MainWindow::setSelectionCount(int count)
 
 void MainWindow::showStatusMessage(const QString &message)
 {
-    m_footer->setText(message);
+    const QString shown = message.toHtmlEscaped();
+    m_footer->setText(shown);
 
-    QTimer::singleShot(kStatusMessageMs, this, [this, message] {
-        if (m_footer->text() == message) {
+    QTimer::singleShot(kStatusMessageMs, this, [this, shown] {
+        if (m_footer->text() == shown) {
             updateFooter();
         }
     });
@@ -426,21 +445,26 @@ void MainWindow::updateFooter()
     const auto entry = value.value<FileEntry>();
 
     if (entry.statFailed) {
-        m_footer->setText(tr("%1 — metadata unavailable").arg(entry.name));
+        m_footer->setText(tr("%1 — metadata unavailable").arg(entry.name).toHtmlEscaped());
         return;
     }
 
     // §5.1: permissions, owner, size, mtime. Owner stays numeric for now:
     // getpwuid() goes through NSS, which on a machine with a network directory
     // service can block for seconds, and this runs on every cursor movement.
-    QString text = QStringLiteral("%1  %2:%3  %4  %5")
-                       .arg(formatPermissions(entry.mode))
-                       .arg(entry.uid)
-                       .arg(entry.gid)
-                       .arg(formatSize(entry.size), formatFullTime(entry.modified));
+    //
+    // The permission string in monospace, because it is read by column; the
+    // rest in the UI face, separated by middle dots rather than runs of spaces,
+    // which a proportional face cannot keep aligned anyway.
+    const QString separator = QStringLiteral("&nbsp;&nbsp;·&nbsp;&nbsp;");
+    QString text = QStringLiteral("<span style=\"font-family: monospace;\">%1</span>")
+                       .arg(formatPermissions(entry.mode));
+    text += separator + QStringLiteral("%1:%2").arg(entry.uid).arg(entry.gid);
+    text += separator + formatSize(entry.size).toHtmlEscaped();
+    text += separator + formatFullTime(entry.modified).toHtmlEscaped();
 
     if (entry.isSymlink && !entry.linkTarget.isEmpty()) {
-        text += QStringLiteral("  →  %1").arg(entry.linkTarget);
+        text += separator + QStringLiteral("→ %1").arg(entry.linkTarget.toHtmlEscaped());
     }
 
     m_footer->setText(text);

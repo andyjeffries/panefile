@@ -50,6 +50,11 @@ public:
     void setSequenceTimeout(int milliseconds);
     void setAmbiguityTimeout(int milliseconds);
 
+    /// How long a pending sequence waits before asking for its hint. Short
+    /// enough to arrive while you are still wondering, long enough that someone
+    /// who knows `g h` never sees it flash.
+    void setHintDelay(int milliseconds);
+
     /// Handles one key press. Returns true when the event was consumed and must
     /// not reach the widget underneath.
     bool handleKeyPress(QKeyEvent *event);
@@ -71,6 +76,13 @@ Q_SIGNALS:
     /// An action fired. The footer uses this to clear any stale message.
     void actionInvoked(const QString &actionId);
 
+    /// A sequence has been pending for the hint delay: show what can follow
+    /// it. From here the buffer waits for the next key, Escape or a click
+    /// rather than timing out — someone reading the list must not have it
+    /// vanish under them. pendingChanged() with an empty string hides it.
+    void hintRequested(const QString &pendingText,
+                       const QList<input::Keymap::Continuation> &continuations);
+
 private:
     void fire(const QString &actionId);
     void onSequenceTimeout();
@@ -85,8 +97,11 @@ private:
     /// The action an ambiguous buffer would fire if nothing further arrives.
     QString m_ambiguousActionId;
 
+    void onHintTimeout();
+
     QTimer m_sequenceTimer;
     QTimer m_ambiguityTimer;
+    QTimer m_hintTimer;
 };
 
 } // namespace pf

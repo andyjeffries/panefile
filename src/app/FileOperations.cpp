@@ -15,6 +15,7 @@
 #include "ui/PanelStrip.h"
 
 #include "ui/modals/CompressModal.h"
+#include "ui/modals/ConfirmModal.h"
 #include "ui/modals/ConflictModal.h"
 #include "ui/modals/InputModal.h"
 #include "ui/modals/RenameModal.h"
@@ -25,7 +26,6 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QFileInfo>
-#include <QMessageBox>
 #include <QMimeData>
 #include <QUrl>
 
@@ -59,6 +59,14 @@ FileOperations::~FileOperations() = default;
 void FileOperations::setSettings(const config::Settings &settings)
 {
     m_settings = settings;
+}
+
+ui::ConfirmModal *FileOperations::confirmModal()
+{
+    if (m_confirmModal == nullptr) {
+        m_confirmModal = new ui::ConfirmModal(m_window);
+    }
+    return m_confirmModal;
 }
 
 ui::ConflictModal *FileOperations::conflictModal()
@@ -644,7 +652,7 @@ void FileOperations::runTransfer(const QStringList &paths, const QString &destin
 
 void FileOperations::deleteSelection(bool permanent)
 {
-    ui::FilePanel *panel = m_strip->focusedPanel();
+    const ui::FilePanel *panel = m_strip->focusedPanel();
     if (panel == nullptr) {
         return;
     }
@@ -658,32 +666,36 @@ void FileOperations::deleteSelection(bool permanent)
     const bool confirm =
         permanent ? m_settings.operations.confirmDelete : m_settings.operations.confirmTrash;
 
-    if (confirm || permanent) {
-        // §6.3: permanent deletion "Confirms twice". The wording says plainly
-        // that it cannot be undone, which §7.13 requires: "Copy and permanent
-        // delete are not undoable and must be labelled as such in the
-        // confirmation."
-        const QString question =
-            permanent ? tr("Permanently delete %1? This cannot be undone.")
-                            .arg(counted(static_cast<int>(paths.size()), tr("item"), tr("items")))
-                      : tr("Move %1 to the trash?")
-                            .arg(counted(static_cast<int>(paths.size()), tr("item"), tr("items")));
-
-        if (QMessageBox::question(m_window, tr("Panefile"), question,
-                                  QMessageBox::Yes | QMessageBox::No,
-                                  QMessageBox::No) != QMessageBox::Yes) {
-            return;
-        }
-
-        if (permanent &&
-            QMessageBox::question(
-                m_window, tr("Panefile"),
-                tr("Really? %1 will be destroyed with no way back.")
-                    .arg(counted(static_cast<int>(paths.size()), tr("item"), tr("items"))),
-                QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes) {
-            return;
-        }
+    if (!confirm && !permanent) {
+        startDelete(paths, permanent);
+        return;
     }
+
+    // §6.3: permanent deletion "Confirms twice". The wording says plainly that
+    // it cannot be undone, which §7.13 requires: "Copy and permanent delete
+    // are not undoable and must be labelled as such in the confirmation."
+    const QString what = counted(static_cast<int>(paths.size()), tr("item"), tr("items"));
+    const QString named =
+        paths.size() == 1 ? QStringLiteral("“%1”").arg(QFileInfo(paths.first()).fileName()) : what;
+
+    if (!permanent) {
+        confirmModal()->ask(tr("Move %1 to the trash?").arg(named), tr("You can undo this."),
+                            tr("Move to Trash"), [this, paths] { startDelete(paths, false); });
+        return;
+    }
+
+    confirmModal()->ask(tr("Permanently delete %1?").arg(named), tr("This cannot be undone."),
+                        tr("Delete"), [this, paths, what] {
+                            confirmModal()->ask(tr("Really delete %1?").arg(what),
+                                                tr("They will be destroyed with no way back."),
+                                                tr("Delete Permanently"),
+                                                [this, paths] { startDelete(paths, true); });
+                        });
+}
+
+void FileOperations::startDelete(const QStringList &paths, bool permanent)
+{
+    ui::FilePanel *const panel = m_strip->focusedPanel();
 
     auto job = std::make_unique<fs::DeleteJob>(
         permanent ? fs::DeleteJob::Mode::Permanent : fs::DeleteJob::Mode::Trash, paths);
@@ -707,7 +719,9 @@ void FileOperations::deleteSelection(bool permanent)
                 }
             });
 
-    panel->clearSelection();
+    if (panel != nullptr) {
+        panel->clearSelection();
+    }
 }
 
 void FileOperations::undoLast()

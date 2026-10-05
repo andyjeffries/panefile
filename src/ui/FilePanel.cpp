@@ -25,12 +25,6 @@
 namespace pf::ui {
 namespace {
 
-/// The width of the border StyleSheetBuilder draws on QWidget#filePanel. The
-/// two have to agree: the stylesheet draws it and the layout has to leave room
-/// for it.
-/// The hairline that joins one panel to the next.
-constexpr int kPanelSeamWidth = 1;
-
 /// The accent edge along a focused panel's top. Always occupies its space —
 /// transparent when the panel is not focused — so nothing reflows as focus
 /// moves between panels.
@@ -46,7 +40,7 @@ constexpr int kListInsetHorizontal = 6;
 FilePanel::FilePanel(QWidget *parent)
     : QWidget(parent), m_model(new DirectoryModel(this)), m_proxy(new FilterSortProxy(this)),
       m_view(new PanelView(this)), m_delegate(new FileItemDelegate(this)),
-      m_header(new QLabel(this)), m_headerCount(new QLabel(this)), m_status(new QLabel(this))
+      m_header(new QLabel(this)), m_headerCount(new QLabel(this))
 {
     setObjectName(QStringLiteral("filePanel"));
     // Narrow enough that ten panels fit §7.1's maximum on a normal display,
@@ -64,15 +58,22 @@ FilePanel::FilePanel(QWidget *parent)
     // border and the border appeared to break in and out down the panel — one
     // 26-pixel segment per row, which is the row height.
     //
-    // The borders are no longer uniform: a 1px seam on the left, a 2px accent
-    // edge along the top, nothing on the right or bottom. The insets have to
-    // match, or the list paints over the accent edge exactly as it used to
-    // paint over the old blue box.
-    layout->setContentsMargins(kPanelSeamWidth, kPanelFocusEdgeHeight, 0, 0);
+    // The only border is the 2px accent edge along the top — the seams between
+    // panes are the splitter handles — and the inset has to match it, or the
+    // list paints over the accent edge exactly as it used to paint over the old
+    // blue box.
+    layout->setContentsMargins(0, kPanelFocusEdgeHeight, 0, 0);
     layout->setSpacing(0);
 
     m_header->setObjectName(QStringLiteral("panelHeader"));
-    m_header->setTextFormat(Qt::PlainText);
+    // Rich, so the parents and the folder itself can be two colours, and each
+    // parent a link back up to it.
+    m_header->setTextFormat(Qt::RichText);
+    m_header->setTextInteractionFlags(Qt::LinksAccessibleByMouse);
+    connect(m_header, &QLabel::linkActivated, this, [this](const QString &target) {
+        navigateTo(target);
+        m_view->setFocus(Qt::MouseFocusReason);
+    });
     // A QLabel's size hint grows with its text, and a header showing a long
     // path would therefore impose a minimum width on the whole panel that a
     // QSplitter cannot shrink below — which is what left a third panel as an
@@ -97,7 +98,7 @@ FilePanel::FilePanel(QWidget *parent)
     // so the count sat hard against the panel's right edge while the rule
     // claimed ten pixels of clearance.
     const int headerPadding = currentPalette().panelPadding;
-    headerLayout->setContentsMargins(headerPadding, 6, headerPadding, 6);
+    headerLayout->setContentsMargins(headerPadding + 2, 8, headerPadding + 2, 8);
     headerLayout->setSpacing(8);
     headerLayout->addWidget(m_header, 1);
 
@@ -142,12 +143,6 @@ FilePanel::FilePanel(QWidget *parent)
     m_view->setFocusPolicy(Qt::StrongFocus);
     layout->addWidget(m_view, 1);
 
-    m_status->setObjectName(QStringLiteral("panelStatus"));
-    m_status->setTextFormat(Qt::PlainText);
-    m_status->setWordWrap(true);
-    m_status->hide();
-    layout->addWidget(m_status);
-
     m_proxy->setSourceModel(m_model);
     m_delegate->setSelectedNames(&m_selection);
 
@@ -165,6 +160,11 @@ FilePanel::FilePanel(QWidget *parent)
     connect(m_model, &DirectoryModel::scanFailed, this, &FilePanel::onScanFailed);
     connect(m_model, &DirectoryModel::scanProgress, this, [this](int) { updateHeader(); });
 
+    // A watcher can empty a directory, or fill an empty one, without a scan.
+    connect(m_proxy, &QAbstractItemModel::rowsInserted, this, &FilePanel::updatePlaceholder);
+    connect(m_proxy, &QAbstractItemModel::rowsRemoved, this, &FilePanel::updatePlaceholder);
+    connect(m_proxy, &QAbstractItemModel::modelReset, this, &FilePanel::updatePlaceholder);
+
     connect(m_view->selectionModel(), &QItemSelectionModel::currentChanged, this,
             [this](const QModelIndex &current, const QModelIndex &) {
                 if (current.isValid()) {
@@ -173,6 +173,7 @@ FilePanel::FilePanel(QWidget *parent)
             });
 
     connect(m_view, &QListView::activated, this, [this] { activateCursorItem(); });
+    connect(m_view, &PanelView::rowDoubleClicked, this, &FilePanel::activateCursorItem);
 
     // §7.12. The view asks rather than reads, because the selection and the
     // working directory both live here — the view has neither.
@@ -271,7 +272,7 @@ void FilePanel::setPathInternal(const QString &path, bool pushHistory)
     // for the common case of navigating up is the directory just left.
     m_pendingCursorName = CursorMemory::instance().recall(m_path);
 
-    m_status->hide();
+    m_scanError.clear();
     m_model->setPath(m_path);
     updateHeader();
 
@@ -506,15 +507,14 @@ void FilePanel::setFuzzyMatching(bool fuzzy)
 void FilePanel::openFilterBar()
 {
     if (m_filterBar == nullptr) {
-        // §3.4: constructed on first use. Inserted above the status label so a
-        // scan error and a filter can be visible at the same time.
+        // §3.4: constructed on first use, under the list.
         m_filterBar = new QLineEdit(this);
         m_filterBar->setObjectName(QStringLiteral("panelFilter"));
         m_filterBar->setPlaceholderText(tr("Filter…"));
         m_filterBar->setClearButtonEnabled(true);
 
         auto *layout = qobject_cast<QVBoxLayout *>(this->layout());
-        layout->insertWidget(layout->indexOf(m_status), m_filterBar);
+        layout->addWidget(m_filterBar);
 
         // Live, per §7.8: "filters the current directory's model live via the
         // proxy". The cursor follows to the best remaining row, or the list
@@ -678,26 +678,41 @@ void FilePanel::clearFilter()
     m_proxy->setFilterText(QString());
 }
 
-void FilePanel::updateFilterStatus()
+void FilePanel::updatePlaceholder()
 {
-    // A filter that matches nothing leaves an empty panel, which looks
-    // identical to an empty directory and to a failed scan. Saying which it is
-    // costs one line.
-    if (!filterText().isEmpty() && m_proxy->rowCount() == 0 && m_model->rowCount() > 0) {
-        m_status->setText(
-            tr("No matches for “%1” among %2")
-                .arg(filterText(), counted(m_model->rowCount(), tr("item"), tr("items"))));
-        m_status->show();
-        m_showingFilterStatus = true;
+    // Drawn in the list itself, a third of the way down, rather than as a red
+    // line under it: the empty pane *is* the message, and an error belongs
+    // where the files would have been.
+    if (!m_scanError.isEmpty()) {
+        m_view->setPlaceholder(tr("Can’t open this folder"), m_scanError,
+                               QStringLiteral("exclamation-triangle"));
         return;
     }
 
-    // Only ever hides the message it put there: a scan error owns this label
-    // too, and a filter change is no reason to discard it.
-    if (m_showingFilterStatus) {
-        m_showingFilterStatus = false;
-        m_status->hide();
+    if (m_proxy->rowCount() > 0 || m_model->isScanning()) {
+        m_view->setPlaceholder({});
+        return;
     }
+
+    if (!filterText().isEmpty() && m_model->rowCount() > 0) {
+        m_view->setPlaceholder(
+            tr("No matches for “%1”").arg(filterText()),
+            tr("among %1").arg(counted(m_model->rowCount(), tr("item"), tr("items"))),
+            QStringLiteral("magnifying-glass"));
+        return;
+    }
+
+    // Everything here is hidden. Said, because a folder that shows as empty in
+    // one file manager and full in another is otherwise a mystery.
+    if (m_model->rowCount() > 0) {
+        m_view->setPlaceholder(
+            tr("Folder is empty"),
+            tr("%1 hidden").arg(counted(m_model->rowCount(), tr("item"), tr("items"))),
+            QStringLiteral("folder-open"));
+        return;
+    }
+
+    m_view->setPlaceholder(tr("Folder is empty"), {}, QStringLiteral("folder-open"));
 }
 
 void FilePanel::setFilterText(const QString &text)
@@ -705,7 +720,7 @@ void FilePanel::setFilterText(const QString &text)
     m_proxy->setFilterText(text);
     restoreCursor();
     updateHeader();
-    updateFilterStatus();
+    updatePlaceholder();
 }
 
 void FilePanel::refreshTheme()
@@ -958,6 +973,7 @@ void FilePanel::setActive(bool active)
         return;
     }
     m_active = active;
+    m_view->setPanelActive(active);
 
     // Set as a dynamic property so the stylesheet can key off it (M3); the
     // repolish is what makes an already-styled widget pick up the change.
@@ -980,6 +996,10 @@ void FilePanel::setActive(bool active)
         label->style()->polish(label);
     }
 
+    // The path carries its colours in its own markup, so it is rebuilt rather
+    // than restyled.
+    applyHeaderElision();
+
     update();
 }
 
@@ -991,12 +1011,11 @@ bool FilePanel::isActive() const
 void FilePanel::onScanFinished(const QString &path, int count)
 {
     updateThumbnailWindow();
-    updateFilterStatus();
     Q_UNUSED(path)
     Q_UNUSED(count)
-    m_status->hide();
     restoreCursor();
     updateHeader();
+    updatePlaceholder();
 }
 
 void FilePanel::onScanFailed(const QString &path, const QString &reason)
@@ -1004,9 +1023,10 @@ void FilePanel::onScanFailed(const QString &path, const QString &reason)
     // §7.2: an inline error state naming the reason, with the previous listing
     // still reachable through go_back — not a modal, and not an empty panel
     // that leaves the user guessing.
-    m_status->setText(tr("Cannot read %1\n%2").arg(QDir::toNativeSeparators(path), reason));
-    m_status->show();
+    Q_UNUSED(path)
+    m_scanError = reason;
     updateHeader();
+    updatePlaceholder();
     Q_EMIT statusMessage(reason);
 }
 
@@ -1049,13 +1069,15 @@ void FilePanel::updateHeader()
     }
 
     // §6.1: "a badge shows in the panel header" while Selection mode is on.
+    //
+    // Joined with a middle dot, as the status bar's facts are, rather than
+    // spaced out with a bracketed shout.
+    const QString separator = QStringLiteral(" · ");
     if (m_selectionMode) {
-        counts += m_selection.isEmpty() ? tr("   [SELECT]")
-                                        : tr("   [SELECT %1]").arg(m_selection.size());
+        counts += separator + (m_selection.isEmpty() ? tr("Selecting")
+                                                     : tr("Selecting %1").arg(m_selection.size()));
     } else if (!m_selection.isEmpty()) {
-        counts += QStringLiteral("   ") +
-                  tr("%1 selected")
-                      .arg(counted(static_cast<int>(m_selection.size()), tr("item"), tr("items")));
+        counts += separator + tr("%1 selected").arg(m_selection.size());
     }
 
     m_headerText = display;
@@ -1065,16 +1087,93 @@ void FilePanel::updateHeader()
 
 void FilePanel::applyHeaderElision()
 {
-    // Elided from the left: the tail of a path is what identifies it, so
-    // "…/Developer/panefile/src" is far more useful than "/Users/andy/Deve…".
+    // The path as crumbs: every parent faint and a link back up to itself, the
+    // folder itself in the text colour and a weight heavier. The eye goes to
+    // the name of where you are; the route there is available but quiet.
+    struct Crumb {
+        QString label;
+        QString path;
+    };
+    QList<Crumb> crumbs;
+
+    const QString home = QDir::homePath();
+    QString rest = m_path;
+    if (m_path == home || m_path.startsWith(home + QLatin1Char('/'))) {
+        crumbs.append({.label = QStringLiteral("~"), .path = home});
+        rest = m_path.mid(home.size());
+    } else {
+        crumbs.append({.label = QStringLiteral("/"), .path = QStringLiteral("/")});
+    }
+    QString walked = crumbs.first().path;
+    for (const QString &part : rest.split(QLatin1Char('/'), Qt::SkipEmptyParts)) {
+        if (!walked.endsWith(QLatin1Char('/'))) {
+            walked += QLatin1Char('/');
+        }
+        walked += part;
+        crumbs.append({.label = part, .path = walked});
+    }
+
+    // Root's own label is its separator; every other parent is followed by one.
+    const auto parentText = [&crumbs](qsizetype index) {
+        return crumbs[index].label == QLatin1String("/") ? crumbs[index].label
+                                                         : crumbs[index].label + QLatin1Char('/');
+    };
+
+    const ThemePalette &palette = currentPalette();
+    const QColor parentColour = palette.overlay;
+    const QColor leafColour = m_active ? palette.text : palette.subtext;
+
+    QFont leafFont = m_header->font();
+    leafFont.setWeight(QFont::DemiBold);
+    const QFontMetrics parentMetrics(m_header->font());
+    const QFontMetrics leafMetrics(leafFont);
+
+    // Elided from the left, a whole crumb at a time: the tail of a path is what
+    // identifies it, so "…/panefile/src" is far more useful than "~/Develo…".
     //
     // Measured against contentsRect(), which is what the stylesheet's padding
-    // has already been subtracted from. Subtracting the padding again here —
-    // as this did — leaves the label thinking it has less room than it has, and
-    // the elision eats text that would have fitted.
-    const QFontMetrics metrics(m_header->font());
+    // has already been subtracted from.
     const int available = std::max(0, m_header->contentsRect().width());
-    m_header->setText(metrics.elidedText(m_headerText, Qt::ElideLeft, available));
+    const QString ellipsis = QStringLiteral("…/");
+    qsizetype first = 0;
+    const qsizetype leaf = crumbs.size() - 1;
+    const auto widthFrom = [&](qsizetype start) {
+        int width = leafMetrics.horizontalAdvance(crumbs[leaf].label);
+        if (start > 0) {
+            width += parentMetrics.horizontalAdvance(ellipsis);
+        }
+        for (qsizetype index = start; index < leaf; ++index) {
+            width += parentMetrics.horizontalAdvance(parentText(index));
+        }
+        return width;
+    };
+    while (first < leaf && widthFrom(first) > available) {
+        ++first;
+    }
+
+    const QString linkStyle =
+        QStringLiteral("color:%1; text-decoration:none;").arg(parentColour.name());
+    QString html;
+    if (first > 0) {
+        html += QStringLiteral("<span style=\"color:%1;\">%2</span>")
+                    .arg(parentColour.name(), ellipsis.toHtmlEscaped());
+    }
+    for (qsizetype index = first; index < leaf; ++index) {
+        html += QStringLiteral("<a href=\"%1\" style=\"%2\">%3</a>")
+                    .arg(crumbs[index].path.toHtmlEscaped(), linkStyle,
+                         parentText(index).toHtmlEscaped());
+    }
+
+    // The folder itself, elided in the middle only when even it alone does not
+    // fit.
+    const int leafRoom = std::max(
+        0, available - (widthFrom(first) - leafMetrics.horizontalAdvance(crumbs[leaf].label)));
+    html += QStringLiteral("<span style=\"color:%1; font-weight:600;\">%2</span>")
+                .arg(leafColour.name(),
+                     leafMetrics.elidedText(crumbs[leaf].label, Qt::ElideMiddle, leafRoom)
+                         .toHtmlEscaped());
+
+    m_header->setText(html);
 }
 
 void FilePanel::paintEvent(QPaintEvent *event)

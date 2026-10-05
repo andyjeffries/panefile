@@ -40,6 +40,25 @@ public:
     /// go is.
     QString destinationFor(const QPoint &position) const;
 
+    /// Whether the panel this view belongs to is the focused one.
+    ///
+    /// The delegate's idea of "focused" used to be QStyle::State_Active, which
+    /// Qt sets from the *window's* activation, not the panel's. Open a modal,
+    /// focus the filter field or switch to another application and the focused
+    /// panel lost its cursor colour and dimmed its names like an unfocused one,
+    /// while its header and accent edge still said it was focused. The panel
+    /// knows which it is; it says so here.
+    void setPanelActive(bool active);
+    bool isPanelActive() const;
+
+    /// Drawn centred in the list when it has no rows: a faint symbolic icon, a
+    /// heading and one muted line under it. An empty title draws nothing.
+    ///
+    /// An empty folder was a blank pane, which reads the same as a pane that
+    /// has not finished loading or one that failed to.
+    void setPlaceholder(const QString &title, const QString &detail = {},
+                        const QString &iconName = {});
+
     /// Insets the list body from the view's edges.
     ///
     /// QAbstractScrollArea::setViewportMargins is protected, and this is the
@@ -82,6 +101,14 @@ Q_SIGNALS:
     /// selection it could not safely clear on the way down.
     void clickCompleted(const QString &name, Qt::KeyboardModifiers modifiers);
 
+    /// A row was double-clicked with the left button; the cursor is on it.
+    ///
+    /// Its own signal rather than QAbstractItemView::activated, which Qt only
+    /// emits for a double-click when its private record of the pressed index
+    /// still matches the row — and between the two clicks the panel's own
+    /// click handling has run. Double-clicking a file did nothing.
+    void rowDoubleClicked();
+
     /// A drag is starting; the panel supplies the paths, because the selection
     /// belongs to it rather than to the view.
     void dragPathsRequested(QStringList *paths);
@@ -107,7 +134,9 @@ protected:
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
+    void mouseDoubleClickEvent(QMouseEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
+    void paintEvent(QPaintEvent *event) override;
 
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dragMoveEvent(QDragMoveEvent *event) override;
@@ -136,6 +165,10 @@ private:
     QPoint m_pressPosition;
     bool m_pressed = false;
     int m_dropTargetRow = -1;
+    bool m_panelActive = false;
+    QString m_placeholderTitle;
+    QString m_placeholderDetail;
+    QString m_placeholderIcon;
     int m_bodyInsetHorizontal = 0;
     int m_bodyInsetVertical = 0;
     int m_appliedBottomInset = -1;

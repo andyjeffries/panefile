@@ -13,32 +13,36 @@
 #include "config/Theme.h"
 #include "ui/FilePanel.h"
 #include "ui/MainWindow.h"
+#include "ui/PanefileStyle.h"
 #include "ui/PanelStrip.h"
 #include "ui/Sidebar.h"
 #include "ui/ThemePalette.h"
 
-#include <QApplication>
-#include <QCommandLineOption>
-#include <QCommandLineParser>
-#include "ui/modals/SettingsWindow.h"
-#include "app/PanelController.h"
+#include "input/ActionRegistry.h"
+#include "input/DefaultKeymap.h"
+#include "input/Keymap.h"
 #include "app/FileOperations.h"
+#include "app/PanelController.h"
 #include "app/QuickLookController.h"
 #include "app/SearchController.h"
 #include "fs/JobEngine.h"
 #include "fs/UndoStack.h"
-#include "input/ActionRegistry.h"
-#include "input/DefaultKeymap.h"
-#include "input/Keymap.h"
+#include "ui/modals/ConfirmModal.h"
+#include "ui/modals/HelpModal.h"
+#include "ui/modals/SettingsWindow.h"
 #include <QAbstractButton>
-#include <QLabel>
+#include <QApplication>
+#include <QCommandLineOption>
+#include <QCommandLineParser>
 #include <QDir>
-#include <array>
-#include <QLinearGradient>
-#include <QPainterPath>
 #include <QImage>
+#include <QLabel>
+#include <QLinearGradient>
+#include <QMenu>
 #include <QPainter>
+#include <QPainterPath>
 #include <QTimer>
+#include <array>
 
 #include <cstdio>
 
@@ -68,8 +72,8 @@ namespace {
 ///
 /// Drawn rather than captured so it is identical on both platforms and in CI,
 /// where there is no window server to capture from.
-QImage withWindowChrome(const QImage &content, const pf::config::Theme &theme,
-                        const QString &title, int scale)
+QImage withWindowChrome(const QImage &content, const pf::config::Theme &theme, const QString &title,
+                        int scale)
 {
     const bool light = theme.isLight();
 
@@ -107,9 +111,9 @@ QImage withWindowChrome(const QImage &content, const pf::config::Theme &theme,
         shadow.setAlphaF(0.010 * (1.0 - t) * (1.0 - t));
         painter.setPen(Qt::NoPen);
         painter.setBrush(shadow);
-        painter.drawRoundedRect(windowRect.adjusted(-step, -step + kShadowDrop, step,
-                                                    step + kShadowDrop),
-                                kRadius + step, kRadius + step);
+        painter.drawRoundedRect(
+            windowRect.adjusted(-step, -step + kShadowDrop, step, step + kShadowDrop),
+            kRadius + step, kRadius + step);
     }
 
     // Clip everything that follows to the window's rounded outline, so the
@@ -119,7 +123,8 @@ QImage withWindowChrome(const QImage &content, const pf::config::Theme &theme,
     painter.setClipPath(outline);
 
     // Title bar: a vertical gradient, as macOS draws it.
-    QLinearGradient bar(windowRect.topLeft(), QPointF(windowRect.left(), windowRect.top() + kTitleBar));
+    QLinearGradient bar(windowRect.topLeft(),
+                        QPointF(windowRect.left(), windowRect.top() + kTitleBar));
     if (light) {
         bar.setColorAt(0, QColor(0xf7, 0xf7, 0xf9));
         bar.setColorAt(1, QColor(0xec, 0xec, 0xef));
@@ -129,9 +134,9 @@ QImage withWindowChrome(const QImage &content, const pf::config::Theme &theme,
     }
     painter.fillRect(QRectF(windowRect.left(), windowRect.top(), windowWidth, kTitleBar), bar);
 
-    painter.drawImage(QRectF(windowRect.left(), windowRect.top() + kTitleBar, contentWidth,
-                             contentHeight),
-                      content);
+    painter.drawImage(
+        QRectF(windowRect.left(), windowRect.top() + kTitleBar, contentWidth, contentHeight),
+        content);
 
     // The separator under the title bar, and the window's own hairline border.
     painter.setPen(QPen(light ? QColor(0, 0, 0, 30) : QColor(0, 0, 0, 115), 1));
@@ -144,9 +149,8 @@ QImage withWindowChrome(const QImage &content, const pf::config::Theme &theme,
     painter.setPen(Qt::NoPen);
     for (std::size_t i = 0; i < lights.size(); ++i) {
         painter.setBrush(lights.at(i));
-        painter.drawEllipse(
-            QRectF(windowRect.left() + 16 + (static_cast<double>(i) * 20),
-                   windowRect.top() + ((kTitleBar - 12) / 2.0), 12, 12));
+        painter.drawEllipse(QRectF(windowRect.left() + 16 + (static_cast<double>(i) * 20),
+                                   windowRect.top() + ((kTitleBar - 12) / 2.0), 12, 12));
     }
 
     // The title, centred, with nothing else on the bar — macOS titles are
@@ -177,7 +181,7 @@ int main(int argc, char **argv)
     parser.setApplicationDescription("Renders Panefile to a PNG.");
     parser.addHelpOption();
 
-    const QCommandLineOption themeOption({"t", "theme"}, "Theme name.", "name", "macos-light");
+    const QCommandLineOption themeOption({"t", "theme"}, "Theme name.", "name", "panefile-light");
     const QCommandLineOption outOption({"o", "output"}, "Output PNG.", "path", "panefile.png");
     const QCommandLineOption widthOption("width", "Window width.", "px", "1180");
     const QCommandLineOption heightOption("height", "Window height.", "px", "700");
@@ -186,13 +190,13 @@ int main(int argc, char **argv)
                                          QDir::homePath());
     const QCommandLineOption chromeOption("chrome",
                                           "Draw a macOS window frame and shadow around it.");
-    const QCommandLineOption titleOption("title", "Title shown in the chrome.", "text",
-                                         "Panefile");
-    const QCommandLineOption settingsOption("settings",
-                                            "Open the settings window over the panels.", "tab",
-                                            "");
+    const QCommandLineOption titleOption("title", "Title shown in the chrome.", "text", "Panefile");
+    const QCommandLineOption settingsOption("settings", "Open the settings window over the panels.",
+                                            "tab", "");
+    const QCommandLineOption overlayOption(
+        "overlay", "Show something over the panels: help, confirm or menu.", "what", "");
     parser.addOptions({themeOption, outOption, widthOption, heightOption, scaleOption, pathsOption,
-                       chromeOption, titleOption, settingsOption});
+                       chromeOption, titleOption, settingsOption, overlayOption});
     parser.process(app);
 
     // The theme, through the same path the application uses: a Theme compiled
@@ -203,7 +207,9 @@ int main(int argc, char **argv)
         std::fprintf(stderr, "theme: %s\n", qPrintable(issue.message));
     }
     pf::ui::setCurrentPalette(theme.theme);
+    app.setStyle(new pf::ui::PanefileStyle);
     app.setStyleSheet(pf::config::buildStyleSheet(theme.theme));
+    app.setFont(pf::config::applicationFont(theme.theme, app.font()));
 
     const qreal scale = parser.value(scaleOption).toDouble();
     const int width = parser.value(widthOption).toInt();
@@ -244,7 +250,8 @@ int main(int argc, char **argv)
     std::unique_ptr<pf::fs::JobEngine> engine;
     std::unique_ptr<pf::fs::UndoStack> undo;
     pf::ui::SettingsWindow *settings = nullptr;
-    if (parser.isSet(settingsOption)) {
+    const QString overlay = parser.value(overlayOption);
+    if (parser.isSet(settingsOption) || overlay == QLatin1String("help")) {
         // Enough of the application to populate the window: the registry gives
         // the keys tab its rows, the keymap gives them their bindings.
         registry = std::make_unique<pf::input::ActionRegistry>();
@@ -261,17 +268,40 @@ int main(int argc, char **argv)
         engine = std::make_unique<pf::fs::JobEngine>();
         undo = std::make_unique<pf::fs::UndoStack>();
         operations = std::make_unique<pf::FileOperations>(&window, window.panelStrip(),
-                                                          registry.get(), engine.get(),
-                                                          undo.get());
+                                                          registry.get(), engine.get(), undo.get());
         operations->registerActions();
 
         quickLook = std::make_unique<pf::QuickLookController>(&window, registry.get());
         quickLook->registerActions();
 
-        search = std::make_unique<pf::SearchController>(&window, window.panelStrip(),
-                                                        registry.get());
+        search =
+            std::make_unique<pf::SearchController>(&window, window.panelStrip(), registry.get());
         search->registerActions();
+    }
 
+    if (overlay == QLatin1String("help")) {
+        auto *help = new pf::ui::HelpModal(*registry, *keymap, &window);
+        help->showModal();
+        settle(300);
+    } else if (overlay == QLatin1String("chord")) {
+        window.showPendingKeys(QStringLiteral("g-"));
+        window.showChordHint(
+            QStringLiteral("g-"),
+            {{QStringLiteral("g"), QStringLiteral("Move to the first entry")},
+             {QStringLiteral("h"), QStringLiteral("Go to the home directory")},
+             {QStringLiteral("r"), QStringLiteral("Go to the filesystem root")},
+             {QStringLiteral("c"), QStringLiteral("Go to the configuration directory")},
+             {QStringLiteral("p"), QStringLiteral("Go to the last directory this panel visited")},
+             {QStringLiteral("t"), QStringLiteral("Open the trash")}});
+        settle(200);
+    } else if (overlay == QLatin1String("confirm")) {
+        auto *confirm = new pf::ui::ConfirmModal(&window);
+        confirm->ask(QStringLiteral("Permanently delete “qt-everywhere-6.10.2.tar.xz”?"),
+                     QStringLiteral("This cannot be undone."), QStringLiteral("Delete"), [] {});
+        settle(300);
+    }
+
+    if (parser.isSet(settingsOption)) {
         settings = new pf::ui::SettingsWindow(registry.get(), keymap.get(), &window);
         settings->present();
 
@@ -301,6 +331,36 @@ int main(int argc, char **argv)
     image.fill(theme.theme.background);
 
     window.render(&image);
+
+    // A menu is a popup window of its own, so it is rendered separately and
+    // laid over the window where a right-click on the first panel would put it.
+    if (overlay == QLatin1String("menu")) {
+        // The application menu's shape, as Application::showApplicationMenu
+        // builds it.
+        QMenu menu;
+        const QList<QStringList> groups{
+            {QStringLiteral("New Panel\tn"), QStringLiteral("Duplicate Panel\tN"),
+             QStringLiteral("Close Panel\tCtrl+W")},
+            {QStringLiteral("Open\tReturn"), QStringLiteral("Back\tAlt+Left"),
+             QStringLiteral("Enclosing Folder\tLeft"), QStringLiteral("Home\tAlt+Home"),
+             QStringLiteral("Find…\tCtrl+F")},
+            {QStringLiteral("Show Hidden Files\t."), QStringLiteral("Sidebar\tCtrl+S"),
+             QStringLiteral("Status Bar\tF"), QStringLiteral("Light or Dark\tCtrl+T")},
+            {QStringLiteral("Settings…\tCtrl+,"), QStringLiteral("Keyboard Shortcuts\t?")},
+            {QStringLiteral("Quit\tCtrl+Q")}};
+        for (qsizetype group = 0; group < groups.size(); ++group) {
+            if (group > 0) {
+                menu.addSeparator();
+            }
+            for (const QString &label : groups[group]) {
+                menu.addAction(label);
+            }
+        }
+        menu.ensurePolished();
+        menu.adjustSize();
+        QPainter painter(&image);
+        menu.render(&painter, QPoint(150, 34), QRegion(), QWidget::DrawChildren);
+    }
 
     if (parser.isSet(chromeOption)) {
         image = withWindowChrome(image, theme.theme, parser.value(titleOption), scale);

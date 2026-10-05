@@ -59,6 +59,7 @@ pf_add_test(tst_search      SOURCES tst_search.cpp      LIBS pf_fs pf_model)
 pf_add_test(tst_rename      SOURCES tst_rename.cpp      LIBS pf_fs)
 pf_add_test(tst_quicklook  SOURCES tst_quicklook.cpp  LIBS pf_ui)
 pf_add_test(tst_thumbnails SOURCES tst_thumbnails.cpp LIBS pf_model)
+pf_add_test(tst_icons      SOURCES tst_icons.cpp      LIBS pf_model)
 
 # The optional-feature plugins (§3.4), loaded from the build tree's staging
 # directory. Each test of a plugin skips when this build did not produce it.
@@ -93,6 +94,9 @@ pf_add_test(tst_config      SOURCES tst_config.cpp      LIBS pf_config pf_input)
 # replaced.
 if(PF_PLATFORM_LINUX)
     pf_add_test(tst_defaultfilemanager SOURCES tst_defaultfilemanager.cpp LIBS pf_ui pf_app)
+    # xdg-open is faked through PATH; macOS's launcher is /usr/bin/open by
+    # absolute path, so there is nothing to put in front of it there.
+    pf_add_test(tst_opening SOURCES tst_opening.cpp LIBS pf_app)
 
     # ShowItems over a real bus. Only ever a private one: without
     # dbus-run-session the test skips rather than claim "Show in folder" on the

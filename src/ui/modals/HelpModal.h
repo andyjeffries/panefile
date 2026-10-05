@@ -34,6 +34,10 @@ public:
     /// actions are enabled.
     void refresh();
 
+protected:
+    /// The filter: the reference is mostly opened to look one thing up.
+    QWidget *initialFocusWidget() override;
+
 private:
     void applyFilter(const QString &text);
 

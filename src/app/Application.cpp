@@ -28,10 +28,12 @@
 #include "model/FilterSortProxy.h"
 #include "model/ThumbnailCache.h"
 #include "platform/FileManagerService.h"
+#include "platform/Launcher.h"
 #include "platform/Paths.h"
 #include "ui/DefaultFileManagerBar.h"
 #include "ui/FilePanel.h"
 #include "ui/MainWindow.h"
+#include "ui/PanefileStyle.h"
 #include "ui/PanelStrip.h"
 #include "ui/PanelView.h"
 #include "ui/ProcessBar.h"
@@ -45,6 +47,7 @@
 #include <QFileInfo>
 #include <QFont>
 #include <QKeyEvent>
+#include <QMenu>
 #include <QProcess>
 #include <QSocketNotifier>
 #include <QStyleHints>
@@ -118,6 +121,22 @@ void Application::buildInputSystem()
             &ui::MainWindow::showStatusMessage);
     connect(m_dispatcher.get(), &KeyDispatcher::pendingChanged, m_mainWindow.get(),
             &ui::MainWindow::showPendingKeys);
+
+    // Press `g` and pause: the window lists what can follow it.
+    connect(m_dispatcher.get(), &KeyDispatcher::hintRequested, m_mainWindow.get(),
+            [this](const QString &pending, const QList<input::Keymap::Continuation> &next) {
+                QList<QPair<QString, QString>> rows;
+                for (const input::Keymap::Continuation &continuation : next) {
+                    const input::Action *action = m_registry->find(continuation.actionId);
+                    const QPair<QString, QString> row{
+                        input::bindingToString(continuation.remaining),
+                        action != nullptr ? action->description : continuation.actionId};
+                    if (!rows.contains(row)) {
+                        rows.append(row);
+                    }
+                }
+                m_mainWindow->showChordHint(pending, rows);
+            });
 
     m_jobEngine = std::make_unique<fs::JobEngine>(this);
     m_undoStack = std::make_unique<fs::UndoStack>(this);
@@ -202,6 +221,19 @@ void Application::configurePanel(ui::FilePanel *panel) const
     // the panel neither knows about conflicts nor about the undo stack.
     connect(panel, &ui::FilePanel::filesDropped, m_fileOperations.get(),
             &FileOperations::onFilesDropped);
+
+    // Enter or a double-click on a file opens it with the desktop's default
+    // application — the same as open_with_default_app, which is what anyone
+    // pressing Enter on a video expects.
+    //
+    // The panel has always emitted this; nothing was listening, so Enter and
+    // double-click on a file silently did nothing.
+    connect(panel, &ui::FilePanel::fileActivated, this, [this](const QString &path) {
+        if (!platform::Launcher::openWithDefaultApplication(path)) {
+            m_mainWindow->showStatusMessage(
+                tr("Could not open %1").arg(QFileInfo(path).fileName()));
+        }
+    });
 
     panel->setShowHidden(m_settings.panels.showHidden);
     panel->setSortKey(sortKeyFromName(m_settings.panels.defaultSort));
@@ -318,6 +350,73 @@ void Application::registerGlobalActions()
 
     connect(m_mainWindow->sidebar(), &ui::Sidebar::statusMessage, m_mainWindow.get(),
             &ui::MainWindow::showStatusMessage);
+
+    connect(m_mainWindow->sidebar(), &ui::Sidebar::menuRequested, this,
+            &Application::showApplicationMenu);
+}
+
+void Application::showApplicationMenu(const QPoint &globalPosition)
+{
+    // The application menu: the commonest actions, each with the key that does
+    // it, so the menu teaches the keyboard as much as it stands in for it.
+    // Every item goes through the registry, the one dispatch path, so a menu
+    // click and a keypress cannot behave differently.
+    struct Item {
+        const char *actionId;
+        QString label;
+    };
+    const QList<QList<Item>> groups{
+        {{.actionId = "create_new_file_panel", .label = tr("New Panel")},
+         {.actionId = "split_file_panel", .label = tr("Duplicate Panel")},
+         {.actionId = "close_file_panel", .label = tr("Close Panel")}},
+        {{.actionId = "confirm", .label = tr("Open")},
+         {.actionId = "go_back", .label = tr("Back")},
+         {.actionId = "parent_directory", .label = tr("Enclosing Folder")},
+         {.actionId = "go_home", .label = tr("Home")},
+         {.actionId = "open_fuzzy_find", .label = tr("Find…")}},
+        {{.actionId = "toggle_dot_file", .label = tr("Show Hidden Files")},
+         {.actionId = "toggle_sidebar", .label = tr("Sidebar")},
+         {.actionId = "toggle_footer", .label = tr("Status Bar")},
+         {.actionId = "toggle_theme_dark_light", .label = tr("Light or Dark")}},
+        {{.actionId = "open_settings", .label = tr("Settings…")},
+         {.actionId = "open_help_menu", .label = tr("Keyboard Shortcuts")}},
+        {{.actionId = "quit", .label = tr("Quit")}},
+    };
+
+    // The key shown is the first global binding, else the first Normal one:
+    // the one that works wherever the focus is, when there is one.
+    const auto keyFor = [this](const QString &actionId) {
+        for (const input::KeymapLayer layer :
+             {input::KeymapLayer::Global, input::KeymapLayer::Normal}) {
+            const QList<input::Binding> bindings = m_keymap->bindingsFor(layer, actionId);
+            if (!bindings.isEmpty()) {
+                return input::bindingToString(bindings.first());
+            }
+        }
+        return QString();
+    };
+
+    QMenu menu(m_mainWindow.get());
+    for (qsizetype group = 0; group < groups.size(); ++group) {
+        if (group > 0) {
+            menu.addSeparator();
+        }
+        for (const Item &item : groups[group]) {
+            const QString actionId = QLatin1String(item.actionId);
+            if (m_registry->find(actionId) == nullptr) {
+                continue;
+            }
+            // The text after a tab is QMenu's shortcut column. Display only:
+            // no QAction shortcut is set, because §6.2 keeps every key binding
+            // in the dispatcher.
+            const QString key = keyFor(actionId);
+            const QAction *action =
+                menu.addAction(key.isEmpty() ? item.label : item.label + QLatin1Char('\t') + key);
+            connect(action, &QAction::triggered, this,
+                    [this, actionId] { m_registry->invoke(actionId); });
+        }
+    }
+    menu.exec(globalPosition);
 }
 
 ui::ProcessBar *Application::processBar()
@@ -363,6 +462,20 @@ void Application::loadConfiguration()
     // "Applying a stylesheet after widgets exist forces a full restyle pass
     // over the widget tree", and that pass is proportional to how much of the
     // application is already built.
+    //
+    // The proxy style first, because the stylesheet wraps whatever style is
+    // installed when it is set; see ui::PanefileStyle for what it draws.
+    // Once: a hot reload comes back through here, and replacing the style
+    // would restyle every widget for nothing.
+    //
+    // Owned by the application from setStyle() on, which the analyser cannot
+    // see.
+    // NOLINTBEGIN(clang-analyzer-cplusplus.NewDeleteLeaks)
+    if (!m_styleInstalled) {
+        setStyle(new ui::PanefileStyle);
+        m_styleInstalled = true;
+    }
+    // NOLINTEND(clang-analyzer-cplusplus.NewDeleteLeaks)
     setStyleSheet(config::buildStyleSheet(themeResult.theme));
 
     // Always, not only when the theme names a family.
@@ -372,12 +485,7 @@ void Application::loadConfiguration()
     // the stylesheet cascade — so row names were rendering at the platform
     // default while everything around them followed the theme. Setting the
     // application font makes the delegate agree with the chrome.
-    QFont themeFont = font();
-    if (!themeResult.theme.fontFamily.isEmpty()) {
-        themeFont.setFamily(themeResult.theme.fontFamily);
-    }
-    themeFont.setPointSize(themeResult.theme.fontSize);
-    setFont(themeFont);
+    setFont(config::applicationFont(themeResult.theme, font()));
 
     StartupTrace::mark(StartupPhase::StylesheetApplied);
 
@@ -391,22 +499,8 @@ void Application::loadConfiguration()
     // this fires when the desktop's appearance changes — a handful of times a
     // day at most — rather than on the startup path it protects.
     if (!QFile::exists(platform::configDir() + QStringLiteral("/theme.toml"))) {
-        connect(styleHints(), &QStyleHints::colorSchemeChanged, this, [this] {
-            const config::Theme theme = config::defaultThemeForDesktop();
-            ui::setCurrentPalette(theme);
-            setStyleSheet(config::buildStyleSheet(theme));
-
-            // A stylesheet change does not reach a QStyledItemDelegate, which
-            // paints from the palette directly, so the rows would keep the old
-            // colours until something else invalidated them.
-            if (m_mainWindow != nullptr) {
-                m_mainWindow->update();
-                for (ui::FilePanel *panel : m_mainWindow->panelStrip()->panels()) {
-                    panel->update();
-                    panel->view()->viewport()->update();
-                }
-            }
-        });
+        connect(styleHints(), &QStyleHints::colorSchemeChanged, this,
+                [this] { applyTheme(config::defaultThemeForDesktop()); });
     }
 
     for (const config::ConfigIssue &issue : std::as_const(m_configIssues)) {
@@ -466,6 +560,7 @@ void Application::reloadConfiguration(const QStringList &changedFiles)
             for (ui::FilePanel *panel : m_mainWindow->panelStrip()->panels()) {
                 panel->refreshTheme();
             }
+            m_mainWindow->sidebar()->refreshTheme();
             if (m_quickLook != nullptr) {
                 m_quickLook->applySettings(m_settings.quicklook);
             }
@@ -808,7 +903,7 @@ void Application::toggleLightDark()
     // since following the desktop is only the behaviour while the user has not
     // chosen. Pressing this key *is* choosing.
     const bool dark = !ui::currentPalette().isLight();
-    const QString name = dark ? QStringLiteral("macos-light") : QStringLiteral("macos-dark");
+    const QString name = dark ? QStringLiteral("panefile-light") : QStringLiteral("panefile-dark");
 
     const config::ThemeLoadResult loaded = config::loadThemeByName(name);
     if (!loaded.issues.isEmpty()) {
@@ -837,22 +932,18 @@ void Application::applyTheme(const config::Theme &theme)
     ui::setCurrentPalette(theme);
     setStyleSheet(config::buildStyleSheet(theme));
 
-    QFont themeFont = font();
-    if (!theme.fontFamily.isEmpty()) {
-        themeFont.setFamily(theme.fontFamily);
-    }
-    themeFont.setPointSize(theme.fontSize);
-    setFont(themeFont);
+    setFont(config::applicationFont(theme, font()));
 
     // A stylesheet change does not reach a QStyledItemDelegate, which paints
-    // from the palette directly, so rows would keep the old colours until
-    // something else invalidated them.
+    // from the palette directly, nor the header path, which carries its
+    // colours in its own markup — so each panel is told.
     if (m_mainWindow != nullptr) {
         m_mainWindow->update();
         for (ui::FilePanel *panel : m_mainWindow->panelStrip()->panels()) {
-            panel->update();
-            panel->view()->viewport()->update();
+            panel->refreshTheme();
         }
+        // Its icons are tinted pixmaps, which a stylesheet cannot recolour.
+        m_mainWindow->sidebar()->refreshTheme();
     }
 }
 

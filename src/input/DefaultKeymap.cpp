@@ -175,6 +175,20 @@ constexpr DefaultBinding kDefaults[] = {
 
 } // namespace
 
+QStringList unusableDefaultBindings()
+{
+    QStringList problems;
+    for (const DefaultBinding &entry : kDefaults) {
+        QString error;
+        if (!parseBinding(QString::fromLatin1(entry.binding), &error).has_value()) {
+            problems << QStringLiteral("%1: %2 — %3")
+                            .arg(QLatin1String(entry.actionId), QLatin1String(entry.binding),
+                                 error);
+        }
+    }
+    return problems;
+}
+
 void installDefaultKeymap(Keymap &keymap)
 {
     for (const DefaultBinding &entry : kDefaults) {

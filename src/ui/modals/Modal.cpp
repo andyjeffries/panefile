@@ -4,6 +4,7 @@
 
 #include <QEvent>
 #include <QKeyEvent>
+#include <QLayout>
 #include <QPainter>
 #include <QResizeEvent>
 
@@ -18,7 +19,10 @@ Modal::Modal(QWidget *parent) : QWidget(parent), m_content(new QWidget(this))
     hide();
 
     m_content->setObjectName(QStringLiteral("modalContent"));
-    m_content->setAutoFillBackground(true);
+    // The stylesheet paints the card, rounded. autoFillBackground painted a
+    // square of the palette's window colour under it first, so the rounded
+    // corners sat inside square ones.
+    m_content->setAttribute(Qt::WA_StyledBackground, true);
 
     // The modal tracks its parent's size, so it stays covering the window as it
     // is resized rather than being positioned once at show time.
@@ -37,6 +41,12 @@ void Modal::setSizePercent(int widthPercent, int heightPercent)
     reposition();
 }
 
+void Modal::setHeightFitsContent(bool fits)
+{
+    m_heightFitsContent = fits;
+    reposition();
+}
+
 void Modal::showModal()
 {
     if (parentWidget() == nullptr) {
@@ -46,7 +56,12 @@ void Modal::showModal()
     reposition();
     raise();
     show();
-    setFocus(Qt::PopupFocusReason);
+    initialFocusWidget()->setFocus(Qt::PopupFocusReason);
+}
+
+QWidget *Modal::initialFocusWidget()
+{
+    return this;
 }
 
 void Modal::dismiss()
@@ -84,8 +99,14 @@ void Modal::reposition()
 
     const int width = std::clamp(available.width() * m_widthPercent / 100,
                                  std::min(kMinimumWidth, available.width()), available.width());
-    const int height = std::clamp(available.height() * m_heightPercent / 100,
-                                  std::min(kMinimumHeight, available.height()), available.height());
+    int height = std::clamp(available.height() * m_heightPercent / 100,
+                            std::min(kMinimumHeight, available.height()), available.height());
+    if (m_heightFitsContent && m_content->layout() != nullptr) {
+        height = std::min(m_content->layout()->heightForWidth(width) > 0
+                              ? m_content->layout()->heightForWidth(width)
+                              : m_content->sizeHint().height(),
+                          available.height());
+    }
 
     m_content->setGeometry((available.width() - width) / 2, (available.height() - height) / 2,
                            width, height);
@@ -99,9 +120,28 @@ void Modal::paintEvent(QPaintEvent *event)
     // The dimmed backdrop of §5.4. Semi-transparent rather than opaque so the
     // panels stay visible underneath — the modal is a layer over the user's
     // work, not a replacement for it.
-    QColor backdrop = currentPalette().background;
-    backdrop.setAlpha(180);
-    painter.fillRect(rect(), backdrop);
+    //
+    // Dimmed, not fogged: it was the theme's background at 70%, which on a
+    // light theme washed the window out to white and left the card nothing to
+    // stand out against.
+    const bool light = currentPalette().isLight();
+    painter.fillRect(rect(), QColor(0, 0, 0, light ? 72 : 140));
+
+    // A soft shadow under the card, sitting lower than it rises: stacked
+    // rounded rectangles, each a little larger and fainter, rather than a
+    // graphics effect, which would re-render the whole card offscreen on every
+    // repaint of anything inside it.
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setPen(Qt::NoPen);
+    const QRectF card = m_content->geometry();
+    const qreal radius = currentPalette().borderRadius + 6;
+    constexpr int kLayers = 14;
+    for (int layer = kLayers; layer >= 1; --layer) {
+        const qreal spread = layer * 1.4;
+        painter.setBrush(QColor(0, 0, 0, light ? 5 : 9));
+        painter.drawRoundedRect(card.adjusted(-spread, (-spread * 0.5) + 3, spread, spread + 6),
+                                radius + spread, radius + spread);
+    }
 }
 
 void Modal::keyPressEvent(QKeyEvent *event)

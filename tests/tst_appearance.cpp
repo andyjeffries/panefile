@@ -100,12 +100,19 @@ private Q_SLOTS:
 
     /// §9: banding has to alternate, and it has to be subtle. Both are
     /// assertions about pixels, and neither is visible in the source.
+    ///
+    /// Banding is a theme option and off in every bundled theme, so it is
+    /// switched on for this.
     void rowsAreBanded()
     {
-        const config::Theme theme = currentPalette();
-        QVERIFY(theme.alternatingRows);
+        const config::Theme original = currentPalette();
+        config::Theme theme = original;
+        theme.alternatingRows = true;
+        setCurrentPalette(theme);
+        m_panel->setActive(true);
 
         const QImage rendered = renderView();
+        setCurrentPalette(original);
 
         // Rows 1 and 2, not 0 and 1: row 0 holds the cursor, which paints its
         // own background and would swamp the banding being measured.
@@ -130,6 +137,51 @@ private Q_SLOTS:
                       std::abs(qBlue(even) - qBlue(odd))});
         QVERIFY2(delta < 26, qPrintable(QStringLiteral("banding delta %1 is too loud").arg(delta)));
         QVERIFY2(delta > 1, qPrintable(QStringLiteral("banding delta %1 is invisible").arg(delta)));
+    }
+
+    /// No bundled theme bands its rows, and neither does a theme that says
+    /// nothing: the hover and the cursor carry the row, as they do in Review
+    /// and in GNOME Files, and stripes on top of both were a third thing for
+    /// the eye to read.
+    void bandingIsOffUnlessAThemeAsks()
+    {
+        QVERIFY(!config::Theme{}.alternatingRows);
+
+        const QDir themes(QStringLiteral(PF_THEMES_DIR));
+        for (const QString &file : themes.entryList({QStringLiteral("*.toml")}, QDir::Files)) {
+            QFile source(themes.absoluteFilePath(file));
+            QVERIFY(source.open(QIODevice::ReadOnly));
+            const config::Theme theme =
+                config::parseTheme(QString::fromUtf8(source.readAll()), file).theme;
+            QVERIFY2(!theme.alternatingRows, qPrintable(file));
+        }
+
+        QVERIFY(config::parseTheme(QStringLiteral("[ui]\nalternating_rows = true\n"))
+                    .theme.alternatingRows);
+    }
+
+    /// The cursor is the focus colour's soft tint in the focused panel and the
+    /// neutral cursor colour in any other — and "focused" is the panel's own
+    /// state, not the window's.
+    ///
+    /// It used to be QStyle::State_Active, which follows the *window*: with a
+    /// modal open, or the application in the background, the focused panel's
+    /// cursor went grey and its names dimmed as though it were unfocused, while
+    /// its header still said otherwise. Rendering offscreen, the window is not
+    /// active either, which is exactly the case that broke.
+    void theCursorFollowsThePanelNotTheWindow()
+    {
+        const QModelIndex first = m_panel->view()->model()->index(0, 0);
+        m_panel->view()->setCurrentIndex(first);
+        const QRect row = m_panel->view()->visualRect(first);
+
+        m_panel->setActive(true);
+        const QRgb focused = dominantColour(renderView(), row);
+        QCOMPARE(QColor(focused).name(), currentPalette().focusedCursorBackground().name());
+
+        m_panel->setActive(false);
+        const QRgb unfocused = dominantColour(renderView(), row);
+        QCOMPARE(QColor(unfocused).name(), currentPalette().cursorBackground.name());
     }
 
     /// The derived banding must move *away* from the background in both

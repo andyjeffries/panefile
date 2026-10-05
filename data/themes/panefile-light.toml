@@ -1,0 +1,59 @@
+# Panefile's own light theme, and the one a fresh install uses on a light
+# desktop. The palette is Review's and Folio's, so the three applications read
+# as a family: warm off-white neutrals rather than blue-greys, one terracotta
+# accent used sparingly, and three levels of text.
+name = "Panefile Light"
+
+[colors]
+# An unfocused panel and the window body; the focused panel lifts to white.
+background     = "#f8f8f6"
+surface        = "#ffffff"
+
+# Three levels of text: names, then secondary facts (sizes, dates, the count),
+# then furniture (section labels, path parents, symlink targets, hints).
+text           = "#1f1e1b"
+subtext        = "#66645e"
+overlay        = "#9c998f"
+
+accent         = "#c6613f"
+
+# Marked rows, and the cursor in a panel that is not focused. The focused
+# panel's cursor is border_focused at low strength, derived rather than stored.
+selection_bg   = "#eae9e4"
+cursor_bg      = "#eae9e4"
+
+# Chrome a step down from the content.
+sidebar_bg     = "#f2f1ee"
+
+# Type is carried by the icon, so these tint glyphs rather than filenames.
+directory      = "#4f7cac"
+executable     = "#2d7d46"
+symlink        = "#1b8288"
+broken         = "#c4392f"
+archive        = "#a36b12"
+image          = "#8a5cb8"
+
+error          = "#c4392f"
+warning        = "#a36b12"
+success        = "#2d7d46"
+
+border         = "#e6e4de"
+
+# Focus is blue, as Review's is, and kept apart from the accent: the focused
+# panel's edge, a focused field's border, and the cursor row's tint. Terracotta
+# is for things you press and things that are on.
+border_focused = "#3b82f6"
+
+[ui]
+# Geometry and type are not part of a theme's identity — a palette is. These
+# values are identical in every bundled theme on purpose: switching from Nord to
+# Gruvbox should recolour the window, not resize its rows and restyle its text.
+#
+# 13px names on 30px rows, a 6px radius for the cursor pill and 10px of panel
+# padding. No banding: the hover and the cursor carry the row.
+font_family       = ""
+font_size         = 13
+row_height        = 30
+border_radius     = 6
+panel_padding     = 10
+alternating_rows  = false

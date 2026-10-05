@@ -62,6 +62,7 @@ private:
     }
 
 private Q_SLOTS:
+    void everyDefaultBindingParses();
 
     /// §7.13: "Ctrl+Z undoes the last."
     ///
@@ -106,6 +107,7 @@ private Q_SLOTS:
     void conflictingBindingsKeepTheFirst();
     void precedenceFollowsLayerOrder();
     void partialMatchInAHigherLayerWins();
+    void continuationsListWhatCanFollow();
 
     // Dispatch behaviour
     void singleChordFires();
@@ -119,6 +121,7 @@ private Q_SLOTS:
     void ambiguityTimeoutFiresTheShorterBinding();
     void ambiguityResolvedByTheNextKey();
     void disabledActionsDoNotFire();
+    void aPausedSequenceAsksForItsHintAndWaits();
 
     // The shipped defaults
     void defaultKeymapBindsTheDocumentedKeys();
@@ -131,6 +134,14 @@ void TestKeymap::init()
     m_keymap.clear();
     m_registry.clear();
     m_fired.clear();
+}
+
+void TestKeymap::everyDefaultBindingParses()
+{
+    // A default that does not parse is skipped at start-up with a warning, so
+    // the action silently has no key. That is how Settings lost both of its.
+    const QStringList problems = input::unusableDefaultBindings();
+    QVERIFY2(problems.isEmpty(), qPrintable(problems.join(u'\n')));
 }
 
 void TestKeymap::exactMatchResolvesToTheAction()
@@ -249,6 +260,25 @@ void TestKeymap::partialMatchInAHigherLayerWins()
         m_keymap.lookup({KeymapLayer::Modal, KeymapLayer::Global}, parse(QStringLiteral("g")));
 
     QCOMPARE(match.type, Keymap::MatchType::PartialMatch);
+}
+
+void TestKeymap::continuationsListWhatCanFollow()
+{
+    bindTo(KeymapLayer::Normal, QStringLiteral("g h"), QStringLiteral("go_home"));
+    bindTo(KeymapLayer::Normal, QStringLiteral("g r"), QStringLiteral("go_root"));
+    bindTo(KeymapLayer::Normal, QStringLiteral("d d"), QStringLiteral("delete"));
+    // A higher layer that does not own the prefix must not hide the lower one.
+    bindTo(KeymapLayer::Global, QStringLiteral("Ctrl+F"), QStringLiteral("find"));
+
+    const Binding g = *parseBinding(QStringLiteral("g"));
+    const auto next = m_keymap.continuations({KeymapLayer::Global, KeymapLayer::Normal}, g);
+    QCOMPARE(next.size(), 2);
+    QCOMPARE(next[0].actionId, QStringLiteral("go_home"));
+    QCOMPARE(bindingToString(next[0].remaining), QStringLiteral("h"));
+    QCOMPARE(next[1].actionId, QStringLiteral("go_root"));
+
+    QVERIFY(m_keymap.continuations({KeymapLayer::Normal}, *parseBinding(QStringLiteral("x")))
+                .isEmpty());
 }
 
 void TestKeymap::singleChordFires()
@@ -436,6 +466,30 @@ void TestKeymap::disabledActionsDoNotFire()
     // Consumed — the key *is* bound — but the handler does not run.
     QVERIFY(press(dispatcher, QStringLiteral("w")));
     QVERIFY(m_fired.isEmpty());
+}
+
+void TestKeymap::aPausedSequenceAsksForItsHintAndWaits()
+{
+    // Press `g` and pause: the dispatcher asks for the list of what can follow,
+    // and from then on the sequence does not expire under someone reading it.
+    defineAction(QStringLiteral("go_home"));
+    bindTo(KeymapLayer::Normal, QStringLiteral("g h"), QStringLiteral("go_home"));
+
+    KeyDispatcher dispatcher(&m_registry, &m_keymap);
+    dispatcher.setActiveLayers({KeymapLayer::Normal});
+    dispatcher.setHintDelay(20);
+    dispatcher.setSequenceTimeout(150);
+    QSignalSpy hint(&dispatcher, &KeyDispatcher::hintRequested);
+
+    QVERIFY(press(dispatcher, QStringLiteral("g")));
+    QTRY_COMPARE_WITH_TIMEOUT(hint.size(), 1, 1000);
+
+    // Well past the sequence timeout, still waiting.
+    QTest::qWait(300);
+    QVERIFY(dispatcher.hasPending());
+
+    QVERIFY(press(dispatcher, QStringLiteral("h")));
+    QCOMPARE(m_fired, QStringList{"go_home"});
 }
 
 void TestKeymap::defaultKeymapBindsTheDocumentedKeys()

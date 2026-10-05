@@ -15,6 +15,7 @@ namespace {
 // §8.2's defaults.
 constexpr int kDefaultSequenceTimeoutMs = 1000;
 constexpr int kDefaultAmbiguityTimeoutMs = 500;
+constexpr int kDefaultHintDelayMs = 450;
 } // namespace
 
 KeyDispatcher::KeyDispatcher(input::ActionRegistry *registry, Keymap *keymap, QObject *parent)
@@ -29,6 +30,10 @@ KeyDispatcher::KeyDispatcher(input::ActionRegistry *registry, Keymap *keymap, QO
     m_ambiguityTimer.setSingleShot(true);
     m_ambiguityTimer.setInterval(kDefaultAmbiguityTimeoutMs);
     connect(&m_ambiguityTimer, &QTimer::timeout, this, &KeyDispatcher::onAmbiguityTimeout);
+
+    m_hintTimer.setSingleShot(true);
+    m_hintTimer.setInterval(kDefaultHintDelayMs);
+    connect(&m_hintTimer, &QTimer::timeout, this, &KeyDispatcher::onHintTimeout);
 }
 
 void KeyDispatcher::setActiveLayers(const QList<KeymapLayer> &layers)
@@ -57,6 +62,11 @@ void KeyDispatcher::setAmbiguityTimeout(int milliseconds)
     m_ambiguityTimer.setInterval(std::max(0, milliseconds));
 }
 
+void KeyDispatcher::setHintDelay(int milliseconds)
+{
+    m_hintTimer.setInterval(std::max(0, milliseconds));
+}
+
 bool KeyDispatcher::hasPending() const
 {
     return !m_pending.isEmpty();
@@ -77,6 +87,7 @@ void KeyDispatcher::clearPending()
 {
     m_sequenceTimer.stop();
     m_ambiguityTimer.stop();
+    m_hintTimer.stop();
     m_ambiguousActionId.clear();
 
     if (m_pending.isEmpty()) {
@@ -98,6 +109,21 @@ void KeyDispatcher::onSequenceTimeout()
 {
     qCDebug(pfKeys) << "sequence timed out with" << input::bindingToString(m_pending) << "pending";
     clearPending();
+}
+
+void KeyDispatcher::onHintTimeout()
+{
+    if (m_pending.isEmpty() || m_keymap == nullptr) {
+        return;
+    }
+    const QList<input::Keymap::Continuation> next = m_keymap->continuations(m_layers, m_pending);
+    if (next.isEmpty()) {
+        return;
+    }
+
+    // The list is up, so the sequence no longer expires: the user is reading.
+    m_sequenceTimer.stop();
+    Q_EMIT hintRequested(pendingText(), next);
 }
 
 void KeyDispatcher::onAmbiguityTimeout()
@@ -160,6 +186,10 @@ bool KeyDispatcher::handleKeyPress(QKeyEvent *event)
     case Keymap::MatchType::PartialMatch:
         m_pending = candidate;
         m_sequenceTimer.start();
+        // Only for a prefix that is nothing else. An ambiguous one (`g` bound
+        // as well as `g h`) resolves itself in half a second, and a list that
+        // appeared and vanished with it would be noise.
+        m_hintTimer.start();
         Q_EMIT pendingChanged(pendingText());
         return true;
 

@@ -76,7 +76,7 @@ private:
     QWidget *buildQuickLookTab();
     QWidget *buildKeysTab();
 
-    void addTab(const QString &title, const QString &glyph, QWidget *page);
+    void addTab(const QString &title, const QString &iconName, QWidget *page);
 
     /// Reads the config and theme files into the controls, without any of the
     /// controls' signals writing them straight back out again.

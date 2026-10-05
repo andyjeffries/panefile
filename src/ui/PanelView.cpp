@@ -3,6 +3,7 @@
 
 #include "model/DirectoryModel.h"
 #include "model/FileEntry.h"
+#include "model/SymbolicIcon.h"
 #include "platform/FileOps.h"
 #include "ui/ThemePalette.h"
 
@@ -48,6 +49,86 @@ PanelView::PanelView(QWidget *parent) : QListView(parent)
     // synthetic events cannot reach a widget that has not asked for them.
     setAcceptDrops(true);
     viewport()->setAcceptDrops(true);
+
+    // For the hover pill. Without tracking the view only hears the pointer
+    // while a button is down, and the delegate never sees State_MouseOver.
+    setMouseTracking(true);
+}
+
+void PanelView::setPanelActive(bool active)
+{
+    if (m_panelActive == active) {
+        return;
+    }
+    m_panelActive = active;
+    viewport()->update();
+}
+
+bool PanelView::isPanelActive() const
+{
+    return m_panelActive;
+}
+
+void PanelView::setPlaceholder(const QString &title, const QString &detail, const QString &iconName)
+{
+    if (m_placeholderTitle == title && m_placeholderDetail == detail &&
+        m_placeholderIcon == iconName) {
+        return;
+    }
+    m_placeholderTitle = title;
+    m_placeholderDetail = detail;
+    m_placeholderIcon = iconName;
+    viewport()->update();
+}
+
+void PanelView::paintEvent(QPaintEvent *event)
+{
+    QListView::paintEvent(event);
+
+    if (m_placeholderTitle.isEmpty() || (model() != nullptr && model()->rowCount() > 0)) {
+        return;
+    }
+
+    // A third of the way down rather than dead centre, which in a tall pane
+    // leaves the text floating in the middle of nowhere; this is where the eye
+    // lands after reading the header.
+    const ThemePalette &palette = currentPalette();
+    QPainter painter(viewport());
+    painter.setRenderHint(QPainter::TextAntialiasing, true);
+
+    const QRect area = viewport()->rect().adjusted(16, 0, -16, 0);
+    const int top = area.top() + (area.height() / 3);
+
+    if (!m_placeholderIcon.isEmpty()) {
+        constexpr int kIconSize = 32;
+        const QPixmap glyph = SymbolicIcon::pixmap(m_placeholderIcon, palette.overlay, kIconSize,
+                                                   devicePixelRatioF());
+        painter.drawPixmap(
+            QRect(area.center().x() - (kIconSize / 2), top - kIconSize - 10, kIconSize, kIconSize),
+            glyph);
+    }
+
+    QFont titleFont = font();
+    titleFont.setWeight(QFont::DemiBold);
+    painter.setFont(titleFont);
+    painter.setPen(isPanelActive() ? palette.subtext : palette.overlay);
+    const QFontMetrics titleMetrics(titleFont);
+    const QRect titleRect(area.left(), top, area.width(), titleMetrics.height());
+    painter.drawText(titleRect, Qt::AlignHCenter | Qt::AlignVCenter,
+                     titleMetrics.elidedText(m_placeholderTitle, Qt::ElideMiddle, area.width()));
+
+    if (!m_placeholderDetail.isEmpty()) {
+        QFont detailFont = font();
+        if (detailFont.pixelSize() > 0) {
+            detailFont.setPixelSize(std::max(1, detailFont.pixelSize() - 1));
+        }
+        painter.setFont(detailFont);
+        painter.setPen(palette.overlay);
+        const QRect detailRect(area.left(), titleRect.bottom() + 6, area.width(),
+                               area.bottom() - titleRect.bottom());
+        painter.drawText(detailRect, Qt::AlignHCenter | Qt::AlignTop | Qt::TextWordWrap,
+                         m_placeholderDetail);
+    }
 }
 
 void PanelView::setBodyInset(int horizontal, int vertical)
@@ -158,6 +239,19 @@ void PanelView::mouseReleaseEvent(QMouseEvent *event)
         Q_EMIT clickCompleted(nameAt(event->position().toPoint()), event->modifiers());
     }
     QListView::mouseReleaseEvent(event);
+}
+
+void PanelView::mouseDoubleClickEvent(QMouseEvent *event)
+{
+    if (event->button() == Qt::LeftButton) {
+        if (const QModelIndex index = indexAt(event->position().toPoint()); index.isValid()) {
+            setCurrentIndex(index);
+            event->accept();
+            Q_EMIT rowDoubleClicked();
+            return;
+        }
+    }
+    QListView::mouseDoubleClickEvent(event);
 }
 
 void PanelView::mouseMoveEvent(QMouseEvent *event)

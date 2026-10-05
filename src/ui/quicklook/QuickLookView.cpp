@@ -1,6 +1,7 @@
 #include "ui/quicklook/QuickLookView.h"
 
 #include "core/Format.h"
+#include "ui/SymbolicWidgets.h"
 #include "ui/ThemePalette.h"
 #include "ui/quicklook/QuickLookLoader.h"
 #include "ui/quicklook/QuickLookRegistry.h"
@@ -40,7 +41,7 @@ QuickLookView::QuickLookView(QWidget *parent)
       m_hint(new QLabel(m_footer)), m_stack(new QStackedWidget(this)), m_skeleton(new QLabel)
 {
     setObjectName(QStringLiteral("quickLook"));
-    setAutoFillBackground(true);
+    setAttribute(Qt::WA_StyledBackground, true);
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -48,8 +49,9 @@ QuickLookView::QuickLookView(QWidget *parent)
 
     // ---------------------------------------------------------------- header
     m_header->setObjectName(QStringLiteral("quickLookHeader"));
+    m_header->setAttribute(Qt::WA_StyledBackground, true);
     auto *headerLayout = new QHBoxLayout(m_header);
-    headerLayout->setContentsMargins(12, 8, 8, 8);
+    headerLayout->setContentsMargins(14, 8, 8, 8);
     headerLayout->setSpacing(12);
 
     m_title->setObjectName(QStringLiteral("quickLookTitle"));
@@ -64,12 +66,10 @@ QuickLookView::QuickLookView(QWidget *parent)
     m_subtitle->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     headerLayout->addWidget(m_subtitle, 0);
 
-    auto *close = new QPushButton(QStringLiteral("✕"), m_header);
+    auto *close = new SymbolicButton(QStringLiteral("x-mark"), 14, m_header);
     close->setObjectName(QStringLiteral("quickLookClose"));
-    close->setFlat(true);
-    close->setCursor(Qt::PointingHandCursor);
     close->setFocusPolicy(Qt::NoFocus);
-    close->setFixedSize(22, 22);
+    close->setFixedSize(24, 24);
     connect(close, &QPushButton::clicked, this, &QuickLookView::closeRequested);
     headerLayout->addWidget(close, 0);
 
@@ -89,8 +89,9 @@ QuickLookView::QuickLookView(QWidget *parent)
 
     // ---------------------------------------------------------------- footer
     m_footer->setObjectName(QStringLiteral("quickLookFooter"));
+    m_footer->setAttribute(Qt::WA_StyledBackground, true);
     auto *footerLayout = new QHBoxLayout(m_footer);
-    footerLayout->setContentsMargins(12, 6, 12, 6);
+    footerLayout->setContentsMargins(14, 6, 14, 6);
 
     m_hint->setObjectName(QStringLiteral("quickLookHint"));
     m_hint->setTextFormat(Qt::PlainText);
@@ -120,17 +121,14 @@ void QuickLookView::applySettings(const config::Settings::QuickLook &settings)
 
 void QuickLookView::refreshTheme()
 {
+    // The colours are the application stylesheet's (QWidget#quickLook and its
+    // children). Per-widget stylesheets set here used to pin the subtitle and
+    // hint to whichever theme was current when Quick Look was first opened.
     const ThemePalette &palette = currentPalette();
     QPalette widgetPalette = this->palette();
-    widgetPalette.setColor(QPalette::Window, palette.background);
+    widgetPalette.setColor(QPalette::Window, palette.surface);
     widgetPalette.setColor(QPalette::WindowText, palette.text);
     setPalette(widgetPalette);
-
-    m_subtitle->setStyleSheet(
-        QStringLiteral("color: %1;").arg(palette.subtext.name(QColor::HexRgb)));
-    m_hint->setStyleSheet(QStringLiteral("color: %1;").arg(palette.subtext.name(QColor::HexRgb)));
-    m_skeleton->setStyleSheet(
-        QStringLiteral("color: %1;").arg(palette.subtext.name(QColor::HexRgb)));
 }
 
 QuickLookRegistry *QuickLookView::registry() const

@@ -150,6 +150,9 @@ private:
     /// choice so the desktop stops overriding it.
     void toggleLightDark();
 
+    /// The sidebar's menu button: common actions with their keys.
+    void showApplicationMenu(const QPoint &globalPosition);
+
     /// Applies a theme to a running application — palette, stylesheet, font,
     /// and a repaint of the delegates that read the palette directly.
     void applyTheme(const config::Theme &theme);
@@ -212,6 +215,7 @@ private:
     std::size_t m_nextStartupTask = 0;
     bool m_quitAfterPaint = false;
     bool m_firstPaintSeen = false;
+    bool m_styleInstalled = false;
 
     /// Started by the session bus with --dbus-service.
     bool m_dbusService = false;

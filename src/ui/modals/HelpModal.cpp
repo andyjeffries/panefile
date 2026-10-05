@@ -2,13 +2,18 @@
 
 #include "input/ActionRegistry.h"
 #include "input/Keymap.h"
+#include "ui/Keycaps.h"
 #include "ui/ThemePalette.h"
 
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPainter>
+#include <QStyledItemDelegate>
 #include <QTreeWidget>
 #include <QVBoxLayout>
+
+#include <cmath>
 
 namespace pf::ui {
 namespace {
@@ -34,6 +39,70 @@ QString bindingSeparator()
 constexpr KeymapLayer kSearchedLayers[] = {KeymapLayer::Global, KeymapLayer::Normal,
                                            KeymapLayer::Selection};
 
+/// The keys column, drawn as keycaps rather than as text.
+///
+/// "Ctrl+C  ·  Super+C  ·  y y" is three bindings, the last of them two key
+/// presses, and as a run of text it reads as one string to be parsed. As caps
+/// it reads at a glance: each press is a key, and the dots between bindings
+/// say "or". The column's text stays the plain rendering, which is what the
+/// filter searches.
+class KeycapDelegate : public QStyledItemDelegate
+{
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+
+    void paint(QPainter *painter, const QStyleOptionViewItem &option,
+               const QModelIndex &index) const override
+    {
+        const QString text = index.data(Qt::DisplayRole).toString();
+        if (!drawsCaps(index, text)) {
+            QStyledItemDelegate::paint(painter, option, index);
+            return;
+        }
+        keycaps::paint(painter,
+                       QPointF(option.rect.left() + kCellPadding, option.rect.center().y() + 0.5),
+                       text, option.font);
+    }
+
+    QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override
+    {
+        QSize size = QStyledItemDelegate::sizeHint(option, index);
+        const QString text = index.data(Qt::DisplayRole).toString();
+        if (!drawsCaps(index, text)) {
+            return size;
+        }
+        size.setWidth(
+            static_cast<int>(std::ceil(keycaps::width(text, option.font) + (2 * kCellPadding))));
+        size.setHeight(std::max(size.height(), static_cast<int>(keycaps::kHeight) + 8));
+        return size;
+    }
+
+    static QString unboundText() { return QObject::tr("unbound"); }
+
+private:
+    static constexpr qreal kCellPadding = 6;
+
+    static bool drawsCaps(const QModelIndex &index, const QString &text)
+    {
+        return index.parent() != QModelIndex() && !text.isEmpty() && text != unboundText();
+    }
+};
+
+/// A category heading: small capitals, letter-spaced and faint, so the
+/// headings organise the list without competing with what is in it.
+void styleGroupHeading(QTreeWidgetItem *group, const QFont &base)
+{
+    QFont font = base;
+    font.setWeight(QFont::DemiBold);
+    font.setCapitalization(QFont::AllUppercase);
+    font.setLetterSpacing(QFont::AbsoluteSpacing, 0.6);
+    if (base.pixelSize() > 0) {
+        font.setPixelSize(std::max(1, base.pixelSize() - 2));
+    }
+    group->setFont(0, font);
+    group->setForeground(0, currentPalette().overlay);
+}
+
 } // namespace
 
 HelpModal::HelpModal(const input::ActionRegistry &registry, const input::Keymap &keymap,
@@ -44,25 +113,25 @@ HelpModal::HelpModal(const input::ActionRegistry &registry, const input::Keymap 
     setSizePercent(70, 80);
 
     auto *layout = new QVBoxLayout(contentWidget());
-    layout->setContentsMargins(16, 14, 16, 14);
-    layout->setSpacing(10);
+    layout->setContentsMargins(22, 20, 22, 16);
+    layout->setSpacing(12);
 
     auto *title = new QLabel(tr("Keyboard reference"), contentWidget());
-    QFont titleFont = title->font();
-    titleFont.setBold(true);
-    title->setFont(titleFont);
+    title->setObjectName(QStringLiteral("modalTitle"));
     layout->addWidget(title);
 
     m_filter->setPlaceholderText(tr("Filter actions…"));
     m_filter->setClearButtonEnabled(true);
     layout->addWidget(m_filter);
 
+    m_tree->setObjectName(QStringLiteral("helpTable"));
     m_tree->setColumnCount(3);
     m_tree->setHeaderLabels({tr("Action"), tr("Keys"), tr("Description")});
     m_tree->setRootIsDecorated(false);
     m_tree->setUniformRowHeights(true);
     m_tree->setSelectionMode(QAbstractItemView::NoSelection);
     m_tree->setFocusPolicy(Qt::NoFocus);
+    m_tree->setItemDelegateForColumn(1, new KeycapDelegate(m_tree));
     m_tree->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     m_tree->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
     m_tree->header()->setSectionResizeMode(2, QHeaderView::Stretch);
@@ -70,15 +139,17 @@ HelpModal::HelpModal(const input::ActionRegistry &registry, const input::Keymap 
     layout->addWidget(m_tree, 1);
 
     auto *hint = new QLabel(tr("Esc closes"), contentWidget());
-    hint->setForegroundRole(QPalette::WindowText);
-    QPalette hintPalette = hint->palette();
-    hintPalette.setColor(QPalette::WindowText, currentPalette().overlay);
-    hint->setPalette(hintPalette);
+    hint->setObjectName(QStringLiteral("modalHint"));
     layout->addWidget(hint);
 
     connect(m_filter, &QLineEdit::textChanged, this, &HelpModal::applyFilter);
 
     refresh();
+}
+
+QWidget *HelpModal::initialFocusWidget()
+{
+    return m_filter;
 }
 
 void HelpModal::refresh()
@@ -100,9 +171,7 @@ void HelpModal::refresh()
         auto *group = new QTreeWidgetItem(m_tree);
         group->setFirstColumnSpanned(true);
         group->setText(0, input::ActionRegistry::categoryTitle(category));
-        QFont groupFont = group->font(0);
-        groupFont.setBold(true);
-        group->setFont(0, groupFont);
+        styleGroupHeading(group, m_tree->font());
         group->setExpanded(true);
 
         for (const input::Action *action : actions) {
@@ -123,8 +192,8 @@ void HelpModal::refresh()
             // it is reachable from the `>` prompt, and a user looking for it
             // needs to see that it exists and has no key rather than conclude
             // the feature is missing.
-            item->setText(1,
-                          rendered.isEmpty() ? tr("unbound") : rendered.join(bindingSeparator()));
+            item->setText(1, rendered.isEmpty() ? KeycapDelegate::unboundText()
+                                                : rendered.join(bindingSeparator()));
             item->setText(2, action->description);
 
             if (rendered.isEmpty()) {
@@ -140,9 +209,7 @@ void HelpModal::refresh()
         auto *group = new QTreeWidgetItem(m_tree);
         group->setFirstColumnSpanned(true);
         group->setText(0, tr("Binding conflicts"));
-        QFont groupFont = group->font(0);
-        groupFont.setBold(true);
-        group->setFont(0, groupFont);
+        styleGroupHeading(group, m_tree->font());
         group->setExpanded(true);
 
         for (const input::KeymapConflict &conflict : conflicts) {

@@ -34,6 +34,11 @@ public:
     /// content's own size hint.
     void setSizePercent(int widthPercent, int heightPercent);
 
+    /// Sizes the card's height to its content rather than to a percentage, for
+    /// a short question that would otherwise sit at the top of a tall, mostly
+    /// empty card.
+    void setHeightFitsContent(bool fits);
+
     /// Tracks the parent's size so the modal keeps covering the window as it is
     /// resized. Public because QObject declares it public, and narrowing an
     /// override's visibility is a trap for anyone holding a base pointer.
@@ -51,12 +56,18 @@ protected:
     /// Called when Enter is pressed. The default accepts and dismisses.
     virtual void accept();
 
+    /// What has the keyboard when the modal opens. The modal itself by default;
+    /// a modal whose first job is typing — a filter, a name — returns its field,
+    /// so the first keystroke lands in it rather than needing a click first.
+    virtual QWidget *initialFocusWidget();
+
 private:
     void reposition();
 
     QWidget *m_content = nullptr;
     int m_widthPercent = 60;
     int m_heightPercent = 70;
+    bool m_heightFitsContent = false;
 };
 
 } // namespace pf::ui

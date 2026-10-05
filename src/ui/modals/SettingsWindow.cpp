@@ -9,6 +9,8 @@
 #include "core/WorkerPools.h"
 #include "platform/DefaultFileManager.h"
 #include "platform/Paths.h"
+#include "ui/SymbolicWidgets.h"
+#include "ui/ThemePalette.h"
 
 #include <QButtonGroup>
 #include <QCheckBox>
@@ -35,7 +37,7 @@ namespace {
 /// The tab strip's buttons. Checkable, flat, and laid out as a glyph over a
 /// label — which is what makes the row read as a macOS preferences toolbar
 /// rather than as a row of push buttons.
-QPushButton *makeTabButton(const QString &glyph, const QString &title)
+QPushButton *makeTabButton(const QString &iconName, const QString &title)
 {
     auto *button = new QPushButton;
     button->setObjectName(QStringLiteral("settingsTab"));
@@ -53,10 +55,17 @@ QPushButton *makeTabButton(const QString &glyph, const QString &title)
     layout->setContentsMargins(10, 7, 10, 6);
     layout->setSpacing(1);
 
-    auto *icon = new QLabel(glyph);
+    // A symbolic glyph, in the accent when its tab is the open one. It was a
+    // Unicode character, which rendered in whatever font happened to have it,
+    // at whatever size and weight that font drew it.
+    auto *icon = new SymbolicLabel(
+        iconName, 20,
+        [button] {
+            return button->isChecked() ? currentPalette().accent : currentPalette().subtext;
+        },
+        button);
     icon->setObjectName(QStringLiteral("settingsTabGlyph"));
-    icon->setAlignment(Qt::AlignCenter);
-    layout->addWidget(icon);
+    layout->addWidget(icon, 0, Qt::AlignHCenter);
 
     auto *label = new QLabel(title);
     label->setObjectName(QStringLiteral("settingsTabLabel"));
@@ -135,8 +144,10 @@ SettingsWindow::SettingsWindow(input::ActionRegistry *registry, input::Keymap *k
 {
     setSizePercent(72, 78);
 
+    // Inset by the card's 1px border, so the toolbar and the pages sit inside
+    // it rather than over it; they round their own outer corners to match.
     auto *layout = new QVBoxLayout(contentWidget());
-    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setContentsMargins(1, 1, 1, 1);
     layout->setSpacing(0);
 
     m_tabs->setExclusive(true);
@@ -145,10 +156,10 @@ SettingsWindow::SettingsWindow(input::ActionRegistry *registry, input::Keymap *k
     m_pages->setObjectName(QStringLiteral("settingsPages"));
     layout->addWidget(m_pages, 1);
 
-    addTab(tr("Appearance"), QStringLiteral("◐"), buildAppearanceTab());
-    addTab(tr("General"), QStringLiteral("⚙"), buildGeneralTab());
-    addTab(tr("Quick Look"), QStringLiteral("◱"), buildQuickLookTab());
-    addTab(tr("Keys"), QStringLiteral("⌘"), buildKeysTab());
+    addTab(tr("Appearance"), QStringLiteral("swatch"), buildAppearanceTab());
+    addTab(tr("General"), QStringLiteral("cog-6-tooth"), buildGeneralTab());
+    addTab(tr("Quick Look"), QStringLiteral("eye"), buildQuickLookTab());
+    addTab(tr("Keys"), QStringLiteral("command-line"), buildKeysTab());
 
     connect(m_tabs, &QButtonGroup::idClicked, m_pages, &QStackedWidget::setCurrentIndex);
 
@@ -174,9 +185,9 @@ QWidget *SettingsWindow::buildToolbar()
     return bar;
 }
 
-void SettingsWindow::addTab(const QString &title, const QString &glyph, QWidget *page)
+void SettingsWindow::addTab(const QString &title, const QString &iconName, QWidget *page)
 {
-    auto *button = makeTabButton(glyph, title);
+    auto *button = makeTabButton(iconName, title);
     const int index = m_pages->addWidget(page);
     m_tabs->addButton(button, index);
 
@@ -232,16 +243,18 @@ QWidget *SettingsWindow::buildAppearanceTab()
     outer->addWidget(m_controls->followSystem);
 
     auto *form = new QFormLayout;
+    // Numbers want a field the width of a number, not of the window.
+    form->setFieldGrowthPolicy(QFormLayout::FieldsStayAtSizeHint);
     form->setHorizontalSpacing(16);
     form->setVerticalSpacing(12);
 
     m_controls->fontSize = new QSpinBox;
     m_controls->fontSize->setRange(6, 32);
-    m_controls->fontSize->setSuffix(tr(" pt"));
+    m_controls->fontSize->setSuffix(tr(" px"));
     connect(m_controls->fontSize, &QSpinBox::valueChanged, this, [this](int value) {
         if (!m_loading) {
             writeTheme(QStringLiteral("ui"), QStringLiteral("font_size"),
-                       config::TomlWriter::number(value), tr("Font size: %1 pt").arg(value));
+                       config::TomlWriter::number(value), tr("Font size: %1 px").arg(value));
         }
     });
     form->addRow(tr("Font size"), m_controls->fontSize);

@@ -44,6 +44,8 @@ private Q_SLOTS:
 
     // theme.toml
     void themeDefaultsAreCatppuccinMocha();
+    void fontSizesArePixels();
+    void derivedColoursKeepTheirDistance();
     void noThemeFileFollowsTheDesktop();
     void followSystemOverridesTheNamedTheme();
     void themeColoursAreApplied();
@@ -251,7 +253,47 @@ void TestConfig::themeDefaultsAreCatppuccinMocha()
     QVERIFY(result.issues.isEmpty());
     QCOMPARE(result.theme.background, QColor(0x1e, 0x1e, 0x2e));
     QCOMPARE(result.theme.accent, QColor(0x89, 0xb4, 0xfa));
-    QCOMPARE(result.theme.rowHeight, 28);
+    QCOMPARE(result.theme.rowHeight, 30);
+    QCOMPARE(result.theme.fontSize, 13);
+}
+
+void TestConfig::fontSizesArePixels()
+{
+    // 13 means 13 pixels on every platform. As points it was 13px on a Mac and
+    // about 17px on a 96 dpi Linux desktop — the same theme a quarter larger.
+    Theme theme;
+    theme.fontSize = 13;
+    const QFont font = applicationFont(theme, QFont());
+    QCOMPARE(font.pixelSize(), 13);
+
+    theme.fontFamily = QStringLiteral("Some Named Face");
+    QCOMPARE(applicationFont(theme, QFont()).family(), QStringLiteral("Some Named Face"));
+
+    const QString sheet = buildStyleSheet(theme);
+    QVERIFY(sheet.contains(QStringLiteral("font-size: 13px")));
+    QVERIFY(!sheet.contains(QStringLiteral("pt;")));
+}
+
+void TestConfig::derivedColoursKeepTheirDistance()
+{
+    // The focused cursor is a tint, so it must still be visibly off the panel
+    // it sits on, and the hover fainter than it: a hover that matched the
+    // cursor would make the pointer look like a second cursor.
+    for (const QString &name :
+         {QStringLiteral("panefile-light"), QStringLiteral("panefile-dark")}) {
+        const Theme theme = loadThemeByName(name).theme;
+        const auto distance = [](const QColor &a, const QColor &b) {
+            return std::max({std::abs(a.red() - b.red()), std::abs(a.green() - b.green()),
+                             std::abs(a.blue() - b.blue())});
+        };
+        const QColor cursor = theme.focusedCursorBackground();
+        const QColor hover = theme.hoverBackground(theme.surface);
+        QVERIFY2(distance(cursor, theme.surface) >= 12, qPrintable(name));
+        QVERIFY2(distance(hover, theme.surface) >= 6, qPrintable(name));
+        QVERIFY2(distance(hover, theme.surface) < distance(cursor, theme.surface),
+                 qPrintable(name));
+        QVERIFY2(theme.sidebarBackground.isValid(), qPrintable(name));
+    }
 }
 
 void TestConfig::noThemeFileFollowsTheDesktop()

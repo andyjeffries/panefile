@@ -194,6 +194,32 @@ Keymap::Match Keymap::lookup(const QList<KeymapLayer> &layers, const Binding &pe
     return {};
 }
 
+QList<Keymap::Continuation> Keymap::continuations(const QList<KeymapLayer> &layers,
+                                                  const Binding &prefix) const
+{
+    QList<Continuation> result;
+    if (prefix.isEmpty()) {
+        return result;
+    }
+
+    for (const KeymapLayer layer : layers) {
+        if (lookup(layer, prefix).type == MatchType::NoMatch) {
+            continue;
+        }
+        const Layer *owner = findLayer(layer);
+        if (owner == nullptr) {
+            return result;
+        }
+        for (const auto &[actionId, binding] : owner->bindings) {
+            if (binding.size() > prefix.size() && binding.mid(0, prefix.size()) == prefix) {
+                result.append({.remaining = binding.mid(prefix.size()), .actionId = actionId});
+            }
+        }
+        return result;
+    }
+    return result;
+}
+
 QList<Binding> Keymap::bindingsFor(KeymapLayer layer, const QString &actionId) const
 {
     QList<Binding> result;

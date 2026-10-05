@@ -57,6 +57,16 @@ public:
     /// is not on one.
     void unmountCurrentVolume();
 
+    /// Re-applies everything the sidebar takes from the theme: the list's
+    /// palette and every row's icon and text colour.
+    ///
+    /// Needed because neither comes from the stylesheet. The palette roles are
+    /// the ones the item view's style reads directly, and the icons are tinted
+    /// pixmaps, which QSS cannot recolour — so both were fixed at whatever
+    /// theme was current when the sidebar was built. Call after
+    /// ui::setCurrentPalette() on a theme change or hot reload.
+    void refreshTheme();
+
     /// Drops the current row when the list loses focus. Public because QObject
     /// declares it so.
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -66,14 +76,31 @@ Q_SIGNALS:
     /// opens in; the sidebar deliberately does not know.
     void placeActivated(const QString &path);
 
+    /// The menu button was pressed; the menu belongs at `globalPosition`.
+    /// Built by the application, which owns the actions it lists.
+    void menuRequested(const QPoint &globalPosition);
+
     void pinnedPathsChanged();
 
     void statusMessage(const QString &message);
 
 private:
     void addHeading(const QString &title);
-    void addPlace(const QString &title, const QString &path);
+    /// A hairline between groups of places, inset like the rows.
+    void addDivider();
+    void addPlace(const QString &title, const QString &path, const QString &iconName);
     void addDevices();
+
+    /// The palette roles the list's style reads directly; see refreshTheme().
+    void applyPalette();
+
+    /// Sets a row's icon and text colour from the current theme and the row's
+    /// stored icon name and tone, so refreshTheme() can redo it.
+    static void applyItemTheme(QListWidgetItem *item);
+
+    /// The symbolic icon for a path: the matching place's glyph when the path
+    /// is home or an XDG user directory, otherwise a folder.
+    static QString iconNameForPath(const QString &path);
 
     /// Opens the place or mounts the device a row stands for. Tolerates being
     /// called twice for one gesture: a double click delivers both itemClicked

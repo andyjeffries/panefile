@@ -31,11 +31,14 @@ PanelStrip::PanelStrip(QWidget *parent)
 
     m_splitter->setObjectName(QStringLiteral("panelSplitter"));
     m_splitter->setChildrenCollapsible(false);
-    // Wider than the 1px used elsewhere, and transparent (see the stylesheet):
-    // each panel draws its own full rounded border, so what is wanted between
-    // them is space, not a line. This is also the drag target, and one pixel of
-    // it was never a realistic thing to hit.
-    m_splitter->setHandleWidth(6);
+    // One pixel, and the handle *is* the seam between two panels (see the
+    // stylesheet). It was six transparent pixels beside a seam each panel drew
+    // itself, which showed the window background as a stripe between them.
+    //
+    // One pixel is still a usable drag target: QSplitterHandle widens a handle
+    // narrower than five pixels to a five-pixel grab area and masks its
+    // painting back down to the line.
+    m_splitter->setHandleWidth(1);
     layout->addWidget(m_splitter);
 }
 

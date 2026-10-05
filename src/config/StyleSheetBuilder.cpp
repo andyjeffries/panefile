@@ -2,6 +2,11 @@
 
 #include "config/Theme.h"
 
+#include <QFile>
+#include <QList>
+#include <QPair>
+#include <QTemporaryDir>
+
 namespace pf::config {
 namespace {
 
@@ -10,12 +15,6 @@ QString hex(const QColor &colour)
     return colour.name(QColor::HexRgb);
 }
 
-/// A colour a little lighter or darker than its base, whichever direction moves
-/// it away from the background.
-///
-/// Hard-coded lighter() would produce an invisible hover on a light theme and a
-/// washed-out one on a dark theme. Deriving the direction from the theme means
-/// a shade reads the same way in both.
 /// Black or white, whichever the given background can carry. Rec. 709 luma,
 /// which tracks perceived brightness far better than a mean of the channels.
 QColor readableOn(const QColor &background)
@@ -25,37 +24,151 @@ QColor readableOn(const QColor &background)
     return luma > 0.55 ? QColor(0, 0, 0) : QColor(255, 255, 255);
 }
 
-QString shade(const QColor &colour, bool towardsLight, int percent)
+/// A chevron in the given colour, written once per process and colour, and its
+/// path for a stylesheet's `image: url(...)`.
+///
+/// The arrows on combo and spin boxes can only come from image files — Qt's
+/// stylesheet engine draws those sub-controls from an image or not at all, and
+/// never asks the base style — and an image file cannot follow a theme. So the
+/// files are made to match it: a few hundred bytes of SVG each, in a temporary
+/// directory that goes away with the process.
+QString chevronFile(const char *direction, const QColor &colour)
 {
-    return hex(towardsLight ? colour.lighter(100 + percent) : colour.darker(100 + percent));
+    static const QTemporaryDir directory;
+    if (!directory.isValid()) {
+        return {};
+    }
+
+    const bool up = qstrcmp(direction, "up") == 0;
+    const QString path = directory.filePath(
+        QStringLiteral("chevron-%1-%2.svg").arg(QLatin1String(direction), hex(colour).mid(1)));
+    if (!QFile::exists(path)) {
+        QFile file(path);
+        if (file.open(QIODevice::WriteOnly)) {
+            file.write(
+                QStringLiteral("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 10 10\">"
+                               "<path d=\"%1\" fill=\"none\" stroke=\"%2\" stroke-width=\"1.5\" "
+                               "stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>")
+                    .arg(up ? QStringLiteral("M2 6.5 5 3.5 8 6.5")
+                            : QStringLiteral("M2 3.5 5 6.5 8 3.5"),
+                         hex(colour))
+                    .toUtf8());
+        }
+    }
+    return path;
+}
+
+/// The stylesheet's vocabulary, from the theme.
+///
+/// A theme stores a palette; a window needs a few more colours than a palette
+/// names — a fill for a button, a stronger border for a popup, the hover over
+/// each surface. Every one of them is derived here, in one place, by mixing the
+/// theme's own colours rather than by lighter()/darker(), so a derived shade
+/// keeps the theme's temperature: Panefile Light's hover is a warm grey because
+/// its text is a warm near-black, not because anybody chose a grey.
+QList<QPair<QString, QString>> tokensFor(const Theme &theme)
+{
+    const bool light = theme.isLight();
+    const QColor sidebar = theme.effectiveSidebarBackground();
+
+    // Fills a step and two steps off a surface, for controls that sit on one:
+    // a button at rest, then hovered or pressed. Review calls these surface2
+    // and surface3.
+    const QColor fill = mixColours(theme.surface, theme.text, light ? 0.035 : 0.045);
+    const QColor fillStrong = mixColours(theme.surface, theme.text, light ? 0.08 : 0.09);
+
+    const QColor accentHover = light ? theme.accent.darker(110) : theme.accent.lighter(112);
+
+    return {
+        {QStringLiteral("chevron_down"), chevronFile("down", theme.subtext)},
+        {QStringLiteral("chevron_up"), chevronFile("up", theme.subtext)},
+        {QStringLiteral("background"), hex(theme.background)},
+        {QStringLiteral("surface"), hex(theme.surface)},
+        {QStringLiteral("text"), hex(theme.text)},
+        // Three levels of text. `muted` for secondary facts, `faint` for
+        // furniture. Themes predating this used subtext and overlay as one
+        // grey, and still can; nothing breaks, the levels simply coincide.
+        {QStringLiteral("muted"), hex(theme.subtext)},
+        {QStringLiteral("faint"), hex(theme.overlay)},
+        {QStringLiteral("accent_hover"), hex(accentHover)},
+        // The accent's tint, for something that is on; the focus colour's, for
+        // where you are in a list — the same tint as the cursor row.
+        {QStringLiteral("accent_soft"),
+         hex(mixColours(theme.surface, theme.accent, light ? 0.12 : 0.19))},
+        {QStringLiteral("focus_soft"), hex(theme.focusedCursorBackground())},
+        {QStringLiteral("accent"), hex(theme.accent)},
+        {QStringLiteral("selection_bg"), hex(theme.selectionBackground)},
+        {QStringLiteral("error"), hex(theme.error)},
+        {QStringLiteral("border_focused"), hex(theme.borderFocused)},
+        {QStringLiteral("border_strong"), hex(mixColours(theme.border, theme.text, 0.12))},
+        {QStringLiteral("border"), hex(theme.border)},
+        // The rule under a panel header is internal to the panel, so it is
+        // fainter than the seam *between* panels — a hairline, not a border.
+        {QStringLiteral("header_rule"), hex(mixColours(theme.border, theme.surface, 0.45))},
+        {QStringLiteral("fill_strong"), hex(fillStrong)},
+        {QStringLiteral("fill"), hex(fill)},
+        {QStringLiteral("hover_sidebar"), hex(theme.hoverBackground(sidebar))},
+        {QStringLiteral("hover"), hex(theme.hoverBackground(theme.surface))},
+        {QStringLiteral("sidebar_bg"), hex(sidebar)},
+        {QStringLiteral("scroll_handle_hover"),
+         hex(mixColours(theme.background, theme.text, light ? 0.42 : 0.45))},
+        {QStringLiteral("scroll_handle"),
+         hex(mixColours(theme.background, theme.text, light ? 0.24 : 0.28))},
+        {QStringLiteral("mono_family"),
+         QStringLiteral("'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, Consolas, monospace")},
+        // White or black against the accent, whichever the accent can carry —
+        // a light theme's accent may need dark text on it.
+        {QStringLiteral("on_selection"), hex(readableOn(theme.selectionBackground))},
+        {QStringLiteral("on_accent"), hex(readableOn(theme.accent))},
+        {QStringLiteral("on_error"), hex(readableOn(theme.error))},
+        {QStringLiteral("error_hover"),
+         hex(light ? theme.error.darker(110) : theme.error.lighter(112))},
+        // The type scale, in pixels: body, then a step down for secondary
+        // facts, a step further for captions, and up for titles.
+        {QStringLiteral("title_font_size"), QString::number(theme.fontSize + 3)},
+        {QStringLiteral("heading_font_size"), QString::number(theme.fontSize + 1)},
+        {QStringLiteral("small_font_size"), QString::number(theme.fontSize - 1)},
+        {QStringLiteral("caption_font_size"), QString::number(theme.fontSize - 2)},
+        {QStringLiteral("font_size"), QString::number(theme.fontSize)},
+        {QStringLiteral("inner_large_radius"), QString::number(theme.borderRadius + 5)},
+        {QStringLiteral("large_radius"), QString::number(theme.borderRadius + 6)},
+        {QStringLiteral("control_radius"), QString::number(theme.borderRadius + 2)},
+        {QStringLiteral("small_radius"), QString::number(std::max(2, theme.borderRadius - 2))},
+        {QStringLiteral("radius"), QString::number(theme.borderRadius)},
+        {QStringLiteral("half_padding"), QString::number(std::max(2, theme.panelPadding / 2))},
+        {QStringLiteral("padding"), QString::number(theme.panelPadding)},
+    };
 }
 
 } // namespace
 
 QString buildStyleSheet(const Theme &theme)
 {
-    const bool light = theme.isLight();
-    const QString hover = shade(theme.surface, !light, 12);
-    const QString scrollHandle = shade(theme.background, !light, 40);
-
     // Widget selectors rather than object names wherever possible, so a widget
     // added later is styled without anyone remembering to add a rule for it.
     // Object names are used only where two instances of the same class need to
     // look different.
-    return QStringLiteral(R"(
+    //
+    // Check marks and radio dots are not here: QSS can only draw them from
+    // image files. ui::PanefileStyle paints them in the theme's colours, which
+    // only works while these rules leave the indicator sub-controls alone. The
+    // arrows on combo and spin boxes have no such way out; see chevronFile().
+    QString sheet = QStringLiteral(R"(
 /* Generated from the active theme. Do not edit — change theme.toml instead. */
 
 QWidget {
     background-color: %{background};
     color: %{text};
-    font-size: %{font_size}pt;
+    font-size: %{font_size}px;
 }
 
 QToolTip {
     background-color: %{surface};
     color: %{text};
-    border: 1px solid %{border};
-    padding: 4px 6px;
+    border: 1px solid %{border_strong};
+    border-radius: %{radius}px;
+    padding: 5px 8px;
+    font-size: %{small_font_size}px;
 }
 
 /* Panels ---------------------------------------------------------------- */
@@ -68,18 +181,21 @@ QToolTip {
    the window can do, and it competes with the cursor pill for the same job.
    The edge is always present and merely transparent when the panel is not
    focused, so nothing reflows as focus moves. Panels butt together against a
-   hairline seam instead of floating as rounded cards over a backdrop. */
+   hairline seam — the splitter handle — instead of floating as rounded cards
+   over a backdrop. */
 QWidget#filePanel {
     background-color: %{background};
     border: none;
-    border-left: 1px solid %{seam};
     border-top: 2px solid transparent;
     border-radius: 0px;
 }
 
+/* The focused panel is `surface`, not a shade of the background: white over
+   an off-white body in a light theme, lifted off a near-black one in a dark
+   theme. */
 QWidget#filePanel[panelActive="true"] {
     border-top: 2px solid %{border_focused};
-    background-color: %{panel_active_bg};
+    background-color: %{surface};
 }
 
 /* A hairline under the header rather than a filled bar: the path and the count
@@ -91,44 +207,25 @@ QWidget#panelHeaderRow {
     border-bottom: 1px solid %{header_rule};
 }
 
+/* The path is rich text with its own colours — parents faint, the folder
+   itself in the text colour — so only its size is set here. */
 QLabel#panelHeader {
     background-color: transparent;
-    color: %{overlay};
-    font-size: %{chrome_font_size}pt;
-    font-weight: 600;
-}
-
-/* Near-black in the focused panel against a mid grey in the other. Along with
-   the accent edge and the filled cursor pill, that is the third place the same
-   answer is given to "which pane am I in". */
-QLabel#panelHeader[panelActive="true"] {
-    color: %{text};
-}
-
-QLabel#panelHeaderCount[panelActive="true"] {
-    color: %{subtext};
+    color: %{faint};
+    font-size: %{font_size}px;
 }
 
 /* The count is a step quieter than the path, and both are a step quieter in a
-   panel that is not focused — which is a second reading of the same signal the
-   accent edge gives, for anyone whose eye is on the list rather than its top. */
+   panel that is not focused — a second reading of the same signal the accent
+   edge gives, for anyone whose eye is on the list rather than its top. */
 QLabel#panelHeaderCount {
     background-color: transparent;
-    color: %{overlay};
-    font-size: %{small_font_size}pt;
+    color: %{faint};
+    font-size: %{small_font_size}px;
 }
 
-QWidget#filePanel[panelActive="true"] QLabel#panelHeader {
-    color: %{text};
-}
-
-QWidget#filePanel[panelActive="true"] QLabel#panelHeaderCount {
-    color: %{subtext};
-}
-
-QLabel#panelStatus {
-    color: %{error};
-    padding: %{half_padding}px %{padding}px;
+QLabel#panelHeaderCount[panelActive="true"] {
+    color: %{muted};
 }
 
 QListView#panelView {
@@ -137,27 +234,41 @@ QListView#panelView {
     outline: none;
 }
 
+/* The type-to-filter field, inset into the panel like the rows above it. */
+QLineEdit#panelFilter {
+    background-color: %{fill};
+    margin: 4px 6px 6px 6px;
+}
+
 /* Sidebar --------------------------------------------------------------- */
 
-/* A step off the content and a seam against it. Finder's chrome feels layered
-   because the sidebar is a different surface; at the same white as the list it
-   is just an indented column of words. */
+/* A step off the content, so the sidebar reads as a separate surface rather
+   than an indented column of words. No border of its own: the first panel's
+   splitter handle beside it is the join, and a second line made a double rule. */
 QWidget#sidebar {
     background-color: %{sidebar_bg};
     border: none;
-    border-right: 1px solid %{seam};
 }
 
 /* Transparent, or it paints the *content* background over the sidebar: the
    catch-all QWidget rule gives every widget the window's background colour, and
    a label that does not opt out of it stamps a lighter block behind its own
-   text. That is what put a paler strip across the top of the sidebar. */
+   text. */
+QPushButton#sidebarMenu {
+    border-radius: %{radius}px;
+    padding: 0px;
+}
+
+QPushButton#sidebarMenu:hover {
+    background-color: %{hover_sidebar};
+}
+
 QLabel#sidebarSection {
     background-color: transparent;
-    color: %{overlay};
-    font-size: %{small_font_size}pt;
+    color: %{faint};
+    font-size: %{caption_font_size}px;
     font-weight: 600;
-    padding: 12px 14px 6px 14px;
+    padding: 14px 18px 4px 18px;
 }
 
 QListWidget#sidebarList {
@@ -167,20 +278,27 @@ QListWidget#sidebarList {
     padding: 0px 8px 8px 8px;
 }
 
-/* Inset from the sidebar's edges so the selection reads as a pill on a surface
-   rather than a band running edge to edge. */
-/* 26px rows inset from the sidebar's edges, so the selection reads as a pill on
-   a surface rather than a band running from one edge to the other. */
+/* Rows inset from the sidebar's edges so the selection reads as a pill on a
+   surface rather than a band running from one edge to the other. */
 QListWidget#sidebarList::item {
     color: %{text};
-    font-size: %{chrome_font_size}pt;
-    padding: 4px 10px;
-    min-height: 22px;
-    border-radius: %{small_radius}px;
+    padding: 5px 8px;
+    min-height: 20px;
+    border-radius: %{radius}px;
 }
 
 QListWidget#sidebarList::item:hover {
-    background-color: %{hover};
+    background-color: %{hover_sidebar};
+}
+
+/* Headings and the divider are rows that are not places: no hover. */
+QListWidget#sidebarList::item:disabled, QListWidget#sidebarList::item:disabled:hover {
+    background-color: transparent;
+}
+
+QFrame#sidebarDivider {
+    background-color: %{border};
+    border: none;
 }
 
 /* The sidebar's entries are shortcuts — press one and a panel goes there — not
@@ -197,178 +315,402 @@ QListWidget#sidebarList::item:selected {
 /* Status furniture ------------------------------------------------------ */
 
 /* A hairline along the top, so the status bar belongs to the window rather than
-   hanging off the bottom of it. */
+   hanging off the bottom of it. The same surface as the sidebar: both are
+   chrome around the panels. */
 QWidget#footerRow {
     background-color: %{sidebar_bg};
-    border-top: 1px solid %{seam};
-    min-height: 26px;
+    border-top: 1px solid %{border};
+    min-height: 28px;
 }
 
-/* The one place monospace survives. The permissions, owner, size and date are
-   fixed-shape facts read by column, and a proportional face makes drwxr-xr-x
-   harder to scan; everything else in the window is the system UI face, which is
-   what stops the application reading as a terminal utility. */
+/* The UI face, with the permission string set in monospace inside the label's
+   own rich text: drwxr-xr-x is read by column and wants fixed widths, the size
+   and the date do not, and a whole strip of monospace read as a terminal. */
 QLabel#footer {
     background-color: transparent;
-    color: %{subtext};
-    font-family: %{mono_family};
-    font-size: %{small_font_size}pt;
+    color: %{muted};
+    font-size: %{small_font_size}px;
 }
 
 QLabel#selectionCount {
     background-color: transparent;
-    color: %{subtext};
-    font-size: %{small_font_size}pt;
+    color: %{muted};
+    font-size: %{small_font_size}px;
 }
 
+/* A pending key sequence as a keycap: what you have typed so far, drawn as the
+   keys it is. */
 QLabel#pendingKeys {
+    background-color: %{fill_strong};
+    color: %{text};
+    border: 1px solid %{border};
+    border-radius: 5px;
+    padding: 0px 6px;
+    font-family: %{mono_family};
+    font-size: %{caption_font_size}px;
+}
+
+/* The process bar: the same chrome as the status bar it sits under. */
+QWidget#processBar {
+    background-color: %{sidebar_bg};
+    border-top: 1px solid %{border};
+}
+
+QLabel#processSummary {
     background-color: transparent;
-    color: %{accent};
-    font-size: %{small_font_size}pt;
-    font-weight: bold;
+    color: %{muted};
+    font-size: %{small_font_size}px;
 }
 
-/* An overlay scrollbar, not a widget with a track. A thick bar with a visible
-   groove is a Motif-era affordance; macOS shows a thin thumb over the content
-   and nothing else. */
-/* The square where a vertical and a horizontal scrollbar would meet. With the
-   list body inset, that square is inside the panel and was drawing itself as a
-   small bordered box in the bottom corner — an empty widget the user cannot
-   interact with, which is exactly the kind of thing that reads as unfinished. */
-QAbstractScrollArea::corner {
-    background: transparent;
+QTreeWidget#processJobs {
+    background-color: transparent;
     border: none;
 }
 
-QScrollBar:vertical {
-    background: transparent;
-    border: none;
-    width: 11px;
-    margin: 0px;
+/* Controls ------------------------------------------------------------- */
+
+/* A quiet button: a filled shape a step off whatever it sits on, as Review's
+   "subtle" button. The default button is the one primary action and takes the
+   accent; nothing else in a dialog does. */
+QPushButton {
+    background-color: %{fill};
+    color: %{text};
+    border: 1px solid %{border};
+    border-radius: %{control_radius}px;
+    padding: 5px 14px;
+    font-weight: 500;
 }
 
-QScrollBar::handle:vertical {
-    background: %{scroll_handle};
+QPushButton:hover {
+    background-color: %{fill_strong};
+}
+
+QPushButton:pressed {
+    background-color: %{fill_strong};
+    border-color: %{border_strong};
+}
+
+QPushButton:default {
+    background-color: %{accent};
+    border: 1px solid %{accent};
+    color: %{on_accent};
+    font-weight: 600;
+}
+
+QPushButton:default:hover {
+    background-color: %{accent_hover};
+    border-color: %{accent_hover};
+}
+
+QPushButton:disabled {
+    color: %{faint};
+    background-color: %{fill};
+    border-color: %{border};
+}
+
+/* Keyboard focus on a button, for the confirmations where Enter presses
+   whichever one has it. */
+QPushButton:focus {
+    border-color: %{border_focused};
+}
+
+/* The one button that destroys something: the error colour, filled. */
+QPushButton#destructiveButton {
+    background-color: %{error};
+    border: 1px solid %{error};
+    color: %{on_error};
+    font-weight: 600;
+}
+
+QPushButton#destructiveButton:hover {
+    background-color: %{error_hover};
+    border-color: %{error_hover};
+}
+
+QPushButton#destructiveButton:focus {
+    border-color: %{text};
+}
+
+/* A flat button is a ghost: no shape until the pointer is on it. */
+QPushButton:flat {
+    background-color: transparent;
+    border: none;
+}
+
+QPushButton:flat:hover {
+    background-color: %{hover};
+}
+
+QLineEdit {
+    background-color: %{surface};
+    color: %{text};
+    border: 1px solid %{border};
+    border-radius: %{control_radius}px;
+    padding: 5px 9px;
+    selection-background-color: %{accent};
+    selection-color: %{on_accent};
+}
+
+QLineEdit:focus {
+    border: 1px solid %{border_focused};
+}
+
+QLineEdit:disabled {
+    color: %{faint};
+}
+
+QComboBox, QSpinBox {
+    background-color: %{fill};
+    color: %{text};
+    border: 1px solid %{border};
+    border-radius: %{control_radius}px;
+    padding: 4px 9px;
+    selection-background-color: %{accent};
+    selection-color: %{on_accent};
+}
+
+QComboBox:hover, QSpinBox:hover {
+    background-color: %{fill_strong};
+}
+
+QComboBox:focus, QSpinBox:focus {
+    border: 1px solid %{border_focused};
+}
+
+QComboBox::drop-down {
+    background-color: transparent;
+    border: none;
+    width: 22px;
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+}
+
+QComboBox::down-arrow, QSpinBox::down-arrow {
+    image: url("%{chevron_down}");
+    width: 10px;
+    height: 10px;
+}
+
+QSpinBox::up-arrow {
+    image: url("%{chevron_up}");
+    width: 10px;
+    height: 10px;
+}
+
+QComboBox QAbstractItemView {
+    background-color: %{surface};
+    color: %{text};
+    border: 1px solid %{border_strong};
+    outline: none;
+    padding: 4px;
+    selection-background-color: %{fill_strong};
+    selection-color: %{text};
+}
+
+QSpinBox {
+    padding-right: 22px;
+}
+
+QSpinBox::up-button, QSpinBox::down-button {
+    subcontrol-origin: border;
+    background-color: transparent;
+    border: none;
+    width: 20px;
+}
+
+QSpinBox::up-button {
+    subcontrol-position: top right;
+}
+
+QSpinBox::down-button {
+    subcontrol-position: bottom right;
+}
+
+QCheckBox, QRadioButton {
+    background-color: transparent;
+    spacing: 8px;
+}
+
+QCheckBox:disabled, QRadioButton:disabled {
+    color: %{faint};
+}
+
+/* Menus: a card with inset, rounded items — the same shape as a list row's
+   pill, so a context menu looks like it belongs to the list it came from.
+   Rounded corners need a translucent window, which PanefileStyle arranges. */
+QMenu {
+    background-color: %{surface};
+    color: %{text};
+    border: 1px solid %{border_strong};
+    border-radius: %{large_radius}px;
+    padding: 5px;
+}
+
+QMenu::item {
+    background-color: transparent;
+    padding: 6px 28px 6px 12px;
+    border-radius: %{radius}px;
+}
+
+QMenu::item:selected {
+    background-color: %{fill_strong};
+    color: %{text};
+}
+
+QMenu::item:disabled {
+    color: %{faint};
+}
+
+QMenu::separator {
+    height: 1px;
+    background-color: %{border};
+    margin: 4px 6px;
+}
+
+QProgressBar {
+    background-color: %{fill_strong};
+    border: none;
     border-radius: 3px;
-    min-height: 28px;
-    margin: 2px 4px 2px 3px;
+    max-height: 6px;
+    text-align: center;
+    color: transparent;
 }
 
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
-QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-    background: transparent;
-    border: none;
-    height: 0px;
-}
-
-QScrollBar:horizontal {
-    background: transparent;
-    border: none;
-    height: 11px;
-}
-
-QScrollBar::handle:horizontal {
-    background: %{scroll_handle};
+QProgressBar::chunk {
+    background-color: %{accent};
     border-radius: 3px;
-    min-width: 28px;
-    margin: 3px 2px 4px 2px;
 }
 
-QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal,
-QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
-    background: transparent;
+/* Lists and trees inside dialogs ---------------------------------------- */
+
+QTreeWidget, QTreeView, QListWidget {
+    background-color: %{surface};
+    alternate-background-color: %{surface};
+    border: 1px solid %{border};
+    border-radius: %{control_radius}px;
+    outline: none;
+}
+
+QTreeView::item, QListWidget::item {
+    padding: 4px 6px;
     border: none;
-    width: 0px;
+}
+
+QTreeView::item:hover, QListWidget::item:hover {
+    background-color: %{hover};
+}
+
+QTreeView::item:selected, QListWidget::item:selected {
+    background-color: %{selection_bg};
+    color: %{text};
+}
+
+/* Column headers as captions: small, faint and on the list's own surface,
+   rather than a raised bar of buttons. */
+QHeaderView {
+    background-color: transparent;
+    border: none;
+}
+
+QHeaderView::section {
+    background-color: %{surface};
+    color: %{faint};
+    border: none;
+    border-bottom: 1px solid %{border};
+    padding: 6px 8px;
+    font-size: %{caption_font_size}px;
+    font-weight: 600;
 }
 
 /* Settings --------------------------------------------------------------- */
 
-/* A macOS preferences toolbar: a centred row of icon-over-label tabs, with a
+/* A preferences toolbar: a centred row of icon-over-label tabs, with a
    hairline separating it from the content. Not a sidebar list, which is a web
    idiom, and not a tab bar, which is for documents. */
 QWidget#settingsToolbar {
     background-color: %{sidebar_bg};
-    border-bottom: 1px solid %{seam};
+    border-bottom: 1px solid %{border};
+    border-top-left-radius: %{inner_large_radius}px;
+    border-top-right-radius: %{inner_large_radius}px;
 }
 
 QPushButton#settingsTab {
     background-color: transparent;
     border: none;
-    border-radius: %{small_radius}px;
-    min-width: 76px;
+    border-radius: %{control_radius}px;
+    min-width: 92px;
+    padding: 0px;
 }
 
 QPushButton#settingsTab:hover {
-    background-color: %{hover};
+    background-color: %{hover_sidebar};
 }
 
-/* The selected tab is the accent, as Terminal.app draws it: the glyph and its
-   label take the colour, on a background barely different from the toolbar. A
-   filled accent block here would shout, and the tab strip is navigation rather
-   than the thing being looked at. */
+/* The selected tab carries the accent in its glyph and label, on the accent's
+   soft tint: a control that is on, as a checked box is, rather than a place in
+   a list, which takes the focus colour. */
 QPushButton#settingsTab:checked {
-    background-color: %{hover};
+    background-color: %{accent_soft};
 }
 
 QLabel#settingsTabGlyph {
     background-color: transparent;
-    color: %{subtext};
-    font-size: %{glyph_font_size}pt;
+    color: %{muted};
 }
 
 QLabel#settingsTabLabel {
     background-color: transparent;
-    color: %{subtext};
-    font-size: %{small_font_size}pt;
+    color: %{muted};
+    font-size: %{small_font_size}px;
+    font-weight: 500;
 }
 
-/* The selected tab is the accent, and its label goes with it: a coloured glyph
-   over a grey word reads as a decoration rather than as a selection. */
 QPushButton#settingsTab:checked QLabel#settingsTabGlyph,
 QPushButton#settingsTab:checked QLabel#settingsTabLabel {
     color: %{accent};
 }
 
 QStackedWidget#settingsPages {
-    background-color: %{background};
+    background-color: %{surface};
+    border-bottom-left-radius: %{inner_large_radius}px;
+    border-bottom-right-radius: %{inner_large_radius}px;
+}
+
+QStackedWidget#settingsPages QLabel, QStackedWidget#settingsPages QCheckBox {
+    background-color: transparent;
 }
 
 QLabel#settingsHeading {
     background-color: transparent;
     color: %{text};
+    font-size: %{heading_font_size}px;
     font-weight: 600;
 }
 
 QLabel#settingsNote {
     background-color: transparent;
-    color: %{overlay};
-    font-size: %{small_font_size}pt;
-}
-
-QListWidget#settingsThemeList, QTreeWidget#settingsKeyTable {
-    background-color: %{surface};
-    border: 1px solid %{seam};
-    border-radius: %{small_radius}px;
-    outline: none;
+    color: %{faint};
+    font-size: %{small_font_size}px;
 }
 
 QListWidget#settingsThemeList::item {
     color: %{text};
     padding: 5px 8px;
-    border-radius: %{small_radius}px;
+    margin: 1px 4px;
+    border-radius: %{radius}px;
 }
 
 QListWidget#settingsThemeList::item:selected {
-    background-color: %{selection_bg};
-    color: %{on_selection};
+    background-color: %{focus_soft};
+    color: %{text};
 }
 
 /* Modals ---------------------------------------------------------------- */
 
 QWidget#modalContent {
     background-color: %{surface};
-    border: 1px solid %{border};
-    border-radius: %{radius}px;
+    border: 1px solid %{border_strong};
+    border-radius: %{large_radius}px;
 }
 
 QWidget#modalContent QLabel {
@@ -376,58 +718,93 @@ QWidget#modalContent QLabel {
     color: %{text};
 }
 
-QLineEdit {
-    background-color: %{background};
-    color: %{text};
-    border: 1px solid %{border};
-    border-radius: %{small_radius}px;
-    padding: 4px 6px;
-    selection-background-color: %{accent};
-    selection-color: %{background};
+QWidget#modalContent QLabel#modalTitle {
+    font-size: %{title_font_size}px;
+    font-weight: 600;
 }
 
-QLineEdit:focus {
-    border: 1px solid %{border_focused};
+QWidget#modalContent QLabel#modalMessage {
+    color: %{muted};
 }
 
-QTreeWidget, QTreeView {
-    background-color: %{background};
-    alternate-background-color: %{surface};
-    border: 1px solid %{border};
-    border-radius: %{small_radius}px;
-    outline: none;
+QWidget#modalContent QLabel#modalHint,
+QWidget#modalContent QLabel#findStatus {
+    color: %{muted};
+    font-size: %{small_font_size}px;
 }
 
-QHeaderView::section {
+QWidget#modalContent QLabel#modalProblem {
+    color: %{error};
+    font-size: %{small_font_size}px;
+}
+
+/* Inputs inside a card take a fill, so they read as wells in it rather than
+   as white boxes on white. */
+QWidget#modalContent QLineEdit {
+    background-color: %{fill};
+}
+
+QWidget#modalContent QLineEdit:focus {
     background-color: %{surface};
-    color: %{subtext};
+}
+
+/* The keyboard reference is the card's whole content, so it needs no box of
+   its own inside the box it is already in. */
+QWidget#modalContent QTreeWidget#helpTable {
     border: none;
-    border-bottom: 1px solid %{border};
-    padding: 4px 6px;
+    background-color: transparent;
 }
 
-QPushButton {
+QWidget#modalContent QTreeWidget#helpTable QHeaderView::section {
     background-color: %{surface};
+}
+
+/* Quick Look ------------------------------------------------------------- */
+
+QWidget#quickLook, QStackedWidget#quickLookStack {
+    background-color: %{surface};
+}
+
+QWidget#quickLookHeader {
+    background-color: transparent;
+    border-bottom: 1px solid %{header_rule};
+}
+
+QWidget#quickLookFooter {
+    background-color: transparent;
+    border-top: 1px solid %{header_rule};
+}
+
+QLabel#quickLookSkeleton {
+    background-color: transparent;
+    color: %{faint};
+}
+
+QPushButton#quickLookClose {
+    border-radius: %{radius}px;
+    padding: 0px;
+}
+
+QLabel#quickLookTitle {
+    background-color: transparent;
     color: %{text};
-    border: 1px solid %{border};
-    border-radius: %{small_radius}px;
-    padding: 5px 12px;
+    font-weight: 600;
 }
 
-QPushButton:hover {
-    background-color: %{hover};
+QLabel#quickLookSubtitle, QLabel#quickLookHint {
+    background-color: transparent;
+    color: %{faint};
+    font-size: %{small_font_size}px;
 }
 
-QPushButton:default {
-    border: 1px solid %{border_focused};
-}
+/* The notice bar --------------------------------------------------------- */
 
 /* The offer to become the default file manager: a slim strip across the top of
    the window, the same surface as a focused panel, so it reads as part of the
    window rather than as a dialog that has landed on it. */
 QWidget#noticeBar {
     background-color: %{surface};
-    border-bottom: 1px solid %{seam};
+    border-bottom: 1px solid %{border};
 }
 
 QLabel#noticeBarText {
@@ -440,43 +817,37 @@ QLabel#noticeBarText[noticeState="error"] {
 }
 
 QPushButton#noticeBarButton, QPushButton#noticeBarPrimary {
-    padding: 2px 10px;
-    font-size: %{small_font_size}pt;
+    padding: 3px 12px;
+    font-size: %{small_font_size}px;
 }
 
 QPushButton#noticeBarPrimary {
     background-color: %{accent};
     border: 1px solid %{accent};
     color: %{on_accent};
+    font-weight: 600;
+}
+
+QPushButton#noticeBarPrimary:hover {
+    background-color: %{accent_hover};
 }
 
 /* Splitters and scrollbars ---------------------------------------------- */
 
+/* One hairline where panes meet: the handle is the seam, a pixel wide with a
+   wider grab area Qt gives it, and it takes the accent while it is held or
+   under the pointer. */
 QSplitter::handle {
     background-color: %{border};
 }
 
-QSplitter::handle:hover {
+QSplitter::handle:hover, QSplitter::handle:pressed {
     background-color: %{border_focused};
 }
 
-/* Except between panels, which draw their own full borders — a line there is a
-   third edge between two that are already there, and reads as a seam. The
-   handle keeps its width so it can still be dragged; it simply does not paint.
-   Hover still shows, because a grab target you cannot see is worse than a
-   line. */
-QSplitter#panelSplitter::handle {
-    background-color: transparent;
-}
-
-QSplitter#panelSplitter::handle:hover {
-    background-color: %{border_focused};
-}
-
-/* The square where a vertical and a horizontal scrollbar would meet. With the
-   list body inset, that square is inside the panel and was drawing itself as a
-   small bordered box in the bottom corner — an empty widget the user cannot
-   interact with, which is exactly the kind of thing that reads as unfinished. */
+/* An overlay scrollbar, not a widget with a track. A thick bar with a visible
+   groove is a Motif-era affordance; a thin thumb over the content is all a
+   list needs, and it fattens under the pointer to be easy to grab. */
 QAbstractScrollArea::corner {
     background: transparent;
     border: none;
@@ -484,94 +855,56 @@ QAbstractScrollArea::corner {
 
 QScrollBar:vertical {
     background: transparent;
+    border: none;
     width: 10px;
     margin: 0px;
 }
 
 QScrollBar::handle:vertical {
     background: %{scroll_handle};
-    min-height: 24px;
-    border-radius: 5px;
+    border-radius: 3px;
+    min-height: 28px;
+    margin: 2px 2px 2px 2px;
 }
 
-QScrollBar::handle:vertical:hover {
-    background: %{overlay};
+QScrollBar::handle:vertical:hover, QScrollBar::handle:vertical:pressed {
+    background: %{scroll_handle_hover};
+    border-radius: 3px;
+    margin: 2px 1px 2px 1px;
 }
 
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
-QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-    height: 0px;
+QScrollBar:horizontal {
     background: transparent;
-}
-
-QProgressBar {
-    background-color: %{surface};
     border: none;
-    border-radius: %{small_radius}px;
-    text-align: center;
-    color: %{text};
+    height: 10px;
+    margin: 0px;
 }
 
-QProgressBar::chunk {
-    background-color: %{accent};
-    border-radius: %{small_radius}px;
+QScrollBar::handle:horizontal {
+    background: %{scroll_handle};
+    border-radius: 3px;
+    min-width: 28px;
+    margin: 2px 2px 2px 2px;
 }
-)")
-        .replace(QLatin1String("%{background}"), hex(theme.background))
-        .replace(QLatin1String("%{surface}"), hex(theme.surface))
-        .replace(QLatin1String("%{overlay}"), hex(theme.overlay))
-        .replace(QLatin1String("%{text}"), hex(theme.text))
-        .replace(QLatin1String("%{subtext}"), hex(theme.subtext))
-        .replace(QLatin1String("%{accent}"), hex(theme.accent))
-        .replace(QLatin1String("%{selection_bg}"), hex(theme.selectionBackground))
-        .replace(QLatin1String("%{error}"), hex(theme.error))
-        .replace(QLatin1String("%{border_focused}"), hex(theme.borderFocused))
-        .replace(QLatin1String("%{border}"), hex(theme.border))
-        .replace(QLatin1String("%{hover}"), hover)
-        .replace(QLatin1String("%{scroll_handle}"), scrollHandle)
-        // §9's "subtly lighter background" for the focused panel. Subtle is the
-        // operative word: a strong difference competes with the cursor row for
-        // attention, and the border is already doing the work.
-        // The focused panel is `surface`, not a shade of the background.
-        //
-        // It was shade(background, !light, 6), and in a light theme !light is
-        // false — so the focused panel was *darkened*, turning the pane the user
-        // is working in grey while the one they are not stayed near-white.
-        // Exactly backwards, and it made the whole window look grey.
-        //
-        // surface is already the right colour in both macOS themes by
-        // construction: #ffffff over #fbfbfc, and #22232a over #1f2026.
-        .replace(QLatin1String("%{panel_active_bg}"), hex(theme.surface))
-        // The seam between panels and under a header: a hairline, darker than
-        // the panel in a dark theme and lighter in a light one, so it reads as a
-        // join rather than as a drawn border.
-        .replace(QLatin1String("%{seam}"), shade(theme.background, light, 14))
-        // The rule under a panel header is internal to the panel, so it is far
-        // fainter than the seam *between* panels — a hairline, not a border.
-        .replace(QLatin1String("%{header_rule}"), shade(theme.background, light, 6))
-        // The sidebar is a shade off the content so it reads as chrome, without
-        // becoming a second colour in its own right.
-        // Away from the content in both directions: darker under a light
-        // theme, lifted under a dark one. `light` rather than `!light` sent it
-        // towards white in a light theme, which is how the sidebar stopped
-        // reading as a separate surface at all.
-        .replace(QLatin1String("%{sidebar_bg}"), shade(theme.background, !light, 5))
-        .replace(QLatin1String("%{mono_family}"),
-                 QStringLiteral("'SF Mono', ui-monospace, Menlo, Consolas, monospace"))
-        // White or black against the accent, whichever the accent can carry —
-        // a light theme's accent may need dark text on it.
-        .replace(QLatin1String("%{on_selection}"), hex(readableOn(theme.selectionBackground)))
-        .replace(QLatin1String("%{on_accent}"), hex(readableOn(theme.accent)))
-        .replace(QLatin1String("%{glyph_font_size}"), QString::number(theme.fontSize + 4))
-        .replace(QLatin1String("%{chrome_font_size}"), QString::number(theme.fontSize - 1))
-        .replace(QLatin1String("%{small_font_size}"), QString::number(theme.fontSize - 2))
-        .replace(QLatin1String("%{font_size}"), QString::number(theme.fontSize))
-        .replace(QLatin1String("%{radius}"), QString::number(theme.borderRadius))
-        .replace(QLatin1String("%{small_radius}"),
-                 QString::number(std::max(2, theme.borderRadius - 2)))
-        .replace(QLatin1String("%{padding}"), QString::number(theme.panelPadding))
-        .replace(QLatin1String("%{half_padding}"),
-                 QString::number(std::max(2, theme.panelPadding / 2)));
+
+QScrollBar::handle:horizontal:hover, QScrollBar::handle:horizontal:pressed {
+    background: %{scroll_handle_hover};
+}
+
+QScrollBar::add-line, QScrollBar::sub-line,
+QScrollBar::add-page, QScrollBar::sub-page {
+    background: transparent;
+    border: none;
+    width: 0px;
+    height: 0px;
+}
+)");
+
+    // Every token is closed by `}`, so no name can match the front of another.
+    for (const auto &[name, value] : tokensFor(theme)) {
+        sheet.replace(QStringLiteral("%{") + name + QLatin1Char('}'), value);
+    }
+    return sheet;
 }
 
 } // namespace pf::config

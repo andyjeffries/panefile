@@ -16,6 +16,7 @@
 #include "ui/CursorMemory.h"
 #include "ui/FilePanel.h"
 #include "ui/MainWindow.h"
+#include "ui/PanefileStyle.h"
 #include "ui/PanelStrip.h"
 #include "ui/PanelView.h"
 #include "ui/Sidebar.h"
@@ -533,7 +534,8 @@ void TestFilePanel::rendersTheWholeWindow()
     // Renders through the real stylesheet, from a real bundled theme, so what
     // the image shows is what a user gets rather than what the defaults happen
     // to be.
-    renderWithTheme(QStringLiteral("macos-light"), QStringLiteral("window-render.png"));
+    renderWithTheme(QStringLiteral("panefile-light"), QStringLiteral("window-render.png"));
+    renderWithTheme(QStringLiteral("panefile-dark"), QStringLiteral("window-render-dark.png"));
     renderWithTheme(QStringLiteral("catppuccin-mocha"), QStringLiteral("window-render-mocha.png"));
     renderWithTheme(QStringLiteral("gruvbox-light"), QStringLiteral("window-render-gruvbox.png"));
 }
@@ -546,7 +548,9 @@ void TestFilePanel::renderWithTheme(const QString &themeName, const QString &out
     const config::ThemeLoadResult loaded = config::loadThemeByName(themeName);
     QVERIFY2(loaded.issues.isEmpty(), qPrintable(themeName));
     ui::setCurrentPalette(loaded.theme);
+    qApp->setStyle(new ui::PanefileStyle);
     qApp->setStyleSheet(config::buildStyleSheet(loaded.theme));
+    qApp->setFont(config::applicationFont(loaded.theme, qApp->font()));
 
     ui::MainWindow window;
     window.resize(1200, 520);

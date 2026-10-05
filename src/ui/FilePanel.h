@@ -183,10 +183,10 @@ private:
     /// describes the directory you were in.
     void clearFilter();
 
-    /// Says so when a filter is hiding everything. An empty panel otherwise
-    /// looks the same whether the directory is empty, the scan failed, or a
-    /// filter matched nothing.
-    void updateFilterStatus();
+    /// Says what an empty list means. An empty panel otherwise looks the same
+    /// whether the directory is empty, the scan failed, or a filter matched
+    /// nothing.
+    void updatePlaceholder();
 
     /// §7.3: after the watched directory disappears, move to the nearest
     /// ancestor that still exists.
@@ -206,7 +206,6 @@ private:
     FileItemDelegate *m_delegate = nullptr;
     QLabel *m_header = nullptr;
     QLabel *m_headerCount = nullptr;
-    QLabel *m_status = nullptr;
 
     /// §3.4: built on the first `/`, not at startup. A user who never filters
     /// never pays for it.
@@ -231,10 +230,9 @@ private:
     /// version has to be kept to re-elide on resize.
     QString m_headerText;
 
-    /// True while the status label is showing this panel's own filter message,
-    /// so that clearing it cannot discard a scan error that owns the same
-    /// label.
-    bool m_showingFilterStatus = false;
+    /// Why the last scan failed, or empty. Shown in the list until the panel
+    /// goes somewhere else.
+    QString m_scanError;
 
     bool m_active = false;
     bool m_selectionMode = false;

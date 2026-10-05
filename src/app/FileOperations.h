@@ -20,6 +20,7 @@ class ActionRegistry;
 
 namespace pf::ui {
 class CompressModal;
+class ConfirmModal;
 class ConflictModal;
 class InputModal;
 class RenameModal;
@@ -109,6 +110,10 @@ private:
     bool clipboardIsCut() const;
 
     ui::ConflictModal *conflictModal();
+    ui::ConfirmModal *confirmModal();
+
+    /// The delete itself, once any confirmation has been given.
+    void startDelete(const QStringList &paths, bool permanent);
 
     /// §3.4: modals are built on first invocation, then cached.
     ui::CompressModal *compressModal();
@@ -122,6 +127,7 @@ private:
     fs::UndoStack *m_undoStack = nullptr;
 
     ui::ConflictModal *m_conflictModal = nullptr;
+    ui::ConfirmModal *m_confirmModal = nullptr;
     ui::CompressModal *m_compressModal = nullptr;
     ui::InputModal *m_inputModal = nullptr;
     ui::RenameModal *m_renameModal = nullptr;

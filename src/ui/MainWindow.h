@@ -9,6 +9,7 @@ class QSplitter;
 
 namespace pf::ui {
 
+class ChordHint;
 class FilePanel;
 class PanelStrip;
 class QuickLookOverlay;
@@ -43,6 +44,11 @@ public:
 
     /// Shows the pending chord prefix, e.g. `g-` (§6.2 step 3).
     void showPendingKeys(const QString &text);
+
+    /// Shows what can follow the pending prefix, as (keys, description) rows,
+    /// over the bottom-right of the panels. Hidden again when the pending
+    /// prefix clears, which showPendingKeys() hears about.
+    void showChordHint(const QString &pending, const QList<QPair<QString, QString>> &rows);
 
     void toggleFooter();
     void toggleSidebar();
@@ -110,6 +116,7 @@ private:
     QLabel *m_footer = nullptr;
     QLabel *m_selectionCount = nullptr;
     QLabel *m_pending = nullptr;
+    ChordHint *m_chordHint = nullptr;
     QWidget *m_processBar = nullptr;
     QWidget *m_topBar = nullptr;
     QWidget *m_footerRow = nullptr;

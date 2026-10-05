@@ -32,12 +32,21 @@ done
 printf 'int main(int argc, char **argv) {}\n' > "$sandbox/Developer/panefile/src/main.cpp"
 printf 'cmake_minimum_required(VERSION 3.25)\n' > "$sandbox/Developer/panefile/src/CMakeLists.txt"
 
+# A sparse file of a given size: mkfile on macOS, truncate everywhere else.
+sized() {
+    if command -v mkfile >/dev/null; then
+        mkfile -n "$1" "$2"
+    else
+        truncate -s "$(tr 'mk' 'MK' <<<"$1")" "$2"
+    fi
+}
+
 cd "$sandbox/Downloads"
-mkfile -n 740m qt-everywhere-6.10.2.tar.xz
-mkfile -n 5m   panefile-1.0.0.zip
-mkfile -n 1300k mockup-final.png
-mkfile -n 42m  talk-recording.mp4
-mkfile -n 890k invoice-2026-08.pdf
+sized 740m qt-everywhere-6.10.2.tar.xz
+sized 5m   panefile-1.0.0.zip
+sized 1300k mockup-final.png
+sized 42m  talk-recording.mp4
+sized 890k invoice-2026-08.pdf
 printf '#!/bin/sh\necho installing\n' > install.sh && chmod +x install.sh
 printf '# Release notes\n' > release-notes.md
 ln -sf release-notes.md latest.md

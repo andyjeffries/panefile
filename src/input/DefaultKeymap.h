@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QStringList>
+
 namespace pf::input {
 
 class Keymap;
@@ -15,5 +17,13 @@ class Keymap;
 /// the alternative — two maps that can disagree — is worse than the microsecond
 /// it costs.
 void installDefaultKeymap(Keymap &keymap);
+
+/// The default bindings that do not parse, as "action: binding — reason".
+///
+/// Empty in a correct build. installDefaultKeymap() skips a default it cannot
+/// parse with a warning nobody reads, which is how Settings shipped with no
+/// working key: both of its bindings contain a comma, and commas were rejected
+/// outright. A test asserts this list is empty.
+QStringList unusableDefaultBindings();
 
 } // namespace pf::input

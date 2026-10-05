@@ -3,6 +3,7 @@
 #include "config/Config.h"
 
 #include <QColor>
+#include <QFont>
 #include <QString>
 
 namespace pf::config {
@@ -47,16 +48,29 @@ struct Theme {
     /// twenty-three edits — and any of them can still override it.
     QColor alternateRowBackground;
 
+    /// The sidebar and the status bar: chrome, a step off the content.
+    ///
+    /// Invalid by default and derived from the background, like the banding. A
+    /// derived shade goes the same way in every theme, and that is wrong for a
+    /// dark theme designed the way Review's is, where chrome recedes by going
+    /// *darker* than the content rather than lighter.
+    QColor sidebarBackground;
+
     QString fontFamily;
-    int fontSize = 10;
-    int rowHeight = 28;
+
+    /// In pixels, not points. A point is a pixel on a Mac and a third more than
+    /// one on a 96 dpi Linux desktop, so `13` used to mean 13px in one place and
+    /// 17px in the other — the same theme rendering a quarter larger on Linux,
+    /// and every sibling application beside it looking finer-grained.
+    int fontSize = 13;
+    int rowHeight = 30;
     int borderRadius = 6;
-    int panelPadding = 8;
+    int panelPadding = 10;
 
     /// §9's `[ui]` has no name for this; it is the vertical rhythm the list is
     /// laid out on, and Finder's is noticeably looser than a terminal's. Kept
     /// as a metric rather than a constant so a theme can be tight or airy.
-    bool alternatingRows = true;
+    bool alternatingRows = false;
 
     /// True when the theme's background is lighter than its text, which is what
     /// the application needs to know to pick sensible derived shades — a hover
@@ -67,7 +81,44 @@ struct Theme {
     /// not set one. A hard-coded lighter() would be invisible on a light theme
     /// and washed out on a dark one, so the direction follows isLight().
     QColor effectiveAlternateRowBackground() const;
+
+    /// sidebarBackground when the theme sets one, otherwise the background
+    /// shaded away from the content.
+    QColor effectiveSidebarBackground() const;
+
+    /// The cursor row in the focused panel: the focus colour (border_focused)
+    /// at low strength over the focused panel's surface, carrying the theme's
+    /// ordinary text colour.
+    ///
+    /// The focus colour rather than the accent, so a theme can keep the two
+    /// apart. Panefile's themes do, as Review does: a terracotta tint that light
+    /// read as pink, and terracotta is the colour of buttons and checks.
+    ///
+    /// A solid accent pill with white text on it is the loudest thing in the
+    /// window, and in a two-panel layout the eye goes to it before the content.
+    /// A tint still says "here, in this panel" unmistakably — the unfocused
+    /// panel's cursor is a neutral grey — without the inverted text.
+    QColor focusedCursorBackground() const;
+
+    /// A row under the pointer, over the given panel background: a few percent
+    /// towards the text colour, so it reads in either direction.
+    QColor hoverBackground(const QColor &over) const;
 };
+
+/// `amount` of the way from `from` towards `towards`, channel by channel.
+QColor mixColours(const QColor &from, const QColor &towards, double amount);
+
+/// The application font a theme asks for.
+///
+/// One function because four places set it — start-up, a theme change, the
+/// desktop's own light/dark switch and the screenshot tool — and they had
+/// drifted: one of them forgot the family, another the size.
+///
+/// An empty family means the platform's UI face on macOS. Elsewhere it means
+/// Inter, then Adwaita Sans, when installed: fontconfig's generic `sans-serif`
+/// is whatever happens to be on the machine (Liberation Sans, an Arial metric
+/// clone, on a stock Arch install), and the window was being set in it.
+QFont applicationFont(const Theme &theme, const QFont &base);
 
 struct ThemeLoadResult {
     Theme theme;
@@ -86,8 +137,8 @@ ThemeLoadResult parseTheme(const QString &text, const QString &fileNameForIssues
 /// bundled ones (§8). Returns the defaults, and an issue, when not found.
 ThemeLoadResult loadThemeByName(const QString &name);
 
-/// The theme to use when the user has never chosen one: macOS Light or macOS
-/// Dark, following the desktop's own colour scheme.
+/// The theme to use when the user has never chosen one: Panefile Light or
+/// Panefile Dark, following the desktop's own colour scheme.
 ///
 /// Falls back to systemTheme() when the bundled files cannot be found, which is
 /// what a build tree looked like before the themes were staged into the bundle.

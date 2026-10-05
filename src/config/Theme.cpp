@@ -9,6 +9,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QFontDatabase>
 #include <QGuiApplication>
 #include <QPalette>
 #include <QStyleHints>
@@ -154,6 +155,63 @@ QColor Theme::effectiveAlternateRowBackground() const
     return background;
 }
 
+QColor mixColours(const QColor &from, const QColor &towards, double amount)
+{
+    const double keep = 1.0 - amount;
+    return QColor::fromRgbF(
+        static_cast<float>((from.redF() * keep) + (towards.redF() * amount)),
+        static_cast<float>((from.greenF() * keep) + (towards.greenF() * amount)),
+        static_cast<float>((from.blueF() * keep) + (towards.blueF() * amount)));
+}
+
+QColor Theme::effectiveSidebarBackground() const
+{
+    if (sidebarBackground.isValid()) {
+        return sidebarBackground;
+    }
+    // Away from the content in both directions: darker under a light theme,
+    // lifted under a dark one, as it was before themes could say otherwise.
+    return isLight() ? background.darker(105) : background.lighter(105);
+}
+
+QColor Theme::focusedCursorBackground() const
+{
+    // Stronger in a dark theme, where the same fraction of a lifted accent over
+    // a near-black surface barely registers.
+    return mixColours(surface, borderFocused, isLight() ? 0.14 : 0.19);
+}
+
+QColor Theme::hoverBackground(const QColor &over) const
+{
+    return mixColours(over, text, isLight() ? 0.045 : 0.06);
+}
+
+QFont applicationFont(const Theme &theme, const QFont &base)
+{
+    QFont font = base;
+
+    if (!theme.fontFamily.isEmpty()) {
+        font.setFamily(theme.fontFamily);
+    } else {
+#ifndef Q_OS_MACOS
+        for (const QString &family : {QStringLiteral("Inter"), QStringLiteral("Adwaita Sans")}) {
+            if (QFontDatabase::hasFamily(family)) {
+                font.setFamily(family);
+                break;
+            }
+        }
+#endif
+    }
+
+    font.setPixelSize(theme.fontSize);
+
+    // Unhinted outlines, as Review and Folio draw them. Full hinting snaps
+    // Inter's stems to the pixel grid and turns it spindly and uneven at 13px;
+    // without it the face keeps the weight it was drawn with.
+    font.setHintingPreference(QFont::PreferNoHinting);
+    return font;
+}
+
 bool Theme::isLight() const
 {
     // Perceived lightness rather than a naive average: green contributes far
@@ -199,6 +257,7 @@ void applyThemeTable(const toml::table &table, Theme &theme, const QString &file
     // Optional: left invalid when absent so that
     // effectiveAlternateRowBackground() can derive one from the background.
     readColour(table, "alternate_row_bg", theme.alternateRowBackground, fileNameForIssues, issues);
+    readColour(table, "sidebar_bg", theme.sidebarBackground, fileNameForIssues, issues);
 
     if (const auto family = table["ui"]["font_family"].value<std::string>()) {
         theme.fontFamily = QString::fromStdString(*family);
@@ -376,7 +435,7 @@ ThemeLoadResult loadActiveTheme(const QString &themeFilePath)
 Theme defaultThemeForDesktop()
 {
     const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
-    const QString name = dark ? QStringLiteral("macos-dark") : QStringLiteral("macos-light");
+    const QString name = dark ? QStringLiteral("panefile-dark") : QStringLiteral("panefile-light");
 
     // The bundled file if it can be found, and the palette-derived system theme
     // if it cannot — a source build run before `cmake --install`, say. Better a

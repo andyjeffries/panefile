@@ -94,6 +94,21 @@ public:
     /// the help modal can render `Ctrl+C  ·  Super+C  ·  y y`.
     QList<Binding> bindingsFor(KeymapLayer layer, const QString &actionId) const;
 
+    /// What can follow `prefix`: each binding that extends it, as the chords
+    /// still to type and the action they reach, from the one layer that owns
+    /// the prefix under §6.2's precedence (the same layer lookup() would use).
+    /// In declaration order. Empty when nothing extends it.
+    ///
+    /// For the chord hint: press `g` and pause, and the window lists `h` for
+    /// home, `r` for root and the rest, rather than leaving the user to
+    /// remember them.
+    struct Continuation {
+        Binding remaining;
+        QString actionId;
+    };
+    QList<Continuation> continuations(const QList<KeymapLayer> &layers,
+                                      const Binding &prefix) const;
+
     /// Every action id that has at least one binding in a layer.
     QStringList boundActions(KeymapLayer layer) const;
 

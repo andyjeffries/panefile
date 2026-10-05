@@ -92,11 +92,12 @@ public:
         m_player->setAudioOutput(m_audio);
         m_player->setVideoOutput(m_video);
 
-        QObject::connect(m_player, &QMediaPlayer::durationChanged, &m_context, [this] {
-            m_scrub->setRange(0, static_cast<int>(mediaDuration()));
-            updateInfo();
-            notifyStatusChanged();
-        });
+        QObject::connect(m_player, &QMediaPlayer::durationChanged, &m_context,
+                         [this](qint64 duration) {
+                             m_scrub->setRange(0, static_cast<int>(duration));
+                             updateInfo();
+                             notifyStatusChanged();
+                         });
         QObject::connect(m_player, &QMediaPlayer::positionChanged, &m_context,
                          [this](qint64 position) {
                              if (!m_scrub->isSliderDown()) {
@@ -125,7 +126,6 @@ public:
                              }
                          });
         QObject::connect(m_player, &QMediaPlayer::metaDataChanged, &m_context, [this] {
-            m_scrub->setRange(0, static_cast<int>(mediaDuration()));
             updateInfo();
             notifyStatusChanged();
         });
@@ -192,7 +192,7 @@ public:
         const bool playing = m_player->playbackState() == QMediaPlayer::PlayingState;
         parts << QStringLiteral("%1 %2 / %3")
                      .arg(playing ? QObject::tr("Playing") : QObject::tr("Paused"),
-                          formatTime(m_player->position()), formatTime(mediaDuration()));
+                          formatTime(m_player->position()), formatTime(m_player->duration()));
 
         const QMediaMetaData meta = m_player->metaData();
         const QSize resolution = meta.value(QMediaMetaData::Resolution).toSize();
@@ -241,20 +241,6 @@ private:
         return {};
     }
 
-    /// The length of the media in milliseconds, or 0 while it is not known.
-    /// QtMultimedia's AVFoundation backend learns the duration from a
-    /// key-value observer that does not always fire for local files, so the
-    /// player can sit at a loaded, paused 0:00 forever; the duration it read
-    /// from the asset when it became ready is in the metadata all the same.
-    qint64 mediaDuration() const
-    {
-        const qint64 duration = m_player->duration();
-        if (duration > 0) {
-            return duration;
-        }
-        return qMax<qint64>(0, m_player->metaData().value(QMediaMetaData::Duration).toLongLong());
-    }
-
     /// The text shown in place of a picture: what the file is, and the tags
     /// an audio file carries.
     void updateInfo()
@@ -273,8 +259,9 @@ private:
                                                       value);
             }
         }
-        if (const qint64 duration = mediaDuration(); duration > 0) {
-            lines << QStringLiteral("%1: %2").arg(QObject::tr("Duration"), formatTime(duration));
+        if (m_player->duration() > 0) {
+            lines << QStringLiteral("%1: %2").arg(QObject::tr("Duration"),
+                                                  formatTime(m_player->duration()));
         }
         const QString codec = codecName(meta);
         if (!codec.isEmpty()) {

@@ -70,6 +70,9 @@ target_compile_definitions(tst_plugins PRIVATE
     PF_TEST_HAVE_MEDIA=$<BOOL:${PF_HAVE_MEDIA}>
     PF_TEST_HAVE_PDF=$<BOOL:${PF_HAVE_PDF}>
     PF_TEST_HAVE_VIDEO_THUMBS=$<BOOL:${PF_HAVE_VIDEO_THUMBS}>)
+if(APPLE)
+    target_link_libraries(tst_plugins PRIVATE "-framework CoreFoundation")
+endif()
 get_property(PF_PLUGIN_TARGETS GLOBAL PROPERTY PF_PLUGIN_TARGETS)
 if(PF_PLUGIN_TARGETS)
     add_dependencies(tst_plugins ${PF_PLUGIN_TARGETS})

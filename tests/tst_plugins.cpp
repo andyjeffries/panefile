@@ -25,6 +25,11 @@
 #include <QTextBlock>
 #include <QTextDocument>
 #include <QTextLayout>
+#include <QTimer>
+
+#ifdef Q_OS_MACOS
+#include <CoreFoundation/CoreFoundation.h>
+#endif
 
 using namespace pf;
 using namespace pf::ui;
@@ -81,6 +86,30 @@ QString writePdf(const QTemporaryDir &dir)
     painter.end();
     return path;
 }
+
+/// Services the main dispatch queue for as long as it lives. QtMultimedia's
+/// AVFoundation backend finishes loading a file in a block posted to that
+/// queue, and only a Core Foundation run loop drains it — which the offscreen
+/// platform plugin, being a plain Unix event dispatcher, never runs. Under the
+/// cocoa plugin the application has one already; this stands in for it.
+class MainQueuePump
+{
+public:
+    MainQueuePump()
+    {
+#ifdef Q_OS_MACOS
+        QObject::connect(&m_timer, &QTimer::timeout, [] {
+            while (CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0, true) ==
+                   kCFRunLoopRunHandledSource) {
+            }
+        });
+        m_timer.start(10);
+#endif
+    }
+
+private:
+    QTimer m_timer;
+};
 
 /// One and a half seconds of 8 kHz mono silence as a WAV file. Not a whole
 /// second: a backend that reports 999 ms or 1001 ms still shows "0:01".
@@ -294,6 +323,7 @@ private Q_SLOTS:
         REQUIRE_PLUGIN(platform::Plugin::Media);
         QTemporaryDir dir;
         const QString path = writeWav(dir);
+        const MainQueuePump pump;
 
         QWidget parent;
         MediaRenderer renderer;

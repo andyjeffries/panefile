@@ -225,6 +225,17 @@ void MainWindow::hideProcessBar()
     }
 }
 
+void MainWindow::setTopBar(QWidget *bar)
+{
+    if (bar == nullptr || bar == m_topBar) {
+        return;
+    }
+    m_topBar = bar;
+    if (auto *layout = qobject_cast<QVBoxLayout *>(centralWidget()->layout()); layout != nullptr) {
+        layout->insertWidget(0, bar);
+    }
+}
+
 QuickLookOverlay *MainWindow::quickLookOverlay()
 {
     if (m_quickLookOverlay == nullptr) {

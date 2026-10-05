@@ -41,6 +41,37 @@ Open a new window in the existing process.
 .TP
 .B \-\-new\-instance
 Start a separate process, ignoring any running instance.
+.SS Default file manager (Linux)
+.TP
+.B \-\-make\-default
+Make Panefile the default file manager, then exit. Sets
+.B inode/directory
+to
+.B panefile.desktop
+in
+.BR mimeapps.list ,
+editing the file that currently decides it and keeping a symlinked one a
+symlink, and writes
+.I ~/.local/share/dbus-1/services/org.freedesktop.FileManager1.service
+so that \(lqShow in folder\(rq in browsers and other applications starts
+Panefile. Exits non-zero, saying why, if either could not be done.
+.TP
+.B \-\-default\-status
+Print the current
+.B inode/directory
+handler and the file that set it, whether the FileManager1 service file exists
+and what it runs, and which process owns
+.B org.freedesktop.FileManager1
+on the session bus, then exit.
+.TP
+.B \-\-dbus\-service
+Run as the
+.B org.freedesktop.FileManager1
+service. Started by the session bus through the service file
+.B \-\-make\-default
+writes, rather than by hand. Opens no window until a request arrives, and
+exits after about ten seconds if none does; otherwise it behaves like any other
+Panefile window. If Panefile is already running, requests are passed to it.
 .SS Diagnostics
 .TP
 .B \-\-startup\-trace
@@ -91,8 +122,16 @@ User themes. Bundled themes live in
 .IR @CMAKE_INSTALL_FULL_DATADIR@/panefile/themes/ .
 .TP
 .I ~/.local/share/panefile/
-Pinned directories, session state and window geometry. Panefile never writes
-to the configuration directory.
+Pinned directories, session state and window geometry.
+.TP
+.I ~/.config/mimeapps.list
+The default application for each file type, including folders
+.RB ( inode/directory ).
+.TP
+.I ~/.local/share/dbus-1/services/org.freedesktop.FileManager1.service
+Written by
+.BR \-\-make\-default .
+Delete it to hand \(lqShow in folder\(rq back to the system's file manager.
 .PP
 On macOS these live under
 .I ~/Library/Application Support/panefile/
@@ -116,6 +155,10 @@ Terminal emulator launched by
 .TP
 .B 0
 Success.
+.TP
+.B 1
+.B \-\-make\-default
+could not make Panefile the default file manager.
 .TP
 .B 2
 A path argument did not exist, or an option was not recognised.

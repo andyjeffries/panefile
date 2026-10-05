@@ -25,6 +25,7 @@ target_include_directories(pf_core PUBLIC "${CMAKE_CURRENT_BINARY_DIR}")
 # chosen here so that shared translation units stay free of #ifdef.
 # ---------------------------------------------------------------------------
 set(PF_PLATFORM_SOURCES
+    platform/FileManagerService.cpp
     platform/FileOpsCommon.cpp
     platform/LauncherCommon.cpp
     platform/MountTable.cpp
@@ -38,14 +39,17 @@ set(PF_PLATFORM_SOURCES
 
 if(PF_PLATFORM_LINUX)
     list(APPEND PF_PLATFORM_SOURCES
+        platform/linux/DefaultFileManager_linux.cpp
         platform/linux/FileOps_linux.cpp
         platform/linux/Launcher_linux.cpp
         platform/linux/MountTable_linux.cpp
         platform/linux/Paths_linux.cpp
         platform/linux/VolumeMonitor_linux.cpp
-        platform/linux/WatchBackend_linux.cpp)
+        platform/linux/WatchBackend_linux.cpp
+        platform/linux/XdgMimeApps.cpp)
 elseif(PF_PLATFORM_DARWIN)
     list(APPEND PF_PLATFORM_SOURCES
+        platform/darwin/DefaultFileManager_darwin.cpp
         platform/darwin/FileOps_darwin.cpp
         platform/darwin/Launcher_darwin.cpp
         platform/darwin/MountTable_darwin.cpp
@@ -61,7 +65,8 @@ pf_layer_library(pf_platform
 
 # §7.11's volume monitors. Neither is optional in §3.4's sense — there is no
 # removable-media support on either platform without them, and both are system
-# libraries already in the loader's cache.
+# libraries already in the loader's cache. On Linux the same QtDBus also serves
+# org.freedesktop.FileManager1, so "Show in folder" adds no dependency.
 if(PF_PLATFORM_LINUX)
     find_package(Qt6 REQUIRED COMPONENTS DBus)
     target_link_libraries(pf_platform PRIVATE Qt6::DBus)
@@ -180,6 +185,7 @@ pf_layer_library(pf_ui
     LAYER ui
     SOURCES
         ui/CursorMemory.cpp
+        ui/DefaultFileManagerBar.cpp
         ui/FileItemDelegate.cpp
         ui/FilePanel.cpp
         ui/MainWindow.cpp
@@ -220,6 +226,7 @@ pf_layer_library(pf_app
     SOURCES
         app/Application.cpp
         app/CommandLine.cpp
+        app/DefaultFileManagerOffer.cpp
         app/InstanceMessage.cpp
         app/FileOperations.cpp
         app/KeyDispatcher.cpp

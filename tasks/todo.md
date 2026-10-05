@@ -322,6 +322,36 @@ dependency guard caught it.
       DNS failure and is not. Wait for GitHub to report the certificate, then
       tick "Enforce HTTPS".
 
+## Default file manager (Linux) ✅
+
+- [x] Offer, after the first paint and off the GUI thread, to make Panefile the
+      default file manager: a non-modal bar along the top of the window with
+      Yes / Not now / Never, as remappable actions (`Alt+Y`, `Alt+N`,
+      `Alt+Shift+N`) whose buttons never take focus
+- [x] `mimeapps.list` resolved and edited by hand per the XDG MIME Applications
+      spec, never through `xdg-mime` or `gio mime`: desktop-specific files,
+      `;`-lists, uninstalled IDs skipped, the deciding file edited in place, a
+      symlink's target replaced atomically and the link kept, every other byte
+      left alone
+- [x] `org.freedesktop.FileManager1` (`ShowFolders`, `ShowItems`,
+      `ShowItemProperties`) routed through the same `openRequest` path as
+      `pf <path>`, items grouped by folder and selected; claimed only by the
+      single-instance owner, queued behind Nautilus rather than fighting it
+- [x] `pf --dbus-service`, started by a user-level service file; no window until
+      a call, exit after 10 s idle, forwards to an already-running instance
+- [x] `pf --make-default`, `pf --default-status`
+- [x] `[general] offer_default_file_manager`, live-reloaded; Settings → General
+      has the switch, the current handler, and Make default
+- [x] Tests: resolution precedence and lists, byte-for-byte edits, CRLF,
+      idempotence, symlinks (`readlink` unchanged), the unwritable-override
+      error, the service file, URI decoding, every "don't show" rule, Never
+      persisting and Not now not; and `ShowItems` end to end on a private bus
+      under `dbus-run-session`
+
+Follow-up, deliberately separate: the CMake configure summary reports
+SYNTAX/MEDIA/PDF/VIDEO_THUMBS as "off (dependency not found)" when the real
+reason is that the plugins do not exist yet.
+
 ---
 
 ## Review

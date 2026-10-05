@@ -27,6 +27,7 @@ private Q_SLOTS:
     void placementOverrides_data();
     void placementOverrides();
     void diagnosticFlags();
+    void dbusServiceRunsWithoutPaths();
     void benchmarkRequiresArgument();
     void benchmarkTakesPath();
     void doubleDashEndsOptions();
@@ -97,6 +98,8 @@ void TestCommandLine::informationalFlags_data()
     QTest::newRow("--config-dir") << "--config-dir" << CommandLineAction::PrintConfigDir;
     QTest::newRow("--print-default-config")
         << "--print-default-config" << CommandLineAction::PrintDefaultConfig;
+    QTest::newRow("--make-default") << "--make-default" << CommandLineAction::MakeDefault;
+    QTest::newRow("--default-status") << "--default-status" << CommandLineAction::DefaultStatus;
 }
 
 void TestCommandLine::informationalFlags()
@@ -140,6 +143,18 @@ void TestCommandLine::diagnosticFlags()
     QVERIFY(options.verbose);
     QVERIFY(options.newInstance);
     QCOMPARE(options.action, CommandLineAction::Run);
+}
+
+void TestCommandLine::dbusServiceRunsWithoutPaths()
+{
+    // The bus starts `pf --dbus-service` and nothing else: no path, so no
+    // window until a FileManager1 call names one.
+    const auto options = parseCommandLine(QStringList{"pf", "--dbus-service"});
+
+    QCOMPARE(options.action, CommandLineAction::Run);
+    QVERIFY(options.dbusService);
+    QVERIFY(options.paths.isEmpty());
+    QVERIFY(!parseCommandLine(QStringList{"pf"}).dbusService);
 }
 
 void TestCommandLine::benchmarkRequiresArgument()

@@ -8,6 +8,7 @@
 
 #include "app/Application.h"
 #include "app/CommandLine.h"
+#include "app/DefaultFileManagerOffer.h"
 #include "app/InstanceMessage.h"
 #include "app/SingleInstance.h"
 #include "config/Config.h"
@@ -17,6 +18,7 @@
 #include "core/Version.h"
 #include "platform/Paths.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QTextStream>
 
@@ -38,7 +40,7 @@ void writeLine(FILE *stream, const QString &text)
 /// waste, and on Wayland it is not cheap waste.
 ///
 /// Returns the exit code, or -1 to continue with normal startup.
-int handleEarlyExit(const pf::CommandLineOptions &options)
+int handleEarlyExit(const pf::CommandLineOptions &options, int &argc, char **argv)
 {
     using pf::CommandLineAction;
 
@@ -63,6 +65,17 @@ int handleEarlyExit(const pf::CommandLineOptions &options)
     case CommandLineAction::Error:
         writeLine(stderr, QStringLiteral("pf: ") + options.message);
         return options.exitCode;
+    case CommandLineAction::MakeDefault:
+    case CommandLineAction::DefaultStatus: {
+        // A QCoreApplication, not a QApplication: QtDBus needs an event
+        // dispatcher to talk to the session bus, and nothing here draws.
+        const QCoreApplication core(argc, argv);
+        QTextStream out(stdout);
+        QTextStream err(stderr);
+        return options.action == CommandLineAction::MakeDefault
+                   ? pf::runMakeDefaultCommand(out, err)
+                   : pf::runDefaultStatusCommand(out);
+    }
     case CommandLineAction::Run:
     case CommandLineAction::Benchmark:
         return -1;
@@ -125,7 +138,7 @@ int main(int argc, char **argv)
     pf::StartupTrace::setReportingEnabled(options.startupTrace);
     pf::StartupTrace::mark(pf::StartupPhase::ArgvParsed);
 
-    if (const int earlyExit = handleEarlyExit(options); earlyExit >= 0) {
+    if (const int earlyExit = handleEarlyExit(options, argc, argv); earlyExit >= 0) {
         return earlyExit;
     }
 
@@ -142,7 +155,11 @@ int main(int argc, char **argv)
     //    config.toml to find out whether single_instance is on would cost more
     //    than the hand-off itself; a user who has turned it off simply has no
     //    socket to connect to, and the attempt fails in microseconds.
-    if (options.action == pf::CommandLineAction::Run && handOffToRunningInstance(options)) {
+    //
+    //    --dbus-service has no request to hand over: its requests arrive later,
+    //    over the bus, and it forwards them itself once it holds the name.
+    if (options.action == pf::CommandLineAction::Run && !options.dbusService &&
+        handOffToRunningInstance(options)) {
         pf::StartupTrace::mark(pf::StartupPhase::HandedOff);
         return 0;
     }

@@ -98,6 +98,12 @@ public:
     void selectAll();
     void clearSelection();
 
+    /// Replaces the selection with these entries — "Show in folder" asking for
+    /// a file to be selected. They need not be listed yet: the selection is
+    /// kept by name, so it survives the scan that is about to deliver them,
+    /// which is what a request arriving with a navigation needs.
+    void selectNames(const QStringList &names);
+
     /// Selects everything between the anchor and `name`, in the order the panel
     /// is sorted — what Shift+click means everywhere else, and the reason the
     /// anchor is remembered rather than derived from the cursor.

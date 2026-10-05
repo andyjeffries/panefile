@@ -1,6 +1,7 @@
 #include "config/TomlWriter.h"
 
 #include <QFile>
+#include <QFileInfo>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -216,6 +217,57 @@ private Q_SLOTS:
         QVERIFY2(updated.indexOf(QStringLiteral("enabled = true")) > general, qPrintable(updated));
         QVERIFY2(updated.indexOf(QStringLiteral("enabled = true")) < thumbnails,
                  qPrintable(updated));
+    }
+
+    /// What "Never" on the default-file-manager bar writes, into a file
+    /// somebody has edited by hand. Every line but the new one comes back
+    /// byte for byte — the odd spacing, the trailing comments, and the comment
+    /// after the last key of the table, which the new key goes after.
+    void neverLeavesAHandEditedFileAlone()
+    {
+        const QString before = QStringLiteral("# mine, not yours\n"
+                                              "[general]\n"
+                                              "restore_session=false   # I like a clean start\n"
+                                              "  single_instance   =   true\n"
+                                              "# trailing note about general\n"
+                                              "\n"
+                                              "[panels]\n"
+                                              "show_hidden = true\n");
+        QVERIFY(write(m_path, before));
+
+        const auto result = TomlWriter::setValue(m_path, QStringLiteral("general"),
+                                                 QStringLiteral("offer_default_file_manager"),
+                                                 TomlWriter::boolean(false));
+        QVERIFY2(result.ok, qPrintable(result.error));
+
+        QStringList expected = before.split(QLatin1Char('\n'));
+        expected.insert(5, QStringLiteral("offer_default_file_manager = false"));
+        QCOMPARE(read(m_path), expected.join(QLatin1Char('\n')));
+
+        // And once it is there, writing it again is not a change.
+        QVERIFY(!TomlWriter::setValue(m_path, QStringLiteral("general"),
+                                      QStringLiteral("offer_default_file_manager"),
+                                      TomlWriter::boolean(false))
+                     .changed);
+    }
+
+    /// A config.toml that is a symlink into a dotfiles repository stays one,
+    /// and the edit lands in the repository's file.
+    void aSymlinkedFileStaysASymlink()
+    {
+        const QString target = m_dir->filePath(QStringLiteral("dotfiles-config.toml"));
+        QVERIFY(write(target, QStringLiteral("[general]\nrestore_session = true\n")));
+        QVERIFY(QFile::link(target, m_path));
+
+        QVERIFY(TomlWriter::setValue(m_path, QStringLiteral("general"),
+                                     QStringLiteral("offer_default_file_manager"),
+                                     TomlWriter::boolean(false))
+                    .ok);
+
+        QVERIFY(QFileInfo(m_path).isSymLink());
+        QCOMPARE(QFileInfo(m_path).symLinkTarget(), target);
+        QVERIFY2(read(target).contains(QStringLiteral("offer_default_file_manager = false")),
+                 qPrintable(read(target)));
     }
 
 private:

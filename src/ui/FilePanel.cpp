@@ -904,6 +904,16 @@ void FilePanel::clearSelection()
     Q_EMIT selectionChanged(0);
 }
 
+void FilePanel::selectNames(const QStringList &names)
+{
+    m_selection = QSet<QString>(names.cbegin(), names.cend());
+    m_selection.remove(QString());
+    m_selectionAnchor = names.value(0);
+    m_view->viewport()->update();
+    updateHeader();
+    Q_EMIT selectionChanged(static_cast<int>(m_selection.size()));
+}
+
 QString FilePanel::headerText() const
 {
     return m_headerText;

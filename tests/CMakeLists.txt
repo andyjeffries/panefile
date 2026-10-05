@@ -5,18 +5,21 @@
 # runnable headless, in CI and over SSH. That is set here rather than left to
 # the caller so a bare `ctest` behaves the same as `ctest --preset dev`.
 
-# pf_add_test(<name> SOURCES ... [LIBS ...])
+# pf_add_test(<name> SOURCES ... [LIBS ...] [WRAPPER command...] [ENVIRONMENT VAR=value...])
+#
+# WRAPPER runs the test under another program — dbus-run-session, for the one
+# test that needs a session bus of its own.
 function(pf_add_test name)
-    cmake_parse_arguments(ARG "" "" "SOURCES;LIBS" ${ARGN})
+    cmake_parse_arguments(ARG "" "" "SOURCES;LIBS;WRAPPER;ENVIRONMENT" ${ARGN})
 
     qt_add_executable(${name} ${ARG_SOURCES})
     target_link_libraries(${name} PRIVATE Qt6::Test pf::common_flags ${ARG_LIBS})
     target_include_directories(${name} PRIVATE "${PROJECT_SOURCE_DIR}/src")
     set_target_properties(${name} PROPERTIES MACOSX_BUNDLE OFF)
 
-    add_test(NAME ${name} COMMAND ${name})
+    add_test(NAME ${name} COMMAND ${ARG_WRAPPER} $<TARGET_FILE:${name}>)
     set_tests_properties(${name} PROPERTIES
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_LOGGING_RULES=panefile.*.debug=false"
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_LOGGING_RULES=panefile.*.debug=false;${ARG_ENVIRONMENT}"
         TIMEOUT 120)
 endfunction()
 
@@ -64,3 +67,23 @@ pf_add_test(tst_startuptrace SOURCES tst_startuptrace.cpp LIBS pf_core)
 # it — so this test, which reads the parsed table directly, links it itself.
 pf_add_test(tst_defaultconfig SOURCES tst_defaultconfig.cpp LIBS pf_config pf::tomlplusplus)
 pf_add_test(tst_config      SOURCES tst_config.cpp      LIBS pf_config pf_input)
+
+# Becoming the default file manager is Linux-only: macOS has no
+# mimeapps.list and no org.freedesktop.FileManager1, and Finder cannot be
+# replaced.
+if(PF_PLATFORM_LINUX)
+    pf_add_test(tst_defaultfilemanager SOURCES tst_defaultfilemanager.cpp LIBS pf_ui pf_app)
+
+    # ShowItems over a real bus. Only ever a private one: without
+    # dbus-run-session the test skips rather than claim "Show in folder" on the
+    # desktop it happens to be running on.
+    find_package(Qt6 REQUIRED COMPONENTS DBus)
+    find_program(PF_DBUS_RUN_SESSION dbus-run-session)
+    if(PF_DBUS_RUN_SESSION)
+        pf_add_test(tst_filemanager_bus SOURCES tst_filemanager_bus.cpp LIBS pf_app Qt6::DBus
+            WRAPPER "${PF_DBUS_RUN_SESSION}" --
+            ENVIRONMENT PF_TEST_PRIVATE_BUS=1)
+    else()
+        pf_add_test(tst_filemanager_bus SOURCES tst_filemanager_bus.cpp LIBS pf_app Qt6::DBus)
+    endif()
+endif()

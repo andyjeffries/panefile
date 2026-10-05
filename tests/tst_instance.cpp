@@ -5,6 +5,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -65,10 +66,12 @@ private Q_SLOTS:
         sent.placement = PlacementOverride::NewPanel;
         sent.activationToken = QStringLiteral("token-abc");
         sent.desktopStartupId = QStringLiteral("startup-1");
+        sent.selectItems = true;
 
         InstanceMessage received;
         QVERIFY(InstanceMessage::fromJson(sent.toJson(), &received));
 
+        QCOMPARE(received.selectItems, true);
         QCOMPARE(received.cwd, sent.cwd);
         QCOMPARE(received.paths, sent.paths);
         QCOMPARE(received.placement, sent.placement);
@@ -149,6 +152,76 @@ private Q_SLOTS:
         message.paths = {QStringLiteral("notes:draft.md")};
 
         QCOMPARE(message.absolutePaths(), QStringList({QStringLiteral("/tmp/notes:draft.md")}));
+    }
+
+    /// A message from a build that predates "Show in folder" has no `select`
+    /// flag, and means what it always meant: open the paths.
+    void aMissingSelectFlagMeansOpen()
+    {
+        InstanceMessage message;
+        message.paths = {QStringLiteral("/etc")};
+        QByteArray json = message.toJson();
+        json.replace(",\"select\":false", "");
+        json.replace("\"select\":false,", "");
+        QVERIFY2(!json.contains("select"), json.constData());
+
+        InstanceMessage received;
+        received.selectItems = true;
+        QVERIFY(InstanceMessage::fromJson(json, &received));
+        QCOMPARE(received.selectItems, false);
+    }
+
+    // ===================================================== grouping by folder
+
+    /// `pf a b c`: one panel per path, exactly as §10.2 describes — a file
+    /// opens its parent with the cursor on it, and nothing is merged.
+    void openingGivesEachPathItsOwnPanel()
+    {
+        QTemporaryDir dir;
+        QVERIFY(QDir(dir.path()).mkpath(QStringLiteral("sub")));
+        QFile file(dir.filePath(QStringLiteral("a.txt")));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.close();
+
+        const QString root = dir.path();
+        const QList<FolderRequest> requests = InstanceMessage::folderRequests(
+            {root + QStringLiteral("/sub"), root + QStringLiteral("/a.txt"),
+             root + QStringLiteral("/sub")},
+            false);
+
+        QCOMPARE(requests.size(), 3);
+        QCOMPARE(requests.at(0), (FolderRequest{root + QStringLiteral("/sub"), {}}));
+        QCOMPARE(requests.at(1), (FolderRequest{root, {QStringLiteral("a.txt")}}));
+        QCOMPARE(requests.at(2), (FolderRequest{root + QStringLiteral("/sub"), {}}));
+    }
+
+    /// ShowItems: every item is shown in its parent, and items sharing a parent
+    /// share a panel, in the order their folders first appeared.
+    void showingItemsGroupsThemByFolder()
+    {
+        const QList<FolderRequest> requests = InstanceMessage::folderRequests(
+            {QStringLiteral("/srv/b/one"), QStringLiteral("/srv/a/x"), QStringLiteral("/srv/b/two"),
+             QStringLiteral("/srv/b/one")},
+            true);
+
+        QCOMPARE(requests.size(), 2);
+        QCOMPARE(requests.at(0), (FolderRequest{QStringLiteral("/srv/b"),
+                                                {QStringLiteral("one"), QStringLiteral("two")}}));
+        QCOMPARE(requests.at(1), (FolderRequest{QStringLiteral("/srv/a"), {QStringLiteral("x")}}));
+    }
+
+    /// Revealing a folder shows it selected in its parent — what "Show in
+    /// folder" on a downloaded directory means — and the root, which has no
+    /// parent, is shown as itself.
+    void showingAFolderSelectsItInItsParent()
+    {
+        const QList<FolderRequest> requests = InstanceMessage::folderRequests(
+            {QStringLiteral("/home/me/Downloads"), QStringLiteral("/")}, true);
+
+        QCOMPARE(requests.size(), 2);
+        QCOMPARE(requests.at(0),
+                 (FolderRequest{QStringLiteral("/home/me"), {QStringLiteral("Downloads")}}));
+        QCOMPARE(requests.at(1), (FolderRequest{QStringLiteral("/"), {}}));
     }
 
     // ============================================================ the socket

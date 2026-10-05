@@ -126,6 +126,8 @@ void applyTable(const toml::table &table, Settings &settings, const QString &fil
     reader.readBool("general", "restore_session", settings.general.restoreSession);
     reader.readBool("general", "confirm_on_quit", settings.general.confirmOnQuit);
     reader.readBool("general", "single_instance", settings.general.singleInstance);
+    reader.readBool("general", "offer_default_file_manager",
+                    settings.general.offerDefaultFileManager);
 
     reader.readNumber("panels", "default_count", settings.panels.defaultCount, 1, 10);
     reader.readNumber("panels", "max_count", settings.panels.maxCount, 1, 10);

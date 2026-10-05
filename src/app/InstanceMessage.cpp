@@ -7,6 +7,8 @@
 #include <QJsonObject>
 #include <QUrl>
 
+#include <algorithm>
+
 namespace pf {
 namespace {
 
@@ -50,6 +52,7 @@ QByteArray InstanceMessage::toJson() const
 
     const QJsonObject flags{
         {QStringLiteral("placement"), placementName(placement)},
+        {QStringLiteral("select"), selectItems},
     };
 
     const QJsonObject object{
@@ -93,10 +96,9 @@ bool InstanceMessage::fromJson(const QByteArray &bytes, InstanceMessage *out)
     out->cwd = object.value(QStringLiteral("cwd")).toString();
     out->activationToken = object.value(QStringLiteral("activation_token")).toString();
     out->desktopStartupId = object.value(QStringLiteral("desktop_startup_id")).toString();
-    out->placement = placementFromName(object.value(QStringLiteral("flags"))
-                                           .toObject()
-                                           .value(QStringLiteral("placement"))
-                                           .toString());
+    const QJsonObject flags = object.value(QStringLiteral("flags")).toObject();
+    out->placement = placementFromName(flags.value(QStringLiteral("placement")).toString());
+    out->selectItems = flags.value(QStringLiteral("select")).toBool(false);
 
     out->paths.clear();
     for (const auto &value : object.value(QStringLiteral("paths")).toArray()) {
@@ -132,6 +134,42 @@ QStringList InstanceMessage::absolutePaths() const
     }
 
     return resolved;
+}
+
+QList<FolderRequest> InstanceMessage::folderRequests(const QStringList &absolutePaths,
+                                                     bool selectItems)
+{
+    QList<FolderRequest> requests;
+
+    for (const QString &path : absolutePaths) {
+        const QFileInfo info(path);
+
+        if (!selectItems) {
+            if (info.isDir()) {
+                requests.append({.directory = info.absoluteFilePath(), .names = {}});
+            } else {
+                requests.append({.directory = info.absolutePath(), .names = {info.fileName()}});
+            }
+            continue;
+        }
+
+        // The root has no parent to be shown in, so it is shown as itself.
+        const QString name = info.fileName();
+        const QString directory = name.isEmpty() ? info.absoluteFilePath() : info.absolutePath();
+
+        // Grouped in order of first appearance, so the first path given still
+        // decides which panel §10.2's focused-panel rule applies to.
+        auto existing = std::ranges::find(requests, directory, &FolderRequest::directory);
+        if (existing == requests.end()) {
+            requests.append({.directory = directory, .names = {}});
+            existing = std::prev(requests.end());
+        }
+        if (!name.isEmpty() && !existing->names.contains(name)) {
+            existing->names.append(name);
+        }
+    }
+
+    return requests;
 }
 
 } // namespace pf

@@ -12,7 +12,13 @@ class JobEngine;
 class UndoStack;
 } // namespace pf::fs
 
+namespace pf::platform {
+class FileManagerService;
+}
+
 #include <QApplication>
+
+class QTimer;
 
 #include <cstddef>
 #include <functional>
@@ -36,6 +42,7 @@ class ProcessBar;
 namespace pf {
 
 struct CommandLineOptions;
+class DefaultFileManagerOffer;
 class FileOperations;
 class KeyDispatcher;
 class PanelController;
@@ -81,6 +88,10 @@ public:
     /// and because §14 drives the rules directly.
     void openRequest(const InstanceMessage &message);
 
+    /// How long `--dbus-service` waits for a call before deciding the bus
+    /// started it for nothing and exiting.
+    static constexpr int kDbusServiceIdleMs = 10000;
+
     /// §6.2: a single application-level filter is the entire dispatch path.
     /// QShortcut and QAction shortcuts are not used — they cap out at four
     /// elements, resolve ambiguity uncontrollably, and have no notion of mode.
@@ -118,6 +129,22 @@ private:
     void restoreSessionOrOpenInitialPanel(const CommandLineOptions &options);
 
     void saveSession() const;
+
+    /// org.freedesktop.FileManager1, created on first use. Constructing it
+    /// touches no bus; requestName() is what connects.
+    platform::FileManagerService *fileManagerService();
+
+    /// The offer bar's controller, created on first use.
+    DefaultFileManagerOffer *defaultFileManagerOffer();
+
+    /// The bar's buttons show the keys their actions are bound to, which the
+    /// user may have changed in hotkeys.toml.
+    void updateDefaultFileManagerKeyHints();
+
+    /// `--dbus-service`: answer FileManager1 without a window until a call
+    /// arrives. When another instance already owns the single-instance socket,
+    /// calls are forwarded to it over the same IPC `pf <path>` uses.
+    void startAsDbusService();
 
     /// §6.3's `Ctrl+T`: swap between the light and dark theme, and record the
     /// choice so the desktop stops overriding it.
@@ -165,6 +192,8 @@ private:
     std::unique_ptr<config::ConfigWatcher> m_configWatcher;
     std::unique_ptr<fs::JobEngine> m_jobEngine;
     std::unique_ptr<fs::UndoStack> m_undoStack;
+    std::unique_ptr<platform::FileManagerService> m_fileManagerService;
+    std::unique_ptr<DefaultFileManagerOffer> m_defaultOffer;
 
     /// §3.4: created when the first job starts, not at startup. A user who
     /// copies nothing never pays for it.
@@ -183,6 +212,14 @@ private:
     std::size_t m_nextStartupTask = 0;
     bool m_quitAfterPaint = false;
     bool m_firstPaintSeen = false;
+
+    /// Started by the session bus with --dbus-service.
+    bool m_dbusService = false;
+
+    /// A --dbus-service process that found Panefile already running, and hands
+    /// each call to it rather than opening a window of its own.
+    bool m_forwardToRunningInstance = false;
+    QTimer *m_dbusIdleTimer = nullptr;
 };
 
 } // namespace pf

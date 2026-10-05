@@ -27,6 +27,7 @@ new_panel_path       = "~"
 restore_session      = true
 confirm_on_quit      = false
 single_instance      = true
+offer_default_file_manager = true   # Linux: offer to become the default file manager
 
 [panels]
 default_count        = 1

@@ -76,6 +76,18 @@ CommandLineOptions parseCommandLine(int argc, const char *const *argv)
             options.action = CommandLineAction::PrintDefaultConfig;
             return options;
         }
+        if (is("--make-default")) {
+            options.action = CommandLineAction::MakeDefault;
+            return options;
+        }
+        if (is("--default-status")) {
+            options.action = CommandLineAction::DefaultStatus;
+            return options;
+        }
+        if (is("--dbus-service")) {
+            options.dbusService = true;
+            continue;
+        }
         if (is("--benchmark")) {
             if (i + 1 >= argc || argv[i + 1] == nullptr) {
                 return makeError(QStringLiteral("--benchmark requires a directory argument"));
@@ -179,6 +191,15 @@ QString helpText()
         "      --panel           Always open a new panel\n"
         "      --new-window      Open a new window in the existing process\n"
         "      --new-instance    Start a separate process, ignoring any running instance\n"
+        "\n"
+        "Default file manager (Linux):\n"
+        "      --make-default    Make Panefile open folders and answer \"Show in folder\",\n"
+        "                        then exit; non-zero if that failed\n"
+        "      --default-status  Print the current folder handler, the file that set it,\n"
+        "                        the FileManager1 service file and its owner, then exit\n"
+        "      --dbus-service    Run as org.freedesktop.FileManager1 for the session bus:\n"
+        "                        no window until a request arrives (used by the\n"
+        "                        service file --make-default writes)\n"
         "\n"
         "Diagnostics:\n"
         "      --startup-trace   Print startup phase timings to stderr\n"

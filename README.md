@@ -114,7 +114,46 @@ go_home    = ["g h", "Alt+Home"]
 ```
 
 State — pinned directories, session, window geometry — is written to
-`~/.local/share/panefile/`, never to the config directory.
+`~/.local/share/panefile/`.
+
+## Default file manager
+
+On Linux, Panefile offers once per launch to become the default file manager,
+in a bar along the top of the window: **Yes**, **Not now** (ask again next
+launch) or **Never** (sets `offer_default_file_manager = false` in
+`config.toml`). The keys are `Alt+Y`, `Alt+N` and `Alt+Shift+N`, remappable
+like any other action. Settings → General has the same switch and a **Make
+default** button, and `pf --make-default` does it from a shell.
+
+"Default file manager" is two separate things on Linux, and Yes sets up both:
+
+- **Opening folders** — `xdg-open ~`, GIO, the file chooser portal. This is
+  `inode/directory=panefile.desktop` under `[Default Applications]` in
+  `mimeapps.list`. Panefile edits whichever `mimeapps.list` currently decides it
+  (usually `~/.config/mimeapps.list`, or a desktop-specific one such as
+  `~/.config/hyprland-mimeapps.list`), changes only that line and one in
+  `[Added Associations]`, and writes through a symlink rather than replacing it
+  — so a `mimeapps.list` managed by stow or another dotfiles tool stays managed.
+- **"Show in folder"** — a browser revealing a download, an Electron app
+  revealing a file. These call the `org.freedesktop.FileManager1` D-Bus
+  service, which Nautilus usually owns. Panefile writes
+  `~/.local/share/dbus-1/services/org.freedesktop.FileManager1.service`, which
+  the session bus prefers over Nautilus's copy, so the bus starts `pf
+  --dbus-service` when nothing else holds the name. If Nautilus is already
+  running and holding it, Panefile waits its turn: "Show in folder" reaches
+  Panefile once Nautilus exits, or after your next login.
+
+`pf --default-status` shows where both stand. To undo:
+
+```sh
+xdg-mime default org.gnome.Nautilus.desktop inode/directory   # or edit mimeapps.list by hand
+rm ~/.local/share/dbus-1/services/org.freedesktop.FileManager1.service
+```
+
+(`xdg-mime` replaces a symlinked `mimeapps.list` with a plain file; edit the
+line yourself if yours is a symlink.)
+
+None of this applies on macOS, where Finder cannot be replaced.
 
 ## Licence
 

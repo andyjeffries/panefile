@@ -1,6 +1,7 @@
 #include "input/ActionRegistry.h"
 #include "input/DefaultKeymap.h"
 #include "input/Keymap.h"
+#include "app/DefaultFileManagerOffer.h"
 #include "app/FileOperations.h"
 #include "app/PanelController.h"
 #include "app/QuickLookController.h"
@@ -109,6 +110,9 @@ private Q_SLOTS:
         SearchController search(&window, window.panelStrip(), &registry);
         search.registerActions();
 
+        DefaultFileManagerOffer defaultOffer(&window, nullptr);
+        defaultOffer.registerActions(&registry);
+
         const QStringList registered = registry.ids();
 
         input::Keymap keymap;
@@ -164,6 +168,9 @@ private Q_SLOTS:
         quickLook.registerActions();
         SearchController search(&window, window.panelStrip(), &registry);
         search.registerActions();
+
+        DefaultFileManagerOffer defaultOffer(&window, nullptr);
+        defaultOffer.registerActions(&registry);
 
         const QStringList registered = registry.ids();
 

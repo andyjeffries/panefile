@@ -422,6 +422,34 @@ QPushButton:default {
     border: 1px solid %{border_focused};
 }
 
+/* The offer to become the default file manager: a slim strip across the top of
+   the window, the same surface as a focused panel, so it reads as part of the
+   window rather than as a dialog that has landed on it. */
+QWidget#noticeBar {
+    background-color: %{surface};
+    border-bottom: 1px solid %{seam};
+}
+
+QLabel#noticeBarText {
+    background-color: transparent;
+    color: %{text};
+}
+
+QLabel#noticeBarText[noticeState="error"] {
+    color: %{error};
+}
+
+QPushButton#noticeBarButton, QPushButton#noticeBarPrimary {
+    padding: 2px 10px;
+    font-size: %{small_font_size}pt;
+}
+
+QPushButton#noticeBarPrimary {
+    background-color: %{accent};
+    border: 1px solid %{accent};
+    color: %{on_accent};
+}
+
 /* Splitters and scrollbars ---------------------------------------------- */
 
 QSplitter::handle {
@@ -533,6 +561,7 @@ QProgressBar::chunk {
         // White or black against the accent, whichever the accent can carry —
         // a light theme's accent may need dark text on it.
         .replace(QLatin1String("%{on_selection}"), hex(readableOn(theme.selectionBackground)))
+        .replace(QLatin1String("%{on_accent}"), hex(readableOn(theme.accent)))
         .replace(QLatin1String("%{glyph_font_size}"), QString::number(theme.fontSize + 4))
         .replace(QLatin1String("%{chrome_font_size}"), QString::number(theme.fontSize - 1))
         .replace(QLatin1String("%{small_font_size}"), QString::number(theme.fontSize - 2))

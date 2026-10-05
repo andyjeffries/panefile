@@ -33,6 +33,10 @@ struct Settings {
         bool restoreSession = true;
         bool confirmOnQuit = false;
         bool singleInstance = true;
+
+        /// Linux: offer, once per launch, to become the default file manager.
+        /// "Never" in that offer is what sets it false.
+        bool offerDefaultFileManager = true;
     } general;
 
     struct Panels {

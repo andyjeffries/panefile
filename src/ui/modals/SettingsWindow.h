@@ -50,6 +50,10 @@ public:
     /// Loads the current values and shows the window.
     void present();
 
+    /// Re-reads who the default file manager is, off the GUI thread, into the
+    /// General tab's status line. Linux only; a no-op elsewhere.
+    void refreshDefaultFileManagerStatus();
+
 Q_SIGNALS:
     /// A theme was picked. The composition root applies it immediately —
     /// appearance is judged by looking at it, so it has to change under the
@@ -59,6 +63,11 @@ Q_SIGNALS:
     /// Something was written. Not strictly needed, since ConfigWatcher will
     /// notice, but it lets the status bar say so at the moment it happened.
     void settingsChanged(const QString &description);
+
+    /// "Make default" was pressed. The composition root runs the same code
+    /// the offer bar's Yes does, and calls refreshDefaultFileManagerStatus()
+    /// when it is done.
+    void makeDefaultFileManagerRequested();
 
 private:
     static QWidget *buildToolbar();

@@ -6,6 +6,8 @@
 #include "config/Config.h"
 #include "config/Theme.h"
 #include "config/TomlWriter.h"
+#include "core/WorkerPools.h"
+#include "platform/DefaultFileManager.h"
 #include "platform/Paths.h"
 
 #include <QButtonGroup>
@@ -19,9 +21,11 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPainter>
+#include <QPointer>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QStackedWidget>
+#include <QThreadPool>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
@@ -105,6 +109,12 @@ struct SettingsWindow::Controls {
     QCheckBox *directoriesFirst = nullptr;
     QComboBox *defaultSort = nullptr;
     QCheckBox *showHidden = nullptr;
+
+    // Default file manager — Linux only, and absent rather than disabled on
+    // macOS, where there is nothing to choose.
+    QCheckBox *offerDefaultFileManager = nullptr;
+    QLabel *defaultFileManagerStatus = nullptr;
+    QPushButton *makeDefaultFileManager = nullptr;
 
     // Quick Look
     QComboBox *dock = nullptr;
@@ -331,7 +341,69 @@ QWidget *SettingsWindow::buildGeneralTab()
     boolRow(&m_controls->showHidden, tr("Show hidden files"), QStringLiteral("panels"),
             QStringLiteral("show_hidden"));
 
+    if (platform::defaultFileManagerSupported()) {
+        boolRow(&m_controls->offerDefaultFileManager,
+                tr("Offer to become the default file manager"), QStringLiteral("general"),
+                QStringLiteral("offer_default_file_manager"));
+
+        m_controls->defaultFileManagerStatus = new QLabel;
+        m_controls->defaultFileManagerStatus->setObjectName(
+            QStringLiteral("settingsDefaultFileManagerStatus"));
+        m_controls->defaultFileManagerStatus->setTextFormat(Qt::PlainText);
+        m_controls->defaultFileManagerStatus->setTextInteractionFlags(Qt::TextSelectableByMouse);
+
+        m_controls->makeDefaultFileManager = new QPushButton(tr("Make default"));
+        m_controls->makeDefaultFileManager->setObjectName(
+            QStringLiteral("settingsMakeDefaultFileManager"));
+        connect(m_controls->makeDefaultFileManager, &QPushButton::clicked, this, [this] {
+            m_controls->makeDefaultFileManager->setEnabled(false);
+            m_controls->defaultFileManagerStatus->setText(
+                tr("Making Panefile your default file manager…"));
+            Q_EMIT makeDefaultFileManagerRequested();
+        });
+
+        auto *row = new QWidget;
+        auto *rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(0, 0, 0, 0);
+        rowLayout->setSpacing(12);
+        rowLayout->addWidget(m_controls->defaultFileManagerStatus, 1);
+        rowLayout->addWidget(m_controls->makeDefaultFileManager);
+        form->addRow(tr("Default file manager"), row);
+    }
+
     return page;
+}
+
+void SettingsWindow::refreshDefaultFileManagerStatus()
+{
+    if (m_controls->defaultFileManagerStatus == nullptr) {
+        return;
+    }
+
+    // Finding the default reads a dozen files, which is not work for the
+    // thread that is painting the window being opened.
+    const QPointer<SettingsWindow> self(this);
+    WorkerPools::acquire("pf-default-fm", 1)->start([self] {
+        const platform::DefaultFileManagerStatus status = platform::queryDefaultFileManager();
+        QMetaObject::invokeMethod(
+            self,
+            [self, status] {
+                if (self.isNull()) {
+                    return;
+                }
+                QString text = status.handlerDescription();
+                if (status.handlerId == QLatin1String(platform::kPanefileDesktopId) &&
+                    !status.isDefault()) {
+                    text += tr(" — “Show in folder” is not set up");
+                } else if (!status.panefileInstalled) {
+                    text += tr(" — panefile.desktop is not installed");
+                }
+                self->m_controls->defaultFileManagerStatus->setText(text);
+                self->m_controls->makeDefaultFileManager->setEnabled(!status.isDefault() &&
+                                                                     status.panefileInstalled);
+            },
+            Qt::QueuedConnection);
+    });
 }
 
 QWidget *SettingsWindow::buildQuickLookTab()
@@ -445,6 +517,7 @@ QString SettingsWindow::themePath()
 void SettingsWindow::present()
 {
     loadValues();
+    refreshDefaultFileManagerStatus();
     showModal();
 }
 
@@ -466,6 +539,9 @@ void SettingsWindow::loadValues()
     m_controls->maxCount->setValue(settings.panels.maxCount);
     m_controls->directoriesFirst->setChecked(settings.panels.directoriesFirst);
     m_controls->showHidden->setChecked(settings.panels.showHidden);
+    if (m_controls->offerDefaultFileManager != nullptr) {
+        m_controls->offerDefaultFileManager->setChecked(settings.general.offerDefaultFileManager);
+    }
 
     if (const int index = m_controls->defaultSort->findData(settings.panels.defaultSort);
         index >= 0) {

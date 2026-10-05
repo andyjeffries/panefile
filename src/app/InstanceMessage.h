@@ -8,6 +8,15 @@
 
 namespace pf {
 
+/// One panel's worth of a request: a directory to open, and the entries in it
+/// to put the cursor on and, for "Show in folder", to select.
+struct FolderRequest {
+    QString directory;
+    QStringList names;
+
+    bool operator==(const FolderRequest &other) const = default;
+};
+
 /// The IPC payload of §10.3.
 ///
 /// "Message format is a single JSON object: `{ cwd, paths[], flags{},
@@ -35,6 +44,14 @@ struct InstanceMessage {
 
     PlacementOverride placement = PlacementOverride::None;
 
+    /// "Show in folder": open each path's *parent* with the path selected,
+    /// rather than opening the path. Set by org.freedesktop.FileManager1's
+    /// ShowItems; never by the command line.
+    ///
+    /// A new key inside `flags`, which an older instance ignores rather than
+    /// misreads — so it does not need a version bump.
+    bool selectItems = false;
+
     /// §10.4: "The launching process usually has XDG_ACTIVATION_TOKEN in its
     /// environment… The client must forward it in the IPC message and then
     /// unset it locally, since a token is single-use."
@@ -52,6 +69,15 @@ struct InstanceMessage {
     /// Resolves `paths` against `cwd` into absolute paths, decoding `file://`
     /// URIs. Pure, so §10.2's resolution rules are testable.
     QStringList absolutePaths() const;
+
+    /// The panels a request opens, in order, from absolute paths.
+    ///
+    /// Without `selectItems`, §10.2's rule: one panel per path, a directory
+    /// opened as itself and a file as its parent with the cursor on it. With
+    /// it, every path is shown in its parent, and paths sharing a parent share
+    /// a panel — revealing three downloads is one folder with three files
+    /// selected, not three copies of the same folder.
+    static QList<FolderRequest> folderRequests(const QStringList &absolutePaths, bool selectItems);
 };
 
 } // namespace pf

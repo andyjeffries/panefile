@@ -73,6 +73,7 @@ void TestConfig::emptyTextGivesTheDocumentedDefaults()
     QVERIFY(result.isClean());
     QCOMPARE(result.settings.panels.maxCount, 10);
     QCOMPARE(result.settings.general.singleInstance, true);
+    QCOMPARE(result.settings.general.offerDefaultFileManager, true);
     QCOMPARE(result.settings.quicklook.dock, QStringLiteral("float"));
     QCOMPARE(result.settings.quicklook.debounceMs, 120);
     QCOMPARE(result.settings.search.maxResults, 10000);
@@ -97,6 +98,8 @@ void TestConfig::shippedTemplateParsesToTheSameDefaults()
     QCOMPARE(fromTemplate.settings.operations.defaultConflict,
              fromNothing.settings.operations.defaultConflict);
     QCOMPARE(fromTemplate.settings.cli.fileAction, fromNothing.settings.cli.fileAction);
+    QCOMPARE(fromTemplate.settings.general.offerDefaultFileManager,
+             fromNothing.settings.general.offerDefaultFileManager);
 }
 
 void TestConfig::validFileIsApplied()
@@ -104,6 +107,7 @@ void TestConfig::validFileIsApplied()
     const ConfigLoadResult result = parseConfig(QStringLiteral(R"(
 [general]
 restore_session = false
+offer_default_file_manager = false
 
 [panels]
 max_count = 4
@@ -116,6 +120,7 @@ max_results = 500
 
     QVERIFY(result.isClean());
     QCOMPARE(result.settings.general.restoreSession, false);
+    QCOMPARE(result.settings.general.offerDefaultFileManager, false);
     QCOMPARE(result.settings.panels.maxCount, 4);
     QCOMPARE(result.settings.panels.showHidden, true);
     QCOMPARE(result.settings.search.fuzzy, false);

@@ -12,8 +12,10 @@ enum class CommandLineAction {
     ShowVersion,
     PrintConfigDir,
     PrintDefaultConfig,
-    Benchmark, ///< --benchmark <dir>: scan and print timings, then exit
-    Error      ///< `message` explains, exit with `exitCode`
+    MakeDefault,   ///< --make-default: become the default file manager, then exit
+    DefaultStatus, ///< --default-status: report who the default file manager is
+    Benchmark,     ///< --benchmark <dir>: scan and print timings, then exit
+    Error          ///< `message` explains, exit with `exitCode`
 };
 
 /// Where a path argument should open, overriding the §10.2 defaults.
@@ -53,6 +55,11 @@ struct CommandLineOptions {
     bool quitAfterPaint = false;
 
     bool verbose = false;
+
+    /// --dbus-service: started by the session bus to answer
+    /// org.freedesktop.FileManager1. No window until a call asks for one, and
+    /// an exit if none does.
+    bool dbusService = false;
 
     /// Directory for --benchmark.
     QString benchmarkPath;

@@ -52,6 +52,10 @@ public:
     void showProcessBar(QWidget *processBar);
     void hideProcessBar();
 
+    /// Adopts a notice bar and puts it along the top of the window, above the
+    /// panels. Showing and hiding it stays the bar's business.
+    void setTopBar(QWidget *bar);
+
     /// Adopts the Quick Look pane. Called on its first use; §3.4 keeps the
     /// widget — and every renderer behind it — from existing until then.
     void setQuickLookWidget(QWidget *view);
@@ -107,6 +111,7 @@ private:
     QLabel *m_selectionCount = nullptr;
     QLabel *m_pending = nullptr;
     QWidget *m_processBar = nullptr;
+    QWidget *m_topBar = nullptr;
     QWidget *m_footerRow = nullptr;
 
     QWidget *m_quickLook = nullptr;

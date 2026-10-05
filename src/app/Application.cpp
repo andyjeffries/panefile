@@ -2,9 +2,11 @@
 #include "core/Format.h"
 
 #include "input/ActionRegistry.h"
+#include "input/Chord.h"
 #include "input/DefaultKeymap.h"
 #include "input/Keymap.h"
 #include "app/CommandLine.h"
+#include "app/DefaultFileManagerOffer.h"
 #include "app/FileOperations.h"
 #include "app/KeyDispatcher.h"
 #include "app/PanelController.h"
@@ -25,7 +27,9 @@
 #include "fs/UndoStack.h"
 #include "model/FilterSortProxy.h"
 #include "model/ThumbnailCache.h"
+#include "platform/FileManagerService.h"
 #include "platform/Paths.h"
+#include "ui/DefaultFileManagerBar.h"
 #include "ui/FilePanel.h"
 #include "ui/MainWindow.h"
 #include "ui/PanelStrip.h"
@@ -423,6 +427,8 @@ void Application::loadHotkeys()
     m_dispatcher->setSequenceTimeout(m_settings.keys.sequenceTimeoutMs);
     m_dispatcher->setAmbiguityTimeout(m_settings.keys.ambiguityTimeoutMs);
 
+    updateDefaultFileManagerKeyHints();
+
     // The help modal lists bindings, so a rebuilt keymap makes its contents
     // stale. Only refreshed if it has been opened — building it here would
     // undo the point of constructing it lazily.
@@ -467,6 +473,9 @@ void Application::reloadConfiguration(const QStringList &changedFiles)
                 m_search->setSettings(m_settings);
             }
         }
+        if (m_defaultOffer != nullptr) {
+            m_defaultOffer->setOptedIn(m_settings.general.offerDefaultFileManager);
+        }
     }
 
     if (hotkeysChanged) {
@@ -487,6 +496,7 @@ void Application::reloadConfiguration(const QStringList &changedFiles)
 void Application::startUp(const CommandLineOptions &options)
 {
     m_quitAfterPaint = options.quitAfterPaint;
+    m_dbusService = options.dbusService;
 
     // First, before any of the work below. A session manager can send SIGTERM
     // at any moment, and until the handler is in place the default disposition
@@ -526,14 +536,19 @@ void Application::startUp(const CommandLineOptions &options)
 
     buildInputSystem();
 
-    // §3.4 step 6: start the scan before show(). It runs on a worker thread, so
-    // dispatching it first overlaps enumeration with window realisation instead
-    // of starting after it.
-    restoreSessionOrOpenInitialPanel(options);
-    StartupTrace::mark(StartupPhase::ScanStarted);
+    // --dbus-service has nothing to show until a FileManager1 call says what:
+    // no panel, no window, and no session restored underneath the folder the
+    // caller asked for.
+    if (!m_dbusService) {
+        // §3.4 step 6: start the scan before show(). It runs on a worker
+        // thread, so dispatching it first overlaps enumeration with window
+        // realisation instead of starting after it.
+        restoreSessionOrOpenInitialPanel(options);
+        StartupTrace::mark(StartupPhase::ScanStarted);
 
-    m_mainWindow->show();
-    StartupTrace::mark(StartupPhase::Shown);
+        m_mainWindow->show();
+        StartupTrace::mark(StartupPhase::Shown);
+    }
 
     // §7.7's cache settings, deferred for the same reason the cache itself is:
     // constructing it resolves the thumbnail directory, which reads XDG
@@ -555,6 +570,9 @@ void Application::startUp(const CommandLineOptions &options)
             postStartupTask([this] { m_instance->startServing(); });
         } else {
             m_instance.reset();
+            // Panefile is already running. A bus-started process hands the
+            // calls to it rather than opening a second window.
+            m_forwardToRunningInstance = m_dbusService;
         }
     }
 
@@ -570,6 +588,18 @@ void Application::startUp(const CommandLineOptions &options)
 
     // "Hot reload is not needed in the first 50 ms."
     postStartupTask([this] { startWatchingConfig(); });
+
+    // Last, and off the GUI thread once it runs: finding the default file
+    // manager reads a dozen files, none of which the first paint needs.
+    if (m_dbusService) {
+        startAsDbusService();
+    } else {
+        postStartupTask([this] {
+            defaultFileManagerOffer()->start(m_settings.general.offerDefaultFileManager,
+                                             DefaultFileManagerOffer::isDbusActivated(false),
+                                             m_instance != nullptr);
+        });
+    }
 
     // §8.3: a malformed config shows "a dismissible banner naming the file,
     // line and problem". Deferred, because a banner is not worth delaying the
@@ -719,6 +749,10 @@ ui::SettingsWindow *Application::settingsWindow()
 
         connect(m_settingsWindow, &ui::SettingsWindow::settingsChanged, m_mainWindow.get(),
                 &ui::MainWindow::showStatusMessage);
+
+        // The same code as the bar's Yes, so the two cannot drift apart.
+        connect(m_settingsWindow, &ui::SettingsWindow::makeDefaultFileManagerRequested, this,
+                [this] { defaultFileManagerOffer()->makeDefault(); });
     }
     return m_settingsWindow;
 }
@@ -859,6 +893,13 @@ void Application::saveSession() const
         return;
     }
 
+    // A --dbus-service process that was never asked for a window has no
+    // panels, and writing that would replace the user's real session with an
+    // empty one.
+    if (m_mainWindow->panelStrip()->panels().isEmpty()) {
+        return;
+    }
+
     Session session;
     session.windowGeometry = m_mainWindow->geometry();
     session.windowMaximised = m_mainWindow->isMaximized();
@@ -949,9 +990,19 @@ void Application::openRequest(const InstanceMessage &message)
 
     ui::PanelStrip *strip = m_mainWindow->panelStrip();
 
-    for (qsizetype i = 0; i < usable.size(); ++i) {
-        const QFileInfo info(usable.at(i));
-        const QString directory = info.isDir() ? info.absoluteFilePath() : info.absolutePath();
+    // A --dbus-service process has no panel until its first request, so there
+    // is no focused one to navigate.
+    if (strip->panels().isEmpty()) {
+        useFocusedPanel = false;
+    }
+
+    // One panel per folder. For `pf a b c` that is one per path, as §10.2 has
+    // always said; "Show in folder" groups the items it reveals by folder.
+    const QList<FolderRequest> requests =
+        InstanceMessage::folderRequests(usable, message.selectItems);
+
+    for (qsizetype i = 0; i < requests.size(); ++i) {
+        const FolderRequest &request = requests.at(i);
 
         // §10.2: "With multiple paths, the first follows the table above and
         // each subsequent one always opens a new panel."
@@ -961,29 +1012,36 @@ void Application::openRequest(const InstanceMessage &message)
             if (panel != nullptr) {
                 // §10.2: "Navigating the focused panel pushes history, so
                 // go_back returns to where the user was. It never discards
-                // their selection silently."
+                // their selection silently." Revealing a file replaces the
+                // selection with that file, which says so by being visible.
                 if (panel->selectionCount() > 0) {
                     panel->clearSelection();
-                    m_mainWindow->showStatusMessage(tr("Selection cleared"));
+                    if (!message.selectItems) {
+                        m_mainWindow->showStatusMessage(tr("Selection cleared"));
+                    }
                 }
-                panel->navigateTo(directory);
+                panel->navigateTo(request.directory);
             }
         } else {
-            panel = strip->addPanel(directory);
+            panel = strip->addPanel(request.directory);
             if (panel == nullptr) {
                 // §10.2: "beyond that, extra paths are dropped with a footer
                 // warning."
                 m_mainWindow->showStatusMessage(
                     tr("At most %1 panels — %2 not opened")
-                        .arg(
-                            QString::number(ui::PanelStrip::kMaxPanels),
-                            counted(static_cast<int>(usable.size() - i), tr("path"), tr("paths"))));
+                        .arg(QString::number(ui::PanelStrip::kMaxPanels),
+                             counted(static_cast<int>(requests.size() - i), tr("path"),
+                                     tr("paths"))));
                 break;
             }
         }
 
-        if (panel != nullptr && !info.isDir()) {
-            panel->setCursorName(info.fileName());
+        if (panel == nullptr || request.names.isEmpty()) {
+            continue;
+        }
+        panel->setCursorName(request.names.constFirst());
+        if (message.selectItems) {
+            panel->selectNames(request.names);
         }
     }
 
@@ -994,10 +1052,133 @@ void Application::openRequest(const InstanceMessage &message)
             tr("%1 does not exist").arg(QDir::toNativeSeparators(missing.constFirst())));
     }
 
+    // A --dbus-service process asked only about files that do not exist has
+    // nothing to show, so it stays hidden and its idle timer keeps running.
+    if (strip->panels().isEmpty()) {
+        return;
+    }
+    if (m_dbusIdleTimer != nullptr) {
+        m_dbusIdleTimer->stop();
+    }
+
     // §10.2: the window is raised when the request did not come from it.
     if (!windowFocused) {
         raiseWindow(message.activationToken);
     }
+}
+
+platform::FileManagerService *Application::fileManagerService()
+{
+    if (m_fileManagerService == nullptr) {
+        m_fileManagerService = platform::FileManagerService::create();
+
+        // Into the same routing a `pf <path>` request takes, so "Show in
+        // folder" obeys §10.2's placement rules and there is one path from a
+        // request to a panel rather than two.
+        connect(m_fileManagerService.get(), &platform::FileManagerService::showRequested, this,
+                [this](const QStringList &paths, bool selectItems, const QString &startupId) {
+                    InstanceMessage message;
+                    message.cwd = QDir::rootPath();
+                    message.paths = paths;
+                    message.selectItems = selectItems;
+                    // The caller's startup id is its activation token on
+                    // Wayland, and the X11 startup id on X11.
+                    message.activationToken = startupId;
+                    message.desktopStartupId = startupId;
+
+                    if (m_forwardToRunningInstance) {
+                        if (m_dbusIdleTimer != nullptr) {
+                            m_dbusIdleTimer->start();
+                        }
+                        if (SingleInstance::sendToRunningInstance(
+                                platform::singleInstanceSocketPath(), message)) {
+                            return;
+                        }
+                        // It went away between our start and this call. Show it
+                        // here instead; the request matters more than the window
+                        // it lands in.
+                        qCWarning(pfIpc) << "the running instance did not answer; showing here";
+                        m_forwardToRunningInstance = false;
+                    }
+                    openRequest(message);
+                });
+    }
+    return m_fileManagerService.get();
+}
+
+DefaultFileManagerOffer *Application::defaultFileManagerOffer()
+{
+    if (m_defaultOffer == nullptr) {
+        m_defaultOffer =
+            std::make_unique<DefaultFileManagerOffer>(m_mainWindow.get(), fileManagerService());
+        m_defaultOffer->registerActions(m_registry.get());
+        connect(m_defaultOffer.get(), &DefaultFileManagerOffer::statusMessage, m_mainWindow.get(),
+                &ui::MainWindow::showStatusMessage);
+        connect(m_defaultOffer.get(), &DefaultFileManagerOffer::madeDefault, this,
+                [this](bool, const QString &message) {
+                    // The bar reports its own outcome; the footer reports one
+                    // that came from Settings.
+                    const ui::DefaultFileManagerBar *bar = m_defaultOffer->bar();
+                    if (bar == nullptr || bar->isHidden()) {
+                        m_mainWindow->showStatusMessage(message);
+                    }
+                    if (m_settingsWindow != nullptr) {
+                        m_settingsWindow->refreshDefaultFileManagerStatus();
+                    }
+                });
+        updateDefaultFileManagerKeyHints();
+    }
+    return m_defaultOffer.get();
+}
+
+void Application::updateDefaultFileManagerKeyHints()
+{
+    if (m_defaultOffer == nullptr || m_keymap == nullptr) {
+        return;
+    }
+    const auto hint = [this](const char *actionId) {
+        const QList<input::Binding> bindings =
+            m_keymap->bindingsFor(input::KeymapLayer::Global, QLatin1String(actionId));
+        return bindings.isEmpty() ? QString() : input::bindingToString(bindings.constFirst());
+    };
+    m_defaultOffer->setKeyHints(hint(DefaultFileManagerOffer::kYesAction),
+                                hint(DefaultFileManagerOffer::kNotNowAction),
+                                hint(DefaultFileManagerOffer::kNeverAction));
+}
+
+void Application::startAsDbusService()
+{
+    platform::FileManagerService *service = fileManagerService();
+
+    // Never offers anything — the bus started it, which it can only have done
+    // because Panefile is already the default — but its actions are
+    // registered like any other run's, so `?` lists the same keys.
+    defaultFileManagerOffer();
+
+    // The bus started this process because somebody called. If the call never
+    // comes — the caller gave up, or another file manager answered first —
+    // there is no window for anyone to close, so nothing else would end it.
+    m_dbusIdleTimer = new QTimer(this);
+    m_dbusIdleTimer->setSingleShot(true);
+    m_dbusIdleTimer->setInterval(kDbusServiceIdleMs);
+    connect(m_dbusIdleTimer, &QTimer::timeout, this, [this] {
+        if (m_mainWindow == nullptr || !m_mainWindow->isVisible()) {
+            qCInfo(pfIpc) << "--dbus-service: no window to show, exiting";
+            quit();
+        }
+    });
+    m_dbusIdleTimer->start();
+
+    connect(service, &platform::FileManagerService::nameUnavailable, this,
+            [](const QString &reason) {
+                qCWarning(pfIpc) << "--dbus-service: could not take the name:" << reason;
+            });
+    service->requestName();
+
+    // No window paints until a call arrives, and the deferred work — the
+    // socket's serving half above all — must not wait for one.
+    m_firstPaintSeen = true;
+    QTimer::singleShot(0, this, &Application::runNextStartupTask);
 }
 
 bool Application::notify(QObject *receiver, QEvent *event)

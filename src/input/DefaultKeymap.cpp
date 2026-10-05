@@ -40,6 +40,13 @@ constexpr DefaultBinding kDefaults[] = {
     {KeymapLayer::Global, "open_fuzzy_find", "Ctrl+F"},
     {KeymapLayer::Global, "toggle_theme_dark_light", "Ctrl+T"},
 
+    // The default-file-manager bar's answers. Not plain `y` and `n`, which a
+    // panel may want, and not chords anything else holds; enabled only while
+    // the bar is asking, so outside it these keys do nothing.
+    {KeymapLayer::Global, "default_file_manager_yes", "Alt+Y"},
+    {KeymapLayer::Global, "default_file_manager_not_now", "Alt+N"},
+    {KeymapLayer::Global, "default_file_manager_never", "Alt+Shift+N"},
+
     // Panel management
     {KeymapLayer::Normal, "create_new_file_panel", "n"},
     {KeymapLayer::Normal, "split_file_panel", "N"},

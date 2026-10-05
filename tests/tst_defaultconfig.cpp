@@ -51,6 +51,7 @@ void TestDefaultConfig::valuesMatchTheSpecifiedDefaults()
     // A representative value from each section. These are the numbers §8.1
     // documents; if one changes, the documentation changes with it.
     QCOMPARE(table["general"]["single_instance"].value_or(false), true);
+    QCOMPARE(table["general"]["offer_default_file_manager"].value_or(false), true);
     QCOMPARE(table["panels"]["max_count"].value_or(0), 10);
     QCOMPARE(table["panels"]["default_sort"].value_or(std::string_view{}),
              std::string_view{"name"});

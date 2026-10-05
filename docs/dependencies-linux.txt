@@ -15,6 +15,11 @@
 # one mapped and relocated at every launch, for a Unix domain socket that never
 # speaks TCP, TLS or HTTP. app/SingleInstance.cpp uses POSIX sockets and
 # QSocketNotifier, which is QtCore.
+#
+# libcrypto and libbrotlienc are Qt's, not Panefile's: Arch's Qt 6.11 links
+# libQt6Core against OpenSSL's libcrypto (QCryptographicHash), and OpenSSL 3
+# links libbrotlienc for certificate compression. Neither is avoidable short of
+# not linking QtCore.
 ld-linux-x86-64.so
 libEGL.so
 libGLX.so
@@ -30,8 +35,10 @@ libXdmcp.so
 libb2.so
 libbrotlicommon.so
 libbrotlidec.so
+libbrotlienc.so
 libbz2.so
 libc.so
+libcrypto.so
 libdbus-1.so
 libdouble-conversion.so
 libexpat.so

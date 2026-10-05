@@ -268,7 +268,7 @@ QLabel#sidebarSection {
     color: %{faint};
     font-size: %{caption_font_size}px;
     font-weight: 600;
-    padding: 14px 18px 4px 18px;
+    padding: 0px 18px;
 }
 
 QListWidget#sidebarList {
@@ -296,9 +296,9 @@ QListWidget#sidebarList::item:disabled, QListWidget#sidebarList::item:disabled:h
     background-color: transparent;
 }
 
-QFrame#sidebarDivider {
-    background-color: %{border};
-    border: none;
+/* A folder being dragged over the sidebar, to be pinned. */
+QListWidget#sidebarList[dropTarget="true"] {
+    background-color: %{focus_soft};
 }
 
 /* The sidebar's entries are shortcuts — press one and a panel goes there — not

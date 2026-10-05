@@ -55,6 +55,13 @@ QString Session::toIni() const
         }
     }
 
+    if (!hiddenPlaces.isEmpty()) {
+        text += QStringLiteral("\n[removedplaces]\n");
+        for (int i = 0; i < hiddenPlaces.size(); ++i) {
+            text += QStringLiteral("%1=%2\n").arg(i).arg(hiddenPlaces.at(i));
+        }
+    }
+
     return text;
 }
 
@@ -122,6 +129,8 @@ Session Session::fromIni(const QString &text)
 
         if (group == QLatin1String("pinned")) {
             session.pinnedPaths.append(value);
+        } else if (group == QLatin1String("removedplaces")) {
+            session.hiddenPlaces.append(value);
         }
     }
 
@@ -167,6 +176,8 @@ Session Session::pruned() const
         [](const SessionPanel &panel) { return !QFileInfo(panel.path).isDir(); });
 
     result.pinnedPaths.removeIf([](const QString &path) { return !QFileInfo(path).isDir(); });
+    // Removed places are kept even when missing: a Music folder deleted and
+    // recreated should not reappear in the sidebar by surprise.
 
     // The focused index refers to the list before pruning, so clamp rather than
     // trusting it. The empty case comes first: qBound asserts when its minimum

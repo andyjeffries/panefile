@@ -353,6 +353,13 @@ void Application::registerGlobalActions()
 
     connect(m_mainWindow->sidebar(), &ui::Sidebar::menuRequested, this,
             &Application::showApplicationMenu);
+
+    // Written when they change rather than only at quit, so a crash or a kill
+    // does not lose a sidebar the user has just arranged.
+    connect(m_mainWindow->sidebar(), &ui::Sidebar::pinnedPathsChanged, this,
+            [this] { saveSession(); });
+    connect(m_mainWindow->sidebar(), &ui::Sidebar::hiddenPlacesChanged, this,
+            [this] { saveSession(); });
 }
 
 void Application::showApplicationMenu(const QPoint &globalPosition)
@@ -717,6 +724,17 @@ void Application::restoreSessionOrOpenInitialPanel(const CommandLineOptions &opt
     // the last session happened to be showing.
     const bool hasPathArguments = !options.paths.isEmpty();
 
+    // The sidebar's pinned and removed places, always — they are the user's
+    // sidebar, not part of the last session's panels. They used to be read
+    // only when the session itself was restored, so starting with a path, or
+    // with restore off, showed no pins — and quitting then saved that empty
+    // list over the real one.
+    {
+        const Session saved = Session::load().pruned();
+        m_mainWindow->sidebar()->setPinnedPaths(saved.pinnedPaths);
+        m_mainWindow->sidebar()->setHiddenPlaces(saved.hiddenPlaces);
+    }
+
     if (m_settings.general.restoreSession && !hasPathArguments) {
         // §3.4: "Session restore of panels 2..N — panel 1 is enough to start
         // working; the rest fill in." Panel one is opened now; the others are
@@ -751,7 +769,6 @@ void Application::restoreSessionOrOpenInitialPanel(const CommandLineOptions &opt
                     }
                 }
                 strip->focusPanelAt(session.focusedPanel);
-                m_mainWindow->sidebar()->setPinnedPaths(session.pinnedPaths);
             });
             return;
         }
@@ -996,6 +1013,7 @@ void Application::saveSession() const
     session.windowMaximised = m_mainWindow->isMaximized();
     session.focusedPanel = m_mainWindow->panelStrip()->focusedIndex();
     session.pinnedPaths = m_mainWindow->sidebar()->pinnedPaths();
+    session.hiddenPlaces = m_mainWindow->sidebar()->hiddenPlaces();
 
     for (const ui::FilePanel *panel : m_mainWindow->panelStrip()->panels()) {
         session.panels.append(SessionPanel{.path = panel->path(),

@@ -1,20 +1,37 @@
 #include "ui/Sidebar.h"
 
+#include "core/Format.h"
 #include "core/Logging.h"
+#include "core/WorkerPools.h"
 #include "fs/Trash.h"
 #include "model/SymbolicIcon.h"
 #include "platform/Paths.h"
 #include "ui/SymbolicWidgets.h"
 #include "ui/ThemePalette.h"
 
+#include <QApplication>
 #include <QDir>
+#include <QDirIterator>
+#include <QDrag>
+#include <QDragEnterEvent>
+#include <QDropEvent>
 #include <QEvent>
 #include <QFileInfo>
-#include <QFrame>
+#include <QFileSystemWatcher>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QListWidget>
+#include <QMenu>
+#include <QMimeData>
+#include <QMouseEvent>
+#include <QPainter>
+#include <QPointer>
 #include <QStandardPaths>
+#include <QStyle>
+#include <QStyledItemDelegate>
+#include <QThreadPool>
+#include <QTimer>
+#include <QUrl>
 #include <QVBoxLayout>
 
 namespace pf::ui {
@@ -32,6 +49,28 @@ constexpr int kVolumeIdRole = Qt::UserRole + 3;
 /// than applied once so that refreshTheme() can re-tint every row.
 constexpr int kIconNameRole = Qt::UserRole + 4;
 constexpr int kToneRole = Qt::UserRole + 5;
+
+/// A hairline between groups, painted by the delegate.
+constexpr int kDividerRole = Qt::UserRole + 6;
+
+/// Faint text at the row's right-hand end: the wastebasket's count and size.
+constexpr int kDetailRole = Qt::UserRole + 7;
+
+/// A mounted volume that can be unmounted shows an eject button.
+constexpr int kEjectRole = Qt::UserRole + 8;
+
+/// A pinned folder rather than a built-in place: removing it unpins it.
+constexpr int kPinnedRole = Qt::UserRole + 9;
+
+/// The wastebasket's row, so its summary can be written into it.
+constexpr int kTrashRole = Qt::UserRole + 10;
+
+/// A place being dragged out of the sidebar. Its own type, not a file URL: a
+/// place dropped on a panel must not be taken as "copy Downloads in here".
+constexpr QLatin1String kPlaceMimeType("application/x-panefile-sidebar-place");
+
+constexpr int kEjectSize = 14;
+constexpr int kRowEndPadding = 8;
 
 /// How a row takes its colours from the theme.
 enum class Tone {
@@ -53,9 +92,98 @@ constexpr int kPlaceIconSize = 16;
 /// drive-shaped one; "server-stack" reads as a rack.
 constexpr QLatin1String kDeviceIcon("server");
 
+/// Where a row's eject button is, in the list's viewport.
+QRect ejectRect(const QRect &row)
+{
+    return {row.right() - kRowEndPadding - kEjectSize + 1, row.center().y() - (kEjectSize / 2),
+            kEjectSize, kEjectSize};
+}
+
+/// The sidebar's rows, as the stylesheet draws them, plus what it cannot: the
+/// divider line, the faint detail at a row's end, and the eject button.
+///
+/// The divider used to be a QFrame set as the row's item widget. It painted in
+/// an offscreen render and not on a real desktop, where the row showed as a
+/// gap; painting it here leaves nothing to go missing.
+class SidebarDelegate : public QStyledItemDelegate
+{
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+
+    void paint(QPainter *painter, const QStyleOptionViewItem &option,
+               const QModelIndex &index) const override
+    {
+        const ThemePalette &palette = currentPalette();
+
+        if (index.data(kDividerRole).toBool()) {
+            painter->fillRect(QRectF(option.rect.left() + 6, option.rect.center().y(),
+                                     option.rect.width() - 12, 1),
+                              palette.border);
+            return;
+        }
+
+        QString detail = index.data(kDetailRole).toString();
+        const bool eject = index.data(kEjectRole).toBool();
+
+        QFont detailFont = option.font;
+        if (detailFont.pixelSize() > 0) {
+            detailFont.setPixelSize(std::max(1, detailFont.pixelSize() - 1));
+        }
+        detailFont.setFeature(QFont::Tag("tnum"), 1);
+        const QFontMetrics detailMetrics(detailFont);
+
+        QStyleOptionViewItem opt = option;
+        initStyleOption(&opt, index);
+
+        // Where the name starts and how far it may run: the row's padding, the
+        // icon and the gap after it on the left; the eject button and the
+        // detail, each with a gap before it, on the right.
+        const int nameLeft = kRowEndPadding + opt.decorationSize.width() + 6;
+        const int ejectWidth = eject ? kEjectSize + kRowEndPadding : 0;
+        const int nameWidth = opt.fontMetrics.horizontalAdvance(opt.text);
+        const auto room = [&](const QString &end) {
+            const int endWidth = end.isEmpty() ? 0 : detailMetrics.horizontalAdvance(end) + 10;
+            return opt.rect.width() - nameLeft - kRowEndPadding - ejectWidth - endWidth;
+        };
+
+        // The name wins. A detail that would squeeze it is dropped — it is in
+        // the tooltip too — rather than leaving "Wa…et" beside "39 · 17 GB".
+        if (!detail.isEmpty() && nameWidth > room(detail)) {
+            detail.clear();
+        }
+        if (nameWidth > room(detail)) {
+            opt.text =
+                opt.fontMetrics.elidedText(opt.text, Qt::ElideMiddle, std::max(0, room(detail)));
+        }
+        const QWidget *widget = option.widget;
+        const QStyle *style = widget != nullptr ? widget->style() : QApplication::style();
+        style->drawControl(QStyle::CE_ItemViewItem, &opt, painter, widget);
+
+        int right = option.rect.right() - kRowEndPadding;
+        if (eject) {
+            const QRect target = ejectRect(option.rect);
+            const qreal ratio =
+                painter->device() != nullptr ? painter->device()->devicePixelRatioF() : 1.0;
+            painter->drawPixmap(target, SymbolicIcon::pixmap(QStringLiteral("eject"),
+                                                             palette.subtext, kEjectSize, ratio));
+            right = target.left() - kRowEndPadding;
+        }
+        if (!detail.isEmpty()) {
+            painter->save();
+            painter->setFont(detailFont);
+            painter->setPen(palette.overlay);
+            painter->drawText(QRect(option.rect.left(), option.rect.top(),
+                                    right - option.rect.left() + 1, option.rect.height()),
+                              Qt::AlignRight | Qt::AlignVCenter, detail);
+            painter->restore();
+        }
+    }
+};
+
 } // namespace
 
-Sidebar::Sidebar(QWidget *parent) : QWidget(parent), m_list(new QListWidget(this))
+Sidebar::Sidebar(QWidget *parent)
+    : QWidget(parent), m_list(new QListWidget(this)), m_trashSummaryTimer(new QTimer(this))
 {
     setObjectName(QStringLiteral("sidebar"));
 
@@ -67,9 +195,9 @@ Sidebar::Sidebar(QWidget *parent) : QWidget(parent), m_list(new QListWidget(this
     setAttribute(Qt::WA_StyledBackground, true);
     setMinimumWidth(140);
     setMaximumWidth(280);
-    // The design's width. A sidebar of shortcuts does not earn more, and at
-    // less the longer XDG names start eliding.
-    resize(200, height());
+    // Wide enough for a place's name and the wastebasket's count and size side
+    // by side; GNOME Files' is wider still. A sidebar of shortcuts earns no more.
+    resize(220, height());
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -81,13 +209,16 @@ Sidebar::Sidebar(QWidget *parent) : QWidget(parent), m_list(new QListWidget(this
     // keeps its own.
     auto *header = new QWidget(this);
     auto *headerLayout = new QHBoxLayout(header);
-    headerLayout->setContentsMargins(0, 0, 8, 0);
+    // One line, both centred on it: the label's padding is horizontal only, so
+    // the text sits in the middle of the button's height rather than resting
+    // on a baseline below it.
+    headerLayout->setContentsMargins(0, 4, 8, 4);
     headerLayout->setSpacing(0);
 
     auto *section = new QLabel(tr("Favourites"), header);
     section->setObjectName(QStringLiteral("sidebarSection"));
     section->setTextFormat(Qt::PlainText);
-    headerLayout->addWidget(section, 1, Qt::AlignBottom);
+    headerLayout->addWidget(section, 1, Qt::AlignVCenter);
 
     auto *menu = new SymbolicButton(QStringLiteral("bars-3"), 16, header);
     menu->setObjectName(QStringLiteral("sidebarMenu"));
@@ -97,7 +228,7 @@ Sidebar::Sidebar(QWidget *parent) : QWidget(parent), m_list(new QListWidget(this
     connect(menu, &QPushButton::clicked, this, [this, menu] {
         Q_EMIT menuRequested(menu->mapToGlobal(QPoint(0, menu->height() + 4)));
     });
-    headerLayout->addWidget(menu, 0, Qt::AlignBottom);
+    headerLayout->addWidget(menu, 0, Qt::AlignVCenter);
     layout->addWidget(header);
 
     m_list->setObjectName(QStringLiteral("sidebarList"));
@@ -110,7 +241,25 @@ Sidebar::Sidebar(QWidget *parent) : QWidget(parent), m_list(new QListWidget(this
     m_list->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     m_list->setFrameShape(QFrame::NoFrame);
     m_list->setIconSize(QSize(kPlaceIconSize, kPlaceIconSize));
+    m_list->setItemDelegate(new SidebarDelegate(m_list));
+    m_list->setMouseTracking(true);
     layout->addWidget(m_list);
+
+    // Drag a folder in to pin it; drag a place out to remove it. The view's
+    // own drag and drop stays off — it would move rows about — and the
+    // viewport's events are handled in handleViewportEvent().
+    m_list->setAcceptDrops(true);
+    m_list->viewport()->setAcceptDrops(true);
+    m_list->viewport()->installEventFilter(this);
+
+    m_list->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_list, &QWidget::customContextMenuRequested, this, &Sidebar::showContextMenu);
+
+    m_trashSummaryTimer->setSingleShot(true);
+    // Trashing a folder of a thousand files is a thousand notifications; one
+    // recount after they stop is enough.
+    m_trashSummaryTimer->setInterval(300);
+    connect(m_trashSummaryTimer, &QTimer::timeout, this, &Sidebar::refreshTrashSummary);
 
     applyPalette();
 
@@ -264,26 +413,21 @@ void Sidebar::addDivider()
 {
     auto *item = new QListWidgetItem(m_list);
     item->setData(kIsHeadingRole, true);
+    item->setData(kDividerRole, true);
     item->setFlags(Qt::NoItemFlags);
     item->setSizeHint(QSize(0, 9));
-
-    auto *holder = new QWidget;
-    holder->setAttribute(Qt::WA_TranslucentBackground, true);
-    auto *layout = new QVBoxLayout(holder);
-    layout->setContentsMargins(6, 4, 6, 4);
-    auto *line = new QFrame;
-    line->setObjectName(QStringLiteral("sidebarDivider"));
-    line->setFixedHeight(1);
-    layout->addWidget(line);
-    m_list->setItemWidget(item, holder);
 }
 
-void Sidebar::addPlace(const QString &title, const QString &path, const QString &iconName)
+QListWidgetItem *Sidebar::addPlace(const QString &title, const QString &path,
+                                   const QString &iconName, bool pinned)
 {
     // Only places that exist. An XDG user directory pointing at something the
     // user deleted would otherwise sit in the sidebar failing to open.
     if (path.isEmpty() || !QFileInfo::exists(path)) {
-        return;
+        return nullptr;
+    }
+    if (!pinned && m_hidden.contains(QDir::cleanPath(path))) {
+        return nullptr;
     }
 
     auto *item = new QListWidgetItem(title, m_list);
@@ -291,12 +435,15 @@ void Sidebar::addPlace(const QString &title, const QString &path, const QString 
     item->setData(kIsHeadingRole, false);
     item->setData(kIconNameRole, iconName);
     item->setData(kToneRole, static_cast<int>(Tone::Place));
+    item->setData(kPinnedRole, pinned);
     item->setToolTip(QDir::toNativeSeparators(path));
     applyItemTheme(item);
+    return item;
 }
 
 void Sidebar::populate()
 {
+    m_dragCandidate = nullptr;
     m_list->clear();
 
     addPlace(tr("Home"), QDir::homePath(), QStringLiteral("home"));
@@ -343,10 +490,25 @@ void Sidebar::populate()
     // GNOME Files and Finder both set it apart. Its directory is created if
     // nothing has been trashed yet, as the XDG trash spec allows, so the entry
     // opens onto an empty folder rather than an error.
-    if (const QString trash = fs::Trash().filesDirectory(); !trash.isEmpty()) {
+    if (const QString trash = fs::Trash().filesDirectory();
+        !trash.isEmpty() && !m_hidden.contains(QDir::cleanPath(trash))) {
         QDir().mkpath(trash);
         addDivider();
-        addPlace(tr("Wastebasket"), trash, QStringLiteral("trash"));
+        if (QListWidgetItem *item = addPlace(tr("Wastebasket"), trash, QStringLiteral("trash"));
+            item != nullptr) {
+            item->setData(kTrashRole, true);
+        }
+        applyTrashSummary();
+
+        // Watched so the count follows trashing and emptying, from here or
+        // from anything else on the desktop.
+        if (m_trashWatcher == nullptr) {
+            m_trashWatcher = new QFileSystemWatcher(this);
+            connect(m_trashWatcher, &QFileSystemWatcher::directoryChanged, m_trashSummaryTimer,
+                    qOverload<>(&QTimer::start));
+            m_trashWatcher->addPath(trash);
+            refreshTrashSummary();
+        }
     }
 
     if (!m_pinned.isEmpty()) {
@@ -355,7 +517,7 @@ void Sidebar::populate()
             // A pinned Downloads still looks like Downloads; anything else is
             // a folder. The heading already says these are pinned, so a star
             // on each would say it again.
-            addPlace(QFileInfo(path).fileName(), path, iconNameForPath(path));
+            addPlace(QFileInfo(path).fileName(), path, iconNameForPath(path), true);
         }
     }
 
@@ -381,7 +543,293 @@ bool Sidebar::eventFilter(QObject *watched, QEvent *event)
     if (watched == m_list && event->type() == QEvent::FocusOut) {
         clearHighlight();
     }
+    if (watched == m_list->viewport() && handleViewportEvent(event)) {
+        return true;
+    }
     return QWidget::eventFilter(watched, event);
+}
+
+bool Sidebar::handleViewportEvent(QEvent *event)
+{
+    switch (event->type()) {
+    case QEvent::MouseButtonPress: {
+        auto *mouse = static_cast<QMouseEvent *>(event);
+        if (mouse->button() != Qt::LeftButton) {
+            return false;
+        }
+        const QPoint position = mouse->position().toPoint();
+        QListWidgetItem *item = m_list->itemAt(position);
+        if (item == nullptr) {
+            return false;
+        }
+        // The eject button: unmount, and do not also open the drive.
+        if (item->data(kEjectRole).toBool() &&
+            ejectRect(m_list->visualItemRect(item)).adjusted(-4, -4, 4, 4).contains(position)) {
+            unmountVolume(item->data(kVolumeIdRole).toString());
+            return true;
+        }
+        // Places can be dragged out; devices come and go by themselves.
+        if (!item->data(kPathRole).toString().isEmpty() &&
+            item->data(kVolumeIdRole).toString().isEmpty()) {
+            m_dragCandidate = item;
+            m_dragStart = position;
+        }
+        return false;
+    }
+    case QEvent::MouseMove: {
+        auto *mouse = static_cast<QMouseEvent *>(event);
+        if (m_dragCandidate == nullptr || (mouse->buttons() & Qt::LeftButton) == 0) {
+            return false;
+        }
+        if ((mouse->position().toPoint() - m_dragStart).manhattanLength() <
+            QApplication::startDragDistance()) {
+            return false;
+        }
+        QListWidgetItem *item = m_dragCandidate;
+        m_dragCandidate = nullptr;
+        startPlaceDrag(item);
+        return true;
+    }
+    case QEvent::MouseButtonRelease:
+        m_dragCandidate = nullptr;
+        return false;
+
+    case QEvent::DragEnter:
+    case QEvent::DragMove: {
+        auto *drag = static_cast<QDragMoveEvent *>(event);
+        const QMimeData *mime = drag->mimeData();
+        if (mime->hasFormat(kPlaceMimeType)) {
+            // One of our own places, coming back: not a removal.
+            m_dragLeftSidebar = false;
+            drag->setDropAction(Qt::MoveAction);
+            drag->accept();
+            return true;
+        }
+        const bool hasFolder = std::ranges::any_of(mime->urls(), [](const QUrl &url) {
+            return url.isLocalFile() && QFileInfo(url.toLocalFile()).isDir();
+        });
+        if (!hasFolder) {
+            return false;
+        }
+        // A link, as far as the source is concerned: nothing is copied or
+        // moved, the folder is only remembered here.
+        drag->setDropAction(Qt::CopyAction);
+        drag->accept();
+        setDropHighlight(true);
+        return true;
+    }
+    case QEvent::DragLeave:
+        m_dragLeftSidebar = true;
+        setDropHighlight(false);
+        return false;
+
+    case QEvent::Drop: {
+        auto *drop = static_cast<QDropEvent *>(event);
+        setDropHighlight(false);
+        const QMimeData *mime = drop->mimeData();
+        if (mime->hasFormat(kPlaceMimeType)) {
+            drop->setDropAction(Qt::MoveAction);
+            drop->accept();
+            return true;
+        }
+        QStringList added;
+        for (const QUrl &url : mime->urls()) {
+            const QString path = QDir::cleanPath(url.toLocalFile());
+            if (!url.isLocalFile() || !QFileInfo(path).isDir()) {
+                continue;
+            }
+            // A built-in place the user once removed comes back as itself
+            // rather than as a pinned copy of itself.
+            if (m_hidden.removeAll(path) > 0) {
+                Q_EMIT hiddenPlacesChanged();
+                added << QFileInfo(path).fileName();
+                continue;
+            }
+            if (!m_pinned.contains(path)) {
+                m_pinned.append(path);
+                added << QFileInfo(path).fileName();
+            }
+        }
+        if (!added.isEmpty()) {
+            populate();
+            Q_EMIT pinnedPathsChanged();
+            Q_EMIT statusMessage(
+                tr("Added %1 to the sidebar").arg(added.join(QStringLiteral(", "))));
+        }
+        drop->setDropAction(Qt::CopyAction);
+        drop->accept();
+        return true;
+    }
+    default:
+        return false;
+    }
+}
+
+void Sidebar::startPlaceDrag(QListWidgetItem *item)
+{
+    // Taken now: the row may be rebuilt while the drag runs, if a device
+    // appears, and the pointer to it with it.
+    const QString path = item->data(kPathRole).toString();
+    const QString title = item->text();
+
+    auto *mime = new QMimeData;
+    mime->setData(kPlaceMimeType, path.toUtf8());
+
+    auto *drag = new QDrag(m_list);
+    drag->setMimeData(mime);
+    const QRect row = m_list->visualItemRect(item);
+    drag->setPixmap(m_list->viewport()->grab(row));
+    drag->setHotSpot(m_dragStart - row.topLeft());
+
+    m_dragLeftSidebar = false;
+    const Qt::DropAction result = drag->exec(Qt::MoveAction);
+
+    // Dropped somewhere that did not want it, having left the sidebar, and not
+    // let go over the sidebar itself: taken off. The pointer check is there for
+    // a drop on the sidebar's own header, which leaves the list but not the
+    // sidebar.
+    const bool overSidebar = rect().contains(mapFromGlobal(QCursor::pos()));
+    if (result == Qt::IgnoreAction && m_dragLeftSidebar && !overSidebar && removePlace(path)) {
+        Q_EMIT statusMessage(
+            tr("Removed %1 from the sidebar — drag it back to restore it").arg(title));
+    }
+}
+
+void Sidebar::setDropHighlight(bool on)
+{
+    if (m_list->property("dropTarget").toBool() == on) {
+        return;
+    }
+    m_list->setProperty("dropTarget", on);
+    m_list->style()->unpolish(m_list);
+    m_list->style()->polish(m_list);
+}
+
+void Sidebar::showContextMenu(const QPoint &position)
+{
+    const QListWidgetItem *item = m_list->itemAt(position);
+    const QString path = item != nullptr ? item->data(kPathRole).toString() : QString();
+    const bool isPlace =
+        item != nullptr && !path.isEmpty() && item->data(kVolumeIdRole).toString().isEmpty();
+
+    QMenu menu(this);
+    if (isPlace) {
+        connect(menu.addAction(tr("Open")), &QAction::triggered, this,
+                [this, path] { Q_EMIT placeActivated(path); });
+        connect(menu.addAction(tr("Remove from Sidebar")), &QAction::triggered, this,
+                [this, path] { removePlace(path); });
+    }
+    if (item != nullptr && item->data(kEjectRole).toBool()) {
+        const QString volumeId = item->data(kVolumeIdRole).toString();
+        connect(menu.addAction(tr("Unmount")), &QAction::triggered, this,
+                [this, volumeId] { unmountVolume(volumeId); });
+    }
+    if (!m_hidden.isEmpty()) {
+        if (!menu.isEmpty()) {
+            menu.addSeparator();
+        }
+        connect(menu.addAction(tr("Restore Removed Places")), &QAction::triggered, this, [this] {
+            m_hidden.clear();
+            populate();
+            Q_EMIT hiddenPlacesChanged();
+        });
+    }
+    if (!menu.isEmpty()) {
+        menu.exec(m_list->viewport()->mapToGlobal(position));
+    }
+}
+
+bool Sidebar::removePlace(const QString &path)
+{
+    const QString cleaned = QDir::cleanPath(path);
+    if (cleaned.isEmpty()) {
+        return false;
+    }
+    if (m_pinned.contains(cleaned)) {
+        togglePin(cleaned);
+        return true;
+    }
+    if (m_hidden.contains(cleaned)) {
+        return false;
+    }
+    m_hidden.append(cleaned);
+    if (m_populated) {
+        populate();
+    }
+    Q_EMIT hiddenPlacesChanged();
+    return true;
+}
+
+QStringList Sidebar::hiddenPlaces() const
+{
+    return m_hidden;
+}
+
+void Sidebar::setHiddenPlaces(const QStringList &paths)
+{
+    m_hidden.clear();
+    for (const QString &path : paths) {
+        m_hidden.append(QDir::cleanPath(path));
+    }
+    if (m_populated) {
+        populate();
+    }
+}
+
+void Sidebar::refreshTrashSummary()
+{
+    const QString files = fs::Trash().filesDirectory();
+    if (files.isEmpty()) {
+        return;
+    }
+
+    const int generation = ++m_trashSummaryGeneration;
+    const QPointer<Sidebar> self(this);
+    WorkerPools::acquire("sidebar", 1)->start([self, files, generation] {
+        // The count is what is in the wastebasket, as a user would count it:
+        // top-level entries. The size is everything under them, links not
+        // followed.
+        const qsizetype count =
+            QDir(files)
+                .entryList(QDir::AllEntries | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot)
+                .size();
+        qint64 bytes = 0;
+        QDirIterator walk(files, QDir::Files | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot,
+                          QDirIterator::Subdirectories);
+        while (walk.hasNext()) {
+            walk.next();
+            if (const QFileInfo info = walk.fileInfo(); !info.isSymLink()) {
+                bytes += info.size();
+            }
+        }
+
+        QMetaObject::invokeMethod(
+            qApp,
+            [self, generation, count, bytes] {
+                if (self.isNull() || generation != self->m_trashSummaryGeneration) {
+                    return;
+                }
+                self->m_trashSummary = count == 0 ? QString()
+                                                  : QStringLiteral("%1 · %2").arg(count).arg(
+                                                        formatSize(static_cast<quint64>(bytes)));
+                self->applyTrashSummary();
+            },
+            Qt::QueuedConnection);
+    });
+}
+
+void Sidebar::applyTrashSummary()
+{
+    for (int row = 0; row < m_list->count(); ++row) {
+        QListWidgetItem *item = m_list->item(row);
+        if (!item->data(kTrashRole).toBool()) {
+            continue;
+        }
+        item->setData(kDetailRole, m_trashSummary);
+        const QString path = QDir::toNativeSeparators(item->data(kPathRole).toString());
+        item->setToolTip(m_trashSummary.isEmpty() ? tr("%1 — empty").arg(path)
+                                                  : tr("%1 — %2").arg(path, m_trashSummary));
+    }
 }
 
 void Sidebar::addDevices()
@@ -412,6 +860,7 @@ void Sidebar::addDevices()
         item->setData(kIconNameRole, QString(kDeviceIcon));
         item->setData(kToneRole,
                       static_cast<int>(volume.isMounted ? Tone::Place : Tone::Unmounted));
+        item->setData(kEjectRole, volume.isMounted && volume.canUnmount);
         item->setToolTip(volume.isMounted
                              ? tr("%1 — mounted at %2").arg(volume.device, volume.mountPoint)
                              : tr("%1 — not mounted").arg(volume.device));
@@ -453,7 +902,11 @@ void Sidebar::startWatchingDevices()
 
 void Sidebar::unmountCurrentVolume()
 {
-    const QString volumeId = currentVolumeId();
+    unmountVolume(currentVolumeId());
+}
+
+void Sidebar::unmountVolume(const QString &volumeId)
+{
     if (volumeId.isEmpty() || m_volumes == nullptr) {
         return;
     }

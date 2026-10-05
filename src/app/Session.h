@@ -34,6 +34,9 @@ struct Session {
 
     QStringList pinnedPaths;
 
+    /// Built-in sidebar places the user removed.
+    QStringList hiddenPlaces;
+
     /// The Quick Look dock, which §7.6 says persists across sessions.
     QString quickLookDock;
 

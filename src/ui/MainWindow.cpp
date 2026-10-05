@@ -56,7 +56,9 @@ MainWindow::MainWindow(QWidget *parent)
     m_splitter->addWidget(m_strip);
     m_splitter->setStretchFactor(0, 0);
     m_splitter->setStretchFactor(1, 1);
-    m_splitter->setSizes({180, 1020});
+    // The sidebar's design width (see Sidebar), which leaves room for the
+    // wastebasket's count and size beside its name.
+    m_splitter->setSizes({220, 980});
 
     // The vertical splitter exists whether or not Quick Look is docked below:
     // introducing it later would mean re-parenting the panel strip at the

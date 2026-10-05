@@ -177,6 +177,20 @@ moving on. Steps marked **(decision)** depend on the questions below.
 - **Application menu**: a ☰ button at the top of the sidebar with the common
   actions and their keys.
 
+- **Opening files**: Enter and double-click on a file now open it (the
+  panel's `fileActivated` had no listener; double-click also lost to Qt's
+  pressed-index check). `tst_opening` covers both end to end.
+- `g w` opens the wastebasket. Its sidebar row shows count · size, recounted
+  on a worker thread when the trash changes. The divider is painted by the
+  sidebar's delegate (the QFrame item widget showed as a gap on a real
+  desktop). Default sidebar width 220 so the summary fits.
+- **Sidebar editing**: drop a folder on it to pin it; drag a place off to
+  remove it (built-ins are hidden, pins unpinned); right-click for Remove /
+  Restore Removed Places. Mounted removable drives show an eject button.
+  Pins and removed places now load at every start and save when changed —
+  they used to load only with session restore on and no path arguments, and
+  quitting then overwrote them with an empty list.
+
 ## What changed, in one place
 
 - Themes: `panefile-light` / `panefile-dark` (Review/Folio palette) are the

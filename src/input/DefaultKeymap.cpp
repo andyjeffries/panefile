@@ -96,6 +96,8 @@ constexpr DefaultBinding kDefaults[] = {
     {KeymapLayer::Normal, "go_root", "g r"},
     {KeymapLayer::Normal, "go_config", "g c"},
     {KeymapLayer::Normal, "go_trash", "g t"},
+    // The wastebasket, as GNOME calls it; `g t` for anyone who says trash.
+    {KeymapLayer::Normal, "go_trash", "g w"},
     {KeymapLayer::Normal, "go_previous", "g p"},
     {KeymapLayer::Normal, "parent_directory", "h"},
     {KeymapLayer::Global, "parent_directory", "Left"},

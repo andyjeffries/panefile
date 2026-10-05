@@ -221,8 +221,11 @@ private Q_SLOTS:
         list->itemClicked(list->item(wastebasket));
         QCOMPARE(activated.size(), 1);
         const QString path = activated.first().first().toString();
+#ifdef Q_OS_MACOS
+        // Finder's trash itself, not a files/ inside it.
+        QCOMPARE(path, QDir::homePath() + QStringLiteral("/.Trash"));
+#else
         QVERIFY2(QDir(path).exists(), qPrintable(path));
-#ifndef Q_OS_MACOS
         QCOMPARE(path, state.filePath(QStringLiteral("Trash/files")));
 #endif
     }
@@ -230,11 +233,17 @@ private Q_SLOTS:
     /// The wastebasket's row says how much is in it, and follows changes.
     void theWastebasketShowsItsCountAndSize()
     {
-        QTemporaryDir state;
-        QVERIFY(state.isValid());
-        qputenv("PANEFILE_STATE_DIR",
-                QFile::encodeName(state.filePath(QStringLiteral("panefile"))));
-        const QString files = state.filePath(QStringLiteral("Trash/files"));
+        QTemporaryDir trash;
+        QVERIFY(trash.isValid());
+        qputenv("PANEFILE_TRASH_DIR", QFile::encodeName(trash.path()));
+#ifdef Q_OS_MACOS
+        // Finder's layout: the items sit in the trash itself, beside a
+        // .DS_Store that is not one of them.
+        const QString files = trash.path();
+        writeBytes(files + QStringLiteral("/.DS_Store"), 500);
+#else
+        const QString files = trash.filePath(QStringLiteral("files"));
+#endif
         QVERIFY(QDir().mkpath(files + QStringLiteral("/folder")));
         writeBytes(files + QStringLiteral("/a.bin"), 1000);
         writeBytes(files + QStringLiteral("/folder/b.bin"), 2000);
@@ -256,7 +265,7 @@ private Q_SLOTS:
                                      ->toolTip()
                                      .endsWith(QStringLiteral("empty")),
                                  5000);
-        qunsetenv("PANEFILE_STATE_DIR");
+        qunsetenv("PANEFILE_TRASH_DIR");
     }
 
     /// A folder dropped on the sidebar is pinned there.

@@ -487,9 +487,10 @@ void Sidebar::populate()
     }
 
     // The wastebasket, under a divider: a place, but not one of yours, as
-    // GNOME Files and Finder both set it apart. Its directory is created if
-    // nothing has been trashed yet, as the XDG trash spec allows, so the entry
-    // opens onto an empty folder rather than an error.
+    // GNOME Files and Finder both set it apart. It opens where the trashed
+    // items are — XDG's files/, or Finder's ~/.Trash itself — and that is
+    // created if nothing has been trashed yet, as the XDG trash spec allows,
+    // so the entry opens onto an empty folder rather than an error.
     if (const QString trash = fs::Trash().filesDirectory();
         !trash.isEmpty() && !m_hidden.contains(QDir::cleanPath(trash))) {
         QDir().mkpath(trash);
@@ -787,19 +788,32 @@ void Sidebar::refreshTrashSummary()
     const QPointer<Sidebar> self(this);
     WorkerPools::acquire("sidebar", 1)->start([self, files, generation] {
         // The count is what is in the wastebasket, as a user would count it:
-        // top-level entries. The size is everything under them, links not
-        // followed.
-        const qsizetype count =
-            QDir(files)
-                .entryList(QDir::AllEntries | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot)
-                .size();
+        // top-level entries, less Finder's own .DS_Store. The size is
+        // everything under them, links not followed.
+        qsizetype count = 0;
         qint64 bytes = 0;
-        QDirIterator walk(files, QDir::Files | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot,
-                          QDirIterator::Subdirectories);
-        while (walk.hasNext()) {
-            walk.next();
-            if (const QFileInfo info = walk.fileInfo(); !info.isSymLink()) {
-                bytes += info.size();
+        const QFileInfoList entries = QDir(files).entryInfoList(
+            QDir::AllEntries | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot);
+        for (const QFileInfo &entry : entries) {
+            if (fs::Trash::isBookkeeping(entry.fileName())) {
+                continue;
+            }
+            ++count;
+            if (entry.isSymLink()) {
+                continue;
+            }
+            if (!entry.isDir()) {
+                bytes += entry.size();
+                continue;
+            }
+            QDirIterator walk(entry.absoluteFilePath(),
+                              QDir::Files | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot,
+                              QDirIterator::Subdirectories);
+            while (walk.hasNext()) {
+                walk.next();
+                if (const QFileInfo info = walk.fileInfo(); !info.isSymLink()) {
+                    bytes += info.size();
+                }
             }
         }
 

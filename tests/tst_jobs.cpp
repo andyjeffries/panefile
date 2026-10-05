@@ -146,6 +146,9 @@ private Q_SLOTS:
     void trashRestoresToTheOriginalPath();
     void trashRefusesToRestoreOverAnExistingFile();
     void trashEmptyRemovesEverything();
+    void flatTrashHoldsItemsDirectly();
+    void flatTrashListsWithoutRestoreRecords();
+    void flatTrashUndoRestoresFromTheJobsRecord();
 
     // Undo
     void undoRestoresATrashedFile();
@@ -576,6 +579,72 @@ void TestJobs::trashEmptyRemovesEverything()
     }
 
     QCOMPARE(trash.empty(), 4);
+    QVERIFY(trash.list().isEmpty());
+}
+
+void TestJobs::flatTrashHoldsItemsDirectly()
+{
+    // Finder's ~/.Trash: the item goes straight into the root, under a
+    // suffixed name on collision, and no files/ or info/ appears beside it.
+    Trash trash(path(QStringLiteral("Trash")), Trash::Layout::Flat);
+    QCOMPARE(trash.filesDirectory(), path(QStringLiteral("Trash")));
+    QVERIFY(trash.infoDirectory().isEmpty());
+
+    for (int i = 0; i < 2; ++i) {
+        write(QStringLiteral("a.txt"), "x");
+        QVERIFY(!trash.moveToTrash(path(QStringLiteral("a.txt"))).isEmpty());
+    }
+
+    QVERIFY(QFileInfo::exists(path(QStringLiteral("Trash/a.txt"))));
+    QVERIFY(QFileInfo::exists(path(QStringLiteral("Trash/a-1.txt"))));
+    QVERIFY(!QFileInfo::exists(path(QStringLiteral("Trash/files"))));
+    QVERIFY(!QFileInfo::exists(path(QStringLiteral("Trash/info"))));
+}
+
+void TestJobs::flatTrashListsWithoutRestoreRecords()
+{
+    // Everything in the root is listed, except Finder's .DS_Store; nothing
+    // says where it came from, so it can be purged but not restored.
+    Trash trash(path(QStringLiteral("Trash")), Trash::Layout::Flat);
+    write(QStringLiteral("a.txt"), "content");
+    QVERIFY(!trash.moveToTrash(path(QStringLiteral("a.txt"))).isEmpty());
+    write(QStringLiteral("Trash/.DS_Store"), "finder");
+
+    const QList<TrashedItem> items = trash.list();
+    QCOMPARE(items.size(), 1);
+    QCOMPARE(items.first().name(), QStringLiteral("a.txt"));
+    QVERIFY(items.first().originalPath.isEmpty());
+
+    QString error;
+    QVERIFY(trash.restore(items.first(), &error).isEmpty());
+    QVERIFY(!error.isEmpty());
+
+    QCOMPARE(trash.empty(), 1);
+    QVERIFY(trash.list().isEmpty());
+    QVERIFY(QFileInfo::exists(path(QStringLiteral("Trash/.DS_Store"))));
+}
+
+void TestJobs::flatTrashUndoRestoresFromTheJobsRecord()
+{
+    // With no .trashinfo, undo works from the original path DeleteJob kept.
+    write(QStringLiteral("a.txt"), "content");
+    Trash trash(path(QStringLiteral("Trash")), Trash::Layout::Flat);
+
+    DeleteJob job(DeleteJob::Mode::Trash, {path(QStringLiteral("a.txt"))});
+    job.setTrash(trash);
+    QVERIFY(runJob(job).succeeded());
+    QVERIFY(!QFileInfo::exists(path(QStringLiteral("a.txt"))));
+
+    UndoStack stack;
+    stack.setTrash(trash);
+    stack.push(UndoEntry{.kind = UndoEntry::Kind::Trash,
+                         .description = QStringLiteral("Move to trash"),
+                         .movedPairs = {},
+                         .trashedItems = job.trashedItems()});
+
+    QString error;
+    QVERIFY2(stack.undo(&error), qPrintable(error));
+    QCOMPARE(read(QStringLiteral("a.txt")), QByteArray("content"));
     QVERIFY(trash.list().isEmpty());
 }
 

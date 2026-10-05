@@ -26,6 +26,12 @@ struct TrashedItem {
 /// all: restoring an item needs the `.trashinfo` file that records where it
 /// came from.
 ///
+/// The two platforms lay their trash out differently. XDG keeps the items in
+/// `files/` and a `.trashinfo` for each in `info/`; Finder's `~/.Trash` holds
+/// the items themselves and records nothing this class can read, so an item
+/// listed there cannot be restored unless whoever trashed it kept its original
+/// path — as DeleteJob does for the undo stack.
+///
 /// The trash root is injectable so that the whole implementation — the
 /// `.trashinfo` round trip, the URL encoding, the `-1`/`-2` collision suffixes
 /// — is testable against a temporary directory rather than against the
@@ -33,12 +39,20 @@ struct TrashedItem {
 class Trash
 {
 public:
-    /// Constructs a Trash rooted at the user's real trash directory.
+    enum class Layout {
+        /// `files/` and `info/`, with a `.trashinfo` per item: the XDG spec.
+        Xdg,
+        /// The items directly inside the root, with no restore records:
+        /// Finder's `~/.Trash`.
+        Flat,
+    };
+
+    /// Constructs a Trash rooted at the user's real trash directory, in the
+    /// platform's layout.
     Trash();
 
-    /// Constructs a Trash rooted at `root`, which is created if needed. `root`
-    /// holds `files/` and `info/`, as the XDG spec lays out.
-    explicit Trash(const QString &root);
+    /// Constructs a Trash rooted at `root`, which is created if needed.
+    explicit Trash(const QString &root, Layout layout = Layout::Xdg);
 
     /// Moves a path to the trash.
     ///
@@ -63,8 +77,19 @@ public:
     int empty(QStringList *errors = nullptr) const;
 
     QString root() const;
+    Layout layout() const;
+
+    /// Where the trashed items are: `files/` in the XDG layout, the root
+    /// itself in the flat one.
     QString filesDirectory() const;
+
+    /// Where the `.trashinfo` files are, or empty in the flat layout, which
+    /// has none.
     QString infoDirectory() const;
+
+    /// Whether a name in filesDirectory() is the directory's own bookkeeping
+    /// rather than something the user trashed: Finder's `.DS_Store`.
+    static bool isBookkeeping(const QString &fileName);
 
     /// The `.trashinfo` body for a path, per the XDG spec: a `[Trash Info]`
     /// section with a URL-encoded absolute `Path` and an ISO 8601 local
@@ -77,11 +102,16 @@ public:
 private:
     bool ensureDirectories() const;
 
+    /// The `.trashinfo` path for an item trashed as `trashName`, or empty in
+    /// the flat layout.
+    QString infoPathFor(const QString &trashName) const;
+
     /// A name inside `files/` that is not taken, appending `-1`, `-2`, … as
     /// §7.5 requires.
     QString uniqueTrashName(const QString &fileName) const;
 
     QString m_root;
+    Layout m_layout = Layout::Xdg;
 };
 
 } // namespace pf::fs

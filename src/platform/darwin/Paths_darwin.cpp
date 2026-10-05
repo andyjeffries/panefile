@@ -41,6 +41,16 @@ QString stateDir()
     return applicationSupportDir() + QStringLiteral("/state");
 }
 
+QString trashDir()
+{
+    if (const QString override = envDir("PANEFILE_TRASH_DIR"); !override.isEmpty()) {
+        return override;
+    }
+    // macOS has one trash per volume; ~/.Trash is the one for the boot volume
+    // and the only one an application can write to without privileges.
+    return homeDir() + QStringLiteral("/.Trash");
+}
+
 QString cacheDir()
 {
     if (const QString override = envDir("PANEFILE_CACHE_DIR"); !override.isEmpty()) {

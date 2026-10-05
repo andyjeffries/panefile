@@ -124,6 +124,9 @@ User themes. Bundled themes live in
 .I ~/.local/share/panefile/
 Pinned directories, session state and window geometry.
 .TP
+.I ~/.local/share/Trash/
+The wastebasket, shared with the rest of the desktop.
+.TP
 .I ~/.config/mimeapps.list
 The default application for each file type, including folders
 .RB ( inode/directory ).
@@ -135,10 +138,12 @@ Delete it to hand \(lqShow in folder\(rq back to the system's file manager.
 .PP
 On macOS these live under
 .I ~/Library/Application Support/panefile/
-instead, and the cache under
-.IR ~/Library/Caches/panefile/ .
+instead, the cache under
+.IR ~/Library/Caches/panefile/ ,
+and the wastebasket is Finder's
+.IR ~/.Trash .
 All of them honour the
-.BR PANEFILE_CONFIG_DIR ", " PANEFILE_STATE_DIR " and " PANEFILE_CACHE_DIR
+.BR PANEFILE_CONFIG_DIR ", " PANEFILE_STATE_DIR ", " PANEFILE_CACHE_DIR " and " PANEFILE_TRASH_DIR
 environment variables.
 .SH ENVIRONMENT
 .TP

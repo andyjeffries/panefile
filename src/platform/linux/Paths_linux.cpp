@@ -6,6 +6,7 @@
 #include "core/Version.h"
 
 #include <QDir>
+#include <QFileInfo>
 
 namespace pf::platform {
 namespace {
@@ -36,6 +37,17 @@ QString stateDir()
         base = homeDir() + QStringLiteral("/.local/share");
     }
     return base + kAppSuffix;
+}
+
+QString trashDir()
+{
+    if (const QString override = envDir("PANEFILE_TRASH_DIR"); !override.isEmpty()) {
+        return override;
+    }
+    // §7.5: $XDG_DATA_HOME/Trash. stateDir() is $XDG_DATA_HOME/panefile, so the
+    // trash is its sibling rather than its child — the trash belongs to the
+    // desktop, not to this application.
+    return QFileInfo(stateDir()).absolutePath() + QStringLiteral("/Trash");
 }
 
 QString cacheDir()

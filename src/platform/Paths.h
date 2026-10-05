@@ -58,6 +58,12 @@ QStringList themeSearchPaths();
 /// install prefix. Only existing directories are returned.
 QStringList pluginSearchPaths();
 
+/// The user's trash. On Linux that is `$XDG_DATA_HOME/Trash`, the state
+/// directory's sibling, holding `files/` and `info/`; on macOS it is Finder's
+/// `~/.Trash`, which holds the trashed items themselves. Override with
+/// PANEFILE_TRASH_DIR, which names the same root in the same layout.
+QString trashDir();
+
 /// The user's home directory.
 QString homeDir();
 

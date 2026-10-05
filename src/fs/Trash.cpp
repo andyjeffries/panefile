@@ -20,18 +20,18 @@ constexpr QLatin1String kInfoSuffix{".trashinfo"};
 /// The XDG spec's date format: ISO 8601 in *local* time, with no zone suffix.
 constexpr QLatin1String kDateFormat{"yyyy-MM-ddTHH:mm:ss"};
 
-QString defaultTrashRoot()
-{
+/// Finder's ~/.Trash is flat; everywhere else the trash is XDG's.
 #ifdef PF_PLATFORM_DARWIN
-    // macOS has one trash per volume; ~/.Trash is the one for the boot volume
-    // and the only one an application can write to without privileges.
-    return platform::homeDir() + QStringLiteral("/.Trash");
+constexpr Trash::Layout kPlatformLayout = Trash::Layout::Flat;
 #else
-    // §7.5: $XDG_DATA_HOME/Trash. platform::stateDir() is
-    // $XDG_DATA_HOME/panefile, so the trash is its sibling rather than its
-    // child — the trash belongs to the desktop, not to this application.
-    return QFileInfo(platform::stateDir()).absolutePath() + QStringLiteral("/Trash");
+constexpr Trash::Layout kPlatformLayout = Trash::Layout::Xdg;
 #endif
+
+void sortNewestFirst(QList<TrashedItem> &items)
+{
+    std::ranges::sort(items, [](const TrashedItem &a, const TrashedItem &b) {
+        return a.deletedAt > b.deletedAt;
+    });
 }
 
 } // namespace
@@ -41,28 +41,46 @@ QString TrashedItem::name() const
     return QFileInfo(trashedPath).fileName();
 }
 
-Trash::Trash() : m_root(defaultTrashRoot()) {}
+Trash::Trash() : Trash(platform::trashDir(), kPlatformLayout) {}
 
-Trash::Trash(const QString &root) : m_root(QDir::cleanPath(root)) {}
+Trash::Trash(const QString &root, Layout layout) : m_root(QDir::cleanPath(root)), m_layout(layout)
+{}
 
 QString Trash::root() const
 {
     return m_root;
 }
 
+Trash::Layout Trash::layout() const
+{
+    return m_layout;
+}
+
 QString Trash::filesDirectory() const
 {
-    return m_root + QStringLiteral("/files");
+    return m_layout == Layout::Flat ? m_root : m_root + QStringLiteral("/files");
 }
 
 QString Trash::infoDirectory() const
 {
-    return m_root + QStringLiteral("/info");
+    return m_layout == Layout::Flat ? QString() : m_root + QStringLiteral("/info");
+}
+
+bool Trash::isBookkeeping(const QString &fileName)
+{
+    return fileName == QLatin1String(".DS_Store");
+}
+
+QString Trash::infoPathFor(const QString &trashName) const
+{
+    const QString info = infoDirectory();
+    return info.isEmpty() ? QString() : info + QLatin1Char('/') + trashName + kInfoSuffix;
 }
 
 bool Trash::ensureDirectories() const
 {
-    return QDir().mkpath(filesDirectory()) && QDir().mkpath(infoDirectory());
+    const QString info = infoDirectory();
+    return QDir().mkpath(filesDirectory()) && (info.isEmpty() || QDir().mkpath(info));
 }
 
 QString Trash::buildTrashInfo(const QString &originalPath, const QDateTime &deletedAt)
@@ -161,24 +179,30 @@ QString Trash::moveToTrash(const QString &path, QString *error)
     // The info file is written *first*. An item in files/ with no info file
     // cannot be restored and shows up as an orphan; an info file with no item
     // is merely tidied away on the next listing. Of the two possible halves of
-    // an interrupted move, this is the harmless one.
-    const QString infoPath = infoDirectory() + QLatin1Char('/') + trashName + kInfoSuffix;
-    QFile infoFile(infoPath);
-    if (!infoFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        if (error != nullptr) {
-            *error = infoFile.errorString();
+    // an interrupted move, this is the harmless one. A flat trash has no info
+    // file to write.
+    const QString infoPath = infoPathFor(trashName);
+    if (!infoPath.isEmpty()) {
+        QFile infoFile(infoPath);
+        if (!infoFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            if (error != nullptr) {
+                *error = infoFile.errorString();
+            }
+            return {};
         }
-        return {};
+        infoFile.write(buildTrashInfo(info.absoluteFilePath(), now).toUtf8());
+        infoFile.close();
     }
-    infoFile.write(buildTrashInfo(info.absoluteFilePath(), now).toUtf8());
-    infoFile.close();
 
     if (!QFile::rename(path, destination)) {
         // A rename across filesystems fails, and §7.5's own answer is that the
         // spec puts a .Trash-$uid at the mount point for exactly this case.
         // Falling back to Qt's implementation is better than implementing
-        // mount-point discovery here, and it is what §7.5 asks for first.
-        QFile::remove(infoPath);
+        // mount-point discovery here, and it is what §7.5 asks for first. On
+        // macOS it is also what reaches another volume's .Trashes.
+        if (!infoPath.isEmpty()) {
+            QFile::remove(infoPath);
+        }
 
         QString qtTrashPath;
         if (QFile::moveToTrash(path, &qtTrashPath)) {
@@ -198,6 +222,27 @@ QString Trash::moveToTrash(const QString &path, QString *error)
 QList<TrashedItem> Trash::list() const
 {
     QList<TrashedItem> items;
+
+    if (m_layout == Layout::Flat) {
+        // Nothing records where these came from, so they are listed and can be
+        // purged but not restored. The nearest thing to a deletion date is
+        // the last metadata change, which the move into the trash was.
+        const QFileInfoList entries = QDir(filesDirectory())
+                                          .entryInfoList(QDir::AllEntries | QDir::Hidden |
+                                                         QDir::System | QDir::NoDotAndDotDot);
+        for (const QFileInfo &entry : entries) {
+            if (isBookkeeping(entry.fileName())) {
+                continue;
+            }
+            items.append(TrashedItem{.trashedPath = entry.absoluteFilePath(),
+                                     .originalPath = {},
+                                     .deletedAt = entry.metadataChangeTime(),
+                                     .size = static_cast<quint64>(entry.size()),
+                                     .isDirectory = entry.isDir()});
+        }
+        sortNewestFirst(items);
+        return items;
+    }
 
     const QDir infoDir(infoDirectory());
     if (!infoDir.exists()) {
@@ -236,10 +281,7 @@ QList<TrashedItem> Trash::list() const
         items.append(item);
     }
 
-    std::ranges::sort(items, [](const TrashedItem &a, const TrashedItem &b) {
-        return a.deletedAt > b.deletedAt;
-    });
-
+    sortNewestFirst(items);
     return items;
 }
 
@@ -277,7 +319,9 @@ QString Trash::restore(const TrashedItem &item, QString *error) const
         return {};
     }
 
-    QFile::remove(infoDirectory() + QLatin1Char('/') + item.name() + kInfoSuffix);
+    if (const QString infoPath = infoPathFor(item.name()); !infoPath.isEmpty()) {
+        QFile::remove(infoPath);
+    }
     return item.originalPath;
 }
 
@@ -299,7 +343,9 @@ bool Trash::purge(const TrashedItem &item, QString *error) const
     // The info file goes either way. Leaving it behind for a failed purge would
     // produce an orphan that list() then hides, making the item invisible but
     // still present.
-    QFile::remove(infoDirectory() + QLatin1Char('/') + item.name() + kInfoSuffix);
+    if (const QString infoPath = infoPathFor(item.name()); !infoPath.isEmpty()) {
+        QFile::remove(infoPath);
+    }
     return ok;
 }
 

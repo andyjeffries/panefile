@@ -60,7 +60,7 @@ public:
             return;
         }
         if (permitted.contains(candidate)) {
-            target = candidate;
+            target = std::move(candidate);
             return;
         }
         reject(section, key, m_table[section][key],
@@ -146,7 +146,7 @@ void applyTable(const toml::table &table, Settings &settings, const QString &fil
     reader.readBool("quicklook", "chrome", settings.quicklook.chrome);
     reader.readNumber("quicklook", "debounce_ms", settings.quicklook.debounceMs, 0, 5000);
     reader.readNumber<qint64>("quicklook", "max_read_bytes", settings.quicklook.maxReadBytes, 0,
-                              1LL << 34);
+                              qint64{16} * 1024 * 1024 * 1024);
     reader.readNumber("quicklook", "max_decode_mb", settings.quicklook.maxDecodeMb, 1, 100000);
     reader.readBool("quicklook", "follow_cursor", settings.quicklook.followCursor);
     reader.readBool("quicklook", "close_on_panel_switch", settings.quicklook.closeOnPanelSwitch);

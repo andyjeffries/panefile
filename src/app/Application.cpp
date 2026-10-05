@@ -1297,7 +1297,7 @@ bool Application::notify(QObject *receiver, QEvent *event)
         // §6.2 step 2: while a text input has focus, bare printable keys belong
         // to the widget. Only modified chords and the confirm/cancel keys are
         // considered, so typing a filename cannot trigger `d d`.
-        auto *focus = focusWidget();
+        const auto *focus = focusWidget();
         const bool typing =
             focus != nullptr && focus->inherits("QLineEdit") &&
             !(keyEvent->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier));
@@ -1360,7 +1360,7 @@ void Application::runNextStartupTask()
 
     // One item per event loop turn, so a slow task delays the next task rather
     // than the user's next keypress (§3.4).
-    auto task = m_startupTasks[m_nextStartupTask++];
+    const auto task = m_startupTasks[m_nextStartupTask++];
     if (task) {
         task();
     }

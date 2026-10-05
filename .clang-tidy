@@ -37,7 +37,14 @@ Checks: >
   -readability-braces-around-statements,
   -readability-redundant-access-specifiers,
   -readability-non-const-parameter,
-  -readability-inconsistent-declaration-parameter-name
+  -readability-inconsistent-declaration-parameter-name,
+  -readability-trailing-comma
+
+# readability-trailing-comma (new in LLVM 23) fights clang-format rather than
+# catching anything: a trailing comma in a braced list makes clang-format put
+# one element per line, so obeying it would explode every wrapped designated
+# initialiser and packed list — the extension tables, the flag lists — into a
+# column. clang-format already owns the shape of these lists.
 
 WarningsAsErrors: >
   bugprone-use-after-move,

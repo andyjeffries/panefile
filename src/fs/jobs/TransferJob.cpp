@@ -384,7 +384,7 @@ void TransferJob::applyMetadata(const QString &source, const QString &destinatio
 
     // §7.4: "Preserve mode, mtime, and — best-effort, never fatal — ownership
     // and extended attributes."
-    ::chmod(target.constData(), info.st_mode & 07777);
+    ::chmod(target.constData(), info.st_mode & 07777U);
 
     struct utimbuf times{};
     times.actime = info.st_atime;
@@ -418,19 +418,19 @@ void TransferJob::transferOne(const Item &item)
     }
 
     // §7.4: a move within one filesystem is a rename and is instant.
-    if (m_mode == Mode::Move && platform::onSameFilesystem(item.source, m_destinationDirectory)) {
-        if (::rename(QFile::encodeName(item.source).constData(),
-                     QFile::encodeName(destination).constData()) == 0) {
-            m_createdPaths.append(destination);
-            m_removedSources.append(item.source);
-            m_bytesDone += item.size;
-            ++m_filesDone;
-            reportProgress(item.source);
-            return;
-        }
-        // A failed rename falls through to copy-and-delete rather than being
-        // reported: EXDEV here means the two paths turned out to be on
-        // different filesystems after all, which is a normal thing to discover.
+    //
+    // A failed rename falls through to copy-and-delete rather than being
+    // reported: EXDEV here means the two paths turned out to be on different
+    // filesystems after all, which is a normal thing to discover.
+    if (m_mode == Mode::Move && platform::onSameFilesystem(item.source, m_destinationDirectory) &&
+        ::rename(QFile::encodeName(item.source).constData(),
+                 QFile::encodeName(destination).constData()) == 0) {
+        m_createdPaths.append(destination);
+        m_removedSources.append(item.source);
+        m_bytesDone += item.size;
+        ++m_filesDone;
+        reportProgress(item.source);
+        return;
     }
 
     bool ok = false;

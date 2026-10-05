@@ -11,6 +11,7 @@ pkgbase = panefile-git
 	makedepends = ninja
 	makedepends = gcc
 	depends = qt6-base
+	depends = qt6-svg
 	depends = libarchive
 	depends = shared-mime-info
 	depends = hicolor-icon-theme

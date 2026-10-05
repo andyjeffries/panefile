@@ -82,7 +82,8 @@ QString writePdf(const QTemporaryDir &dir)
     return path;
 }
 
-/// One second of 8 kHz mono silence as a WAV file.
+/// One and a half seconds of 8 kHz mono silence as a WAV file. Not a whole
+/// second: a backend that reports 999 ms or 1001 ms still shows "0:01".
 QString writeWav(const QTemporaryDir &dir)
 {
     const QString path = dir.filePath(QStringLiteral("silence.wav"));
@@ -91,7 +92,7 @@ QString writeWav(const QTemporaryDir &dir)
     Q_ASSERT(opened);
 
     constexpr quint32 rate = 8000;
-    constexpr quint32 samples = rate;
+    constexpr quint32 samples = rate * 3 / 2;
     QDataStream out(&file);
     out.setByteOrder(QDataStream::LittleEndian);
     out.writeRawData("RIFF", 4);
@@ -300,7 +301,8 @@ private Q_SLOTS:
         renderer.setContent(contentFor(path));
         QVERIFY(renderer.isUsingPlugin());
 
-        QTRY_VERIFY(renderer.statusText().contains(QStringLiteral("/ 0:01")));
+        QTRY_VERIFY2(renderer.statusText().contains(QStringLiteral("/ 0:01")),
+                     qPrintable(renderer.statusText()));
         QVERIFY(renderer.statusText().startsWith(QStringLiteral("Paused")));
         QVERIFY(renderer.statusText().contains(QStringLiteral("p play")));
 

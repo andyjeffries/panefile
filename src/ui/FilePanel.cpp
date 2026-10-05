@@ -23,6 +23,8 @@
 #include <QStyleOption>
 #include <QVBoxLayout>
 
+#include <utility>
+
 namespace pf::ui {
 namespace {
 
@@ -576,7 +578,7 @@ void FilePanel::closeFilterBar(bool keepFilter)
 bool FilePanel::eventFilter(QObject *watched, QEvent *event)
 {
     if (watched == m_filterBar && event->type() == QEvent::KeyPress) {
-        auto *keyEvent = static_cast<QKeyEvent *>(event);
+        const auto *keyEvent = static_cast<QKeyEvent *>(event);
         if (keyEvent->key() == Qt::Key_Escape) {
             // §7.8: "Esc clears it".
             closeFilterBar(false);
@@ -1109,7 +1111,7 @@ void FilePanel::updateHeader()
         counts += separator + tr("%1 selected").arg(m_selection.size());
     }
 
-    m_headerText = display;
+    m_headerText = std::move(display);
     m_headerCount->setText(counts);
     applyHeaderElision();
 }

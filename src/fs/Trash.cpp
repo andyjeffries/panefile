@@ -113,10 +113,8 @@ bool Trash::parseTrashInfo(const QString &text, QString *originalPath, QDateTime
                 *originalPath = QUrl::fromPercentEncoding(line.mid(5).toUtf8());
             }
             sawPath = true;
-        } else if (line.startsWith(QLatin1String("DeletionDate="))) {
-            if (deletedAt != nullptr) {
-                *deletedAt = QDateTime::fromString(line.mid(13).trimmed(), kDateFormat);
-            }
+        } else if (deletedAt != nullptr && line.startsWith(QLatin1String("DeletionDate="))) {
+            *deletedAt = QDateTime::fromString(line.mid(13).trimmed(), kDateFormat);
         }
     }
 

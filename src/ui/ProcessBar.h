@@ -45,7 +45,7 @@ public:
     /// outlasts the delay is work worth reporting on.
     static constexpr int kAppearDelayMs = 250;
 
-    ProcessBar(fs::JobEngine *engine, QWidget *parent = nullptr);
+    explicit ProcessBar(fs::JobEngine *engine, QWidget *parent = nullptr);
 
     void setExpanded(bool expanded);
     bool isExpanded() const;

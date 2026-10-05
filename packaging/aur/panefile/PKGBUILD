@@ -16,6 +16,7 @@ license=('MIT')
 # nothing to tell them why. A few megabytes once is cheaper than that.
 depends=(
   'qt6-base'
+  'qt6-svg'
   'libarchive'
   'shared-mime-info'
   'hicolor-icon-theme'

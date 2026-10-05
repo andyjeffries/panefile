@@ -60,28 +60,36 @@ public:
         : m_layers(std::move(layers)), m_colour(colour)
     {}
 
-    void paint(QPainter *painter, const QRect &rect, QIcon::Mode mode, QIcon::State state) override
+    void paint(QPainter *painter, const QRect &rect, QIcon::Mode mode,
+               QIcon::State /*state*/) override
     {
         // The painter's device knows the real ratio: a HiDPI screen, or a
         // pixmap being rendered at 2x for a screenshot. Asking it, rather than
         // qApp, is what keeps an icon painted into an offscreen buffer crisp.
         const qreal ratio =
             painter->device() != nullptr ? painter->device()->devicePixelRatio() : 1.0;
-        const QPixmap rendered = scaledPixmap(rect.size(), mode, state, ratio);
+        const QPixmap rendered = render(rect.size(), mode, ratio);
         if (!rendered.isNull()) {
             painter->drawPixmap(rect.topLeft(), rendered);
         }
     }
 
-    QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state) override
+    QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State /*state*/) override
     {
-        return scaledPixmap(size, mode, state, 1.0);
+        return render(size, mode, 1.0);
     }
 
     QPixmap scaledPixmap(const QSize &size, QIcon::Mode mode, QIcon::State /*state*/,
                          qreal scale) override
     {
-        return TintedIcon::pixmap(m_layers, m_colour, size, scale, mode);
+#if QT_VERSION < QT_VERSION_CHECK(6, 8, 0)
+        // Before 6.8, QIcon::pixmap() hands the engine the size already
+        // multiplied by the ratio; from 6.8 on it is the logical size.
+        if (scale > 0) {
+            return render(size / scale, mode, scale);
+        }
+#endif
+        return render(size, mode, scale);
     }
 
     QSize actualSize(const QSize &size, QIcon::Mode /*mode*/, QIcon::State /*state*/) override
@@ -105,6 +113,11 @@ public:
     bool isNull() override { return m_layers.isEmpty(); }
 
 private:
+    QPixmap render(const QSize &logicalSize, QIcon::Mode mode, qreal scale) const
+    {
+        return TintedIcon::pixmap(m_layers, m_colour, logicalSize, scale, mode);
+    }
+
     QList<TintedLayer> m_layers;
     QColor m_colour;
 };

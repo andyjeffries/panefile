@@ -20,13 +20,16 @@ namespace {
 constexpr uint32_t kWatchMask = IN_CREATE | IN_DELETE | IN_MOVED_FROM | IN_MOVED_TO | IN_ATTRIB |
                                 IN_MODIFY | IN_CLOSE_WRITE | IN_DELETE_SELF | IN_MOVE_SELF;
 
+/// Either way the watched directory itself stops being there.
+constexpr uint32_t kSelfGoneMask = IN_DELETE_SELF | IN_MOVE_SELF;
+
 /// Room for a good burst of events per read. Reading one at a time would turn
 /// an extraction of ten thousand files into ten thousand syscalls.
 constexpr size_t kBufferSize = static_cast<size_t>(64) * 1024;
 
 WatchEvent::Kind kindOf(uint32_t mask)
 {
-    if ((mask & (IN_DELETE_SELF | IN_MOVE_SELF)) != 0U) {
+    if ((mask & kSelfGoneMask) != 0U) {
         return WatchEvent::Kind::SelfGone;
     }
     if ((mask & IN_Q_OVERFLOW) != 0U) {

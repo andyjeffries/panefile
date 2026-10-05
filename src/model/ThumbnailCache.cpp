@@ -377,7 +377,7 @@ void ThumbnailCache::request(const QString &absolutePath, Size size)
         return;
     }
 
-    auto cancelled = std::make_shared<std::atomic<bool>>(false);
+    const auto cancelled = std::make_shared<std::atomic<bool>>(false);
     m_pendingFlags.insert(absolutePath, cancelled);
 
     // QPointer, not `this`: the worker outlives a cancelled request by however

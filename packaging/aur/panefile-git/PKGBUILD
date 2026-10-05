@@ -22,6 +22,7 @@ license=('MIT')
 # makepkg and this file.
 depends=(
   'qt6-base'          # Core, Gui, Widgets, DBus, Network
+  'qt6-svg'           # svg image plugin: every file and chrome icon
   'libarchive'        # §7.10 archives, resolved at runtime
   'shared-mime-info'  # §7.6 MIME detection
   'hicolor-icon-theme'

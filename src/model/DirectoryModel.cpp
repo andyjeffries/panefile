@@ -168,7 +168,7 @@ void DirectoryModel::requestThumbnailRange(int firstVisibleRow, int lastVisibleR
         }
     }
 
-    m_thumbnailWindow = window;
+    m_thumbnailWindow = std::move(window);
 }
 
 QString DirectoryModel::absolutePathFor(const FileEntry &entry) const

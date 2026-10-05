@@ -106,7 +106,7 @@ void PanelController::registerActions()
     // capturing one, so a binding fired after the user switches panels acts on
     // the panel they are actually looking at.
     const auto onPanel = [this](auto &&action) {
-        return [this, action]() {
+        return [this, action] {
             if (ui::FilePanel *panel = focused(); panel != nullptr) {
                 action(panel);
             }

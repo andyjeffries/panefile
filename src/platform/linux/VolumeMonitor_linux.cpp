@@ -14,6 +14,8 @@
 #include <QMap>
 #include <QVariantMap>
 
+#include <utility>
+
 namespace pf::platform {
 namespace {
 
@@ -149,7 +151,7 @@ private:
         // udisks2's Mount and Unmount both take an a{sv} of options.
         message << QVariantMap{};
 
-        auto *watcher =
+        const auto *watcher =
             new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(message), this);
 
         connect(watcher, &QDBusPendingCallWatcher::finished, this,
@@ -171,7 +173,7 @@ private:
             QLatin1String(kService), QLatin1String(kObjectManagerPath),
             QLatin1String(kObjectManager), QStringLiteral("GetManagedObjects"));
 
-        auto *watcher =
+        const auto *watcher =
             new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(message), this);
 
         connect(watcher, &QDBusPendingCallWatcher::finished, this,
@@ -240,7 +242,7 @@ private:
         if (volumes == m_volumes) {
             return;
         }
-        m_volumes = volumes;
+        m_volumes = std::move(volumes);
         Q_EMIT volumesChanged();
     }
 

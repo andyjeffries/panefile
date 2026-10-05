@@ -26,7 +26,7 @@ QObject *load(Plugin which)
                 continue;
             }
 
-            // Deliberately leaked: a plugin is never unloaded. Its code backs
+            // Never deleted: a plugin is never unloaded. Its code backs
             // widgets and highlighters whose lifetimes the host does not track,
             // and unloading under them would be a crash for no saving.
             auto *loader = new QPluginLoader(file);
@@ -37,6 +37,11 @@ QObject *load(Plugin which)
                 delete loader;
                 continue;
             }
+
+            // Owned by the instance, which lives for the rest of the process,
+            // so the loader stays reachable instead of reading to LeakSanitizer
+            // as a leak.
+            loader->setParent(instance);
 
             // The root object is created on whichever thread asked first, and
             // for pf-video-thumb that is a pool thread that may later exit.

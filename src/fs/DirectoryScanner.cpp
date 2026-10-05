@@ -24,6 +24,9 @@
 namespace pf::fs {
 namespace {
 
+/// Executable by someone: owner, group or other.
+constexpr mode_t kAnyExecute = S_IXUSR | S_IXGRP | S_IXOTH;
+
 /// Copies the parts of a stat buffer that FileEntry cares about.
 void applyStat(FileEntry &entry, const struct stat &info)
 {
@@ -32,7 +35,7 @@ void applyStat(FileEntry &entry, const struct stat &info)
     entry.uid = info.st_uid;
     entry.gid = info.st_gid;
     entry.modified = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(info.st_mtime));
-    entry.isExecutable = (info.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH)) != 0;
+    entry.isExecutable = (info.st_mode & kAnyExecute) != 0;
 }
 
 /// Builds one entry from a directory fd and a name.
@@ -77,7 +80,7 @@ FileEntry buildEntry(int dirFd, const char *name, unsigned char dtype)
         // but the mode is the link's own — that is what ls -l shows.
         entry.size = static_cast<quint64>(target.st_size);
         entry.modified = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(target.st_mtime));
-        entry.isExecutable = (target.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH)) != 0;
+        entry.isExecutable = (target.st_mode & kAnyExecute) != 0;
     } else {
         entry.isBroken = true;
     }

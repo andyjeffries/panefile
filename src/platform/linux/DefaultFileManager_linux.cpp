@@ -130,7 +130,7 @@ MakeDefaultResult makePanefileDefaultFileManager()
     // default, only on a reload. Without this, "Show in folder" would not
     // start Panefile until the next login. Failure changes nothing that was
     // written, so it is logged rather than reported.
-    QDBusConnection bus = QDBusConnection::sessionBus();
+    const QDBusConnection bus = QDBusConnection::sessionBus();
     if (bus.isConnected()) {
         const QDBusMessage reply = bus.call(busCall("ReloadConfig"), QDBus::Block, 2000);
         if (reply.type() == QDBusMessage::ErrorMessage) {
@@ -145,7 +145,7 @@ MakeDefaultResult makePanefileDefaultFileManager()
 
 QString fileManagerNameOwner()
 {
-    QDBusConnection bus = QDBusConnection::sessionBus();
+    const QDBusConnection bus = QDBusConnection::sessionBus();
     if (!bus.isConnected() || bus.interface() == nullptr) {
         return {};
     }
@@ -242,7 +242,7 @@ public:
         call << QString::fromLatin1(xdg::kFileManagerBusName) << kAllowReplacement;
 
         m_requesting = true;
-        auto *watcher = new QDBusPendingCallWatcher(bus.asyncCall(call), this);
+        const auto *watcher = new QDBusPendingCallWatcher(bus.asyncCall(call), this);
         connect(watcher, &QDBusPendingCallWatcher::finished, this,
                 [this](QDBusPendingCallWatcher *finished) {
                     finished->deleteLater();
@@ -308,12 +308,17 @@ private:
     }
 
     /// Asks who is ahead of us, so the user can be told what to quit.
+    ///
+    /// The watcher is parented to `this` and deletes itself when the reply
+    /// lands, neither of which the analyser can see when it follows this in
+    /// from the RequestName handler.
+    // NOLINTBEGIN(clang-analyzer-cplusplus.NewDeleteLeaks)
     void reportOwner()
     {
         QDBusMessage call = busCall("GetConnectionUnixProcessID");
         call << QString::fromLatin1(xdg::kFileManagerBusName);
 
-        auto *watcher =
+        const auto *watcher =
             new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(call), this);
         connect(watcher, &QDBusPendingCallWatcher::finished, this,
                 [this](QDBusPendingCallWatcher *finished) {
@@ -328,6 +333,7 @@ private:
                     Q_EMIT nameQueued(owner);
                 });
     }
+    // NOLINTEND(clang-analyzer-cplusplus.NewDeleteLeaks)
 
     bool m_exported = false;
     bool m_requesting = false;

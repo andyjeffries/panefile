@@ -33,35 +33,35 @@ constexpr qint64 kChunkSize = static_cast<qint64>(64) * 1024;
 /// entered after extraction — which is exactly the bug this exists to avoid.
 int posixModeOf(QFile::Permissions permissions)
 {
-    int mode = 0;
+    unsigned mode = 0;
     if ((permissions & QFile::ReadOwner) != 0) {
-        mode |= 0400;
+        mode |= 0400U;
     }
     if ((permissions & QFile::WriteOwner) != 0) {
-        mode |= 0200;
+        mode |= 0200U;
     }
     if ((permissions & QFile::ExeOwner) != 0) {
-        mode |= 0100;
+        mode |= 0100U;
     }
     if ((permissions & QFile::ReadGroup) != 0) {
-        mode |= 040;
+        mode |= 040U;
     }
     if ((permissions & QFile::WriteGroup) != 0) {
-        mode |= 020;
+        mode |= 020U;
     }
     if ((permissions & QFile::ExeGroup) != 0) {
-        mode |= 010;
+        mode |= 010U;
     }
     if ((permissions & QFile::ReadOther) != 0) {
-        mode |= 04;
+        mode |= 04U;
     }
     if ((permissions & QFile::WriteOther) != 0) {
-        mode |= 02;
+        mode |= 02U;
     }
     if ((permissions & QFile::ExeOther) != 0) {
-        mode |= 01;
+        mode |= 01U;
     }
-    return mode;
+    return static_cast<int>(mode);
 }
 
 } // namespace

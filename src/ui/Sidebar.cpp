@@ -554,7 +554,7 @@ bool Sidebar::handleViewportEvent(QEvent *event)
 {
     switch (event->type()) {
     case QEvent::MouseButtonPress: {
-        auto *mouse = static_cast<QMouseEvent *>(event);
+        const auto *mouse = static_cast<QMouseEvent *>(event);
         if (mouse->button() != Qt::LeftButton) {
             return false;
         }
@@ -578,7 +578,7 @@ bool Sidebar::handleViewportEvent(QEvent *event)
         return false;
     }
     case QEvent::MouseMove: {
-        auto *mouse = static_cast<QMouseEvent *>(event);
+        const auto *mouse = static_cast<QMouseEvent *>(event);
         if (m_dragCandidate == nullptr || (mouse->buttons() & Qt::LeftButton) == 0) {
             return false;
         }

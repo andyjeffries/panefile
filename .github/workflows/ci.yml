@@ -30,7 +30,7 @@ jobs:
         run: |
           pacman -Syu --noconfirm --needed \
             git cmake ninja clang \
-            qt6-base qt6-multimedia \
+            qt6-base qt6-svg qt6-multimedia \
             libarchive syntax-highlighting ffmpegthumbnailer poppler-qt6 \
             shared-mime-info hicolor-icon-theme desktop-file-utils \
             hyperfine python
@@ -165,7 +165,7 @@ jobs:
       - name: Install dependencies
         run: |
           pacman -Syu --noconfirm --needed \
-            git cmake ninja clang qt6-base qt6-multimedia libarchive \
+            git cmake ninja clang qt6-base qt6-svg qt6-multimedia libarchive \
             shared-mime-info
 
       - uses: actions/checkout@v4
@@ -194,7 +194,7 @@ jobs:
       - name: Install dependencies
         run: |
           pacman -Syu --noconfirm --needed \
-            git cmake ninja clang qt6-base qt6-multimedia libarchive \
+            git cmake ninja clang qt6-base qt6-svg qt6-multimedia libarchive \
             shared-mime-info
 
       - uses: actions/checkout@v4

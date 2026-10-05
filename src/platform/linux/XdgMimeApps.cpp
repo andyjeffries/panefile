@@ -231,9 +231,8 @@ bool isReplaceable(const QString &path)
 QString quoteForExec(const QString &path)
 {
     static const QString kSafe = QStringLiteral("/._-+:@%,=");
-    const bool plain = std::all_of(path.cbegin(), path.cend(), [](QChar c) {
-        return c.isLetterOrNumber() || kSafe.contains(c);
-    });
+    const bool plain = std::ranges::all_of(
+        path, [](QChar c) { return c.isLetterOrNumber() || kSafe.contains(c); });
     if (plain) {
         return path;
     }
@@ -244,7 +243,7 @@ QString quoteForExec(const QString &path)
 
 QString findInApplicationsDir(const QString &directory, const QString &desktopId)
 {
-    const QString direct = directory + QLatin1Char('/') + desktopId;
+    QString direct = directory + QLatin1Char('/') + desktopId;
     if (QFileInfo(direct).isFile()) {
         return direct;
     }

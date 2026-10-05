@@ -87,7 +87,7 @@ ui::CompressModal *FileOperations::compressModal()
                 [this](const QStringList &sources, const QString &destination,
                        fs::ArchiveFormat format) {
                     auto job = std::make_unique<fs::ArchiveJob>(sources, destination, format);
-                    auto *raw = job.get();
+                    const auto *raw = job.get();
 
                     const int jobId = m_engine->submit(std::move(job));
 
@@ -151,7 +151,7 @@ void FileOperations::extractCursorItem()
     // §7.10: "extracts into <archive-basename>/ in the panel's cwd", with the
     // tarbomb rule deciding whether that nesting actually happens.
     auto job = std::make_unique<fs::ExtractJob>(archivePath, panel->path());
-    auto *raw = job.get();
+    const auto *raw = job.get();
 
     const int jobId = m_engine->submit(std::move(job));
 
@@ -330,7 +330,7 @@ void FileOperations::bulkRenameSelection()
 void FileOperations::runRenamePlan(const QString &directory, const fs::RenamePlan &plan)
 {
     auto job = std::make_unique<fs::RenameJob>(directory, plan);
-    auto *raw = job.get();
+    const auto *raw = job.get();
 
     const int jobId = m_engine->submit(std::move(job));
 

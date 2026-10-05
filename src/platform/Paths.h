@@ -51,6 +51,13 @@ QStringList dataSearchPaths();
 /// Directories searched for theme .toml files, user themes first (§8).
 QStringList themeSearchPaths();
 
+/// Directories searched for the optional-feature plugins of §3.4, most
+/// specific first: PANEFILE_PLUGIN_DIR, then locations relative to the running
+/// binary (a build tree and a Linux install share bin/../lib/panefile/plugins;
+/// a macOS bundle uses Contents/PlugIns/panefile), then the compiled-in
+/// install prefix. Only existing directories are returned.
+QStringList pluginSearchPaths();
+
 /// The user's home directory.
 QString homeDir();
 

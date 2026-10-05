@@ -1,6 +1,8 @@
 #include "ui/quicklook/renderers/TextRenderer.h"
 
+#include "plugins/PluginInterfaces.h"
 #include "core/Format.h"
+#include "platform/PluginHost.h"
 
 #include <QFileInfo>
 #include <QFontDatabase>
@@ -75,6 +77,10 @@ void TextRenderer::setContent(QuickLookContent &&content)
         return;
     }
 
+    // Detached before the new text goes in, so the previous file's
+    // highlighter never runs over text it was not chosen for.
+    delete m_highlighter;
+
     if (!content.error.isEmpty()) {
         m_view->setPlainText(content.error);
         m_status.clear();
@@ -82,6 +88,9 @@ void TextRenderer::setContent(QuickLookContent &&content)
     }
 
     m_view->setPlainText(content.text);
+    if (!content.metadataOnly) {
+        highlight(content);
+    }
 
     const int lines = static_cast<int>(content.text.count(QLatin1Char('\n'))) + 1;
     m_status = QStringLiteral("%1 · %2").arg(counted(lines, tr("line"), tr("lines")),
@@ -92,6 +101,33 @@ void TextRenderer::setContent(QuickLookContent &&content)
         // is better than showing an empty pane that looks like an empty file.
         m_status = tr("too large to preview · %1").arg(formatSize(content.entry.size));
     }
+}
+
+void TextRenderer::highlight(const QuickLookContent &content)
+{
+    if (content.text.size() > kHighlightLimit) {
+        return;
+    }
+
+    // Asked for here, on the first text file with something to highlight, and
+    // not before: loading the plugin loads KSyntaxHighlighting's definition
+    // repository, which §3.4 says "must never happen at startup".
+    auto *syntax = platform::plugin<plugins::SyntaxPlugin>(platform::Plugin::Syntax);
+    if (syntax == nullptr) {
+        return;
+    }
+
+    // The theme follows the pane's own background rather than the system
+    // scheme: Panefile's theme sets the colours, and a dark-on-dark highlight
+    // in a dark theme on a light desktop is the failure to avoid.
+    const bool dark = m_view->palette().color(QPalette::Base).lightnessF() < 0.5;
+    m_highlighter = syntax->attach(m_view->document(), QFileInfo(content.path).fileName(),
+                                   content.mimeType.name(), dark);
+}
+
+bool TextRenderer::isHighlighted() const
+{
+    return !m_highlighter.isNull();
 }
 
 void TextRenderer::toggleWrap()
@@ -116,6 +152,7 @@ bool TextRenderer::handleKey(QKeyEvent *event)
 
 void TextRenderer::clear()
 {
+    delete m_highlighter;
     if (m_view != nullptr) {
         m_view->clear();
     }

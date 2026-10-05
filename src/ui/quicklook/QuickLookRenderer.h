@@ -7,6 +7,8 @@
 #include <QMimeType>
 #include <QString>
 
+#include <functional>
+
 class QKeyEvent;
 class QWidget;
 
@@ -89,6 +91,27 @@ public:
         Q_UNUSED(event)
         return false;
     }
+
+    /// Set by the view, which refreshes the footer from statusText() when this
+    /// is called. setContent() and handleKey() need not use it — the view
+    /// reads the status after both — but a renderer whose status changes on
+    /// its own does: a PDF page that finished rendering off-thread, a player
+    /// whose position moved.
+    void setStatusChangedHandler(std::function<void()> handler)
+    {
+        m_statusChanged = std::move(handler);
+    }
+
+protected:
+    void notifyStatusChanged() const
+    {
+        if (m_statusChanged) {
+            m_statusChanged();
+        }
+    }
+
+private:
+    std::function<void()> m_statusChanged;
 };
 
 } // namespace pf::ui

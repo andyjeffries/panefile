@@ -41,10 +41,10 @@ public:
 
     int count() const;
 
-    /// Builds the registry with every renderer available in this build.
-    /// Optional ones — syntax highlighting, media, PDF — are added only when
-    /// their dependency was found, and their absence is a graceful degradation
-    /// rather than a missing feature (§2).
+    /// Builds the registry with every renderer. The optional features —
+    /// syntax highlighting, media, PDF — are always registered and load their
+    /// plugin (§3.4) on first use; an absent plugin is a graceful degradation
+    /// to plain text or a metadata card rather than a missing renderer (§2).
     static std::unique_ptr<QuickLookRegistry> createDefault();
 
 private:

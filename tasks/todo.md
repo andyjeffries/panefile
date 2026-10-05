@@ -163,13 +163,21 @@ Two bugs the tests found, both macOS-only and both silent:
 - [x] freedesktop thumbnail cache with `Thumb::URI`/`Thumb::MTime` chunks
 - [x] Tests: renderer selection by MIME and priority, hex fallback, debounce
       cancellation, cache hit and miss on mtime, dock transitions
-- [ ] **Deferred: the optional plugin host** (`pf-syntax`, `pf-media`, `pf-pdf`,
-      `pf-video-thumb`). The renderers are written to work without it and say so
-      — the media and PDF renderers show metadata cards, the text renderer shows
-      plain text, and video thumbnails are skipped rather than fail-cached, so
-      a build that gains the plugins later starts producing them. §3.4 forbids
-      any of these becoming link-time dependencies, which is why the host is a
-      piece of work rather than three `find_package` calls.
+- [x] **The optional plugin host** (`pf-syntax`, `pf-media`, `pf-pdf`,
+      `pf-video-thumb`), built after the milestone. Each plugin is a `MODULE`
+      under `src/plugins/` that links only Qt and its own dependency. The
+      private interfaces are in `plugins/PluginInterfaces.h`.
+      `platform/PluginHost` opens a plugin with `QPluginLoader` the first time
+      a file of its kind is shown, never at startup. The Text, Media and PDF
+      renderers stay registered, delegate to the plugin when it is present,
+      and keep their plain-text or metadata-card fallback when it is not.
+      Video thumbnails go through the plugin on the thumbnail pool; a missing
+      plugin is still not fail-cached. `pf`'s `DT_NEEDED` list is unchanged.
+      - Syntax highlighting stops above 256 K characters: highlighting adds
+        about 100 ms per million on top of the plain-text layout, measured.
+      - Videos show a poster frame without playing; `p` plays.
+      - Tests: `tst_plugins` covers each plugin, and `tst_plugins_missing`
+        covers the same paths with an empty plugin directory.
 
 libarchive moved to a runtime `QLibrary` load in this milestone: adding the
 archive renderer had quietly made it a `DT_NEEDED` entry, which §3.4 forbids.
@@ -379,7 +387,7 @@ twenty-eight libraries including a JavaScript interpreter.
 
 ### Departures from the specification
 
-Eight, each because following the letter would have broken something the spec
+Nine, each because following the letter would have broken something the spec
 asks for elsewhere.
 
 1. **Bulk rename is a Finder-style sheet, not §7.9's `$EDITOR` round trip.**
@@ -423,20 +431,23 @@ asks for elsewhere.
    appearing at all, so copying three small files no longer flashes a progress
    bar for work that is already over.
 
+9. **PDFs render with poppler-qt6 first, not QtPdf.** §7.6 prefers QtPdf.
+   On Arch, though, Qt6Pdf ships inside qt6-webengine, which would put
+   Chromium in a file manager's dependency tree, and CI and both PKGBUILDs
+   already depend on poppler-qt6. QtPdf is the fallback a build uses when
+   poppler is not found, and the same tests pass against both.
+
 Three deviations were made for testability and are noted in their commits: the
 `WatchCoalescer` split, injectable roots on `Trash` and `ThumbnailCache`, and
 the pure parsers for `mountinfo` and the session file.
 
 ### Still owed
 
-Eight items, listed under their milestones above. In rough order of how much
+Six items, listed under their milestones above. In rough order of how much
 they matter:
 
 - **Wayland activation (§10.4)** needs your Arch + Hyprland machine. Nothing
   else in the project is unverifiable here.
-- **The optional plugin host (§3.4)** — syntax highlighting, media playback,
-  PDF rendering and video thumbnails. Every one of them degrades as §2 requires
-  and says what is missing, so this is a feature gap rather than a defect.
 - **A password prompt for encrypted archives (§7.10).**
 - **`Alt` for the copy/move/link drop menu (§7.12).**
 - **The default theme, and typography (M11)** — taste decisions, yours.

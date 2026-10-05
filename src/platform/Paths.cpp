@@ -94,4 +94,40 @@ QStringList themeSearchPaths()
     return paths;
 }
 
+QStringList pluginSearchPaths()
+{
+    QStringList paths;
+
+    // An override replaces the search rather than leading it, unlike the data
+    // directory: the point of setting it is to choose exactly which plugins a
+    // process sees, and a test pointing it at an empty directory is asking for
+    // none at all.
+    const QString override = envDir("PANEFILE_PLUGIN_DIR");
+    if (!override.isEmpty()) {
+        return {override};
+    }
+
+    // The build tree stages plugins at lib/panefile/plugins beside bin/, which
+    // is also where a Unix install puts them, so one rule covers both.
+    const QString binDir = QCoreApplication::applicationDirPath();
+    if (!binDir.isEmpty()) {
+        for (const char *relative :
+             {"/../lib/" PF_APPLICATION_NAME "/plugins",
+              "/../lib64/" PF_APPLICATION_NAME "/plugins", "/../PlugIns/" PF_APPLICATION_NAME}) {
+            const QString candidate = QDir::cleanPath(binDir + QLatin1String(relative));
+            if (QFileInfo(candidate).isDir()) {
+                paths << candidate;
+            }
+        }
+    }
+
+    const QString installed = QStringLiteral(PF_INSTALL_PLUGINDIR);
+    if (QFileInfo(installed).isDir()) {
+        paths << installed;
+    }
+
+    paths.removeDuplicates();
+    return paths;
+}
+
 } // namespace pf::platform

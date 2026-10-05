@@ -59,6 +59,26 @@ pf_add_test(tst_search      SOURCES tst_search.cpp      LIBS pf_fs pf_model)
 pf_add_test(tst_rename      SOURCES tst_rename.cpp      LIBS pf_fs)
 pf_add_test(tst_quicklook  SOURCES tst_quicklook.cpp  LIBS pf_ui)
 pf_add_test(tst_thumbnails SOURCES tst_thumbnails.cpp LIBS pf_model)
+
+# The optional-feature plugins (§3.4), loaded from the build tree's staging
+# directory. Each test of a plugin skips when this build did not produce it.
+pf_add_test(tst_plugins SOURCES tst_plugins.cpp LIBS pf_ui pf_model
+    ENVIRONMENT "PANEFILE_PLUGIN_DIR=${CMAKE_BINARY_DIR}/lib/panefile/plugins")
+target_compile_definitions(tst_plugins PRIVATE
+    PF_TEST_HAVE_SYNTAX=$<BOOL:${PF_HAVE_SYNTAX}>
+    PF_TEST_HAVE_MEDIA=$<BOOL:${PF_HAVE_MEDIA}>
+    PF_TEST_HAVE_PDF=$<BOOL:${PF_HAVE_PDF}>
+    PF_TEST_HAVE_VIDEO_THUMBS=$<BOOL:${PF_HAVE_VIDEO_THUMBS}>)
+get_property(PF_PLUGIN_TARGETS GLOBAL PROPERTY PF_PLUGIN_TARGETS)
+if(PF_PLUGIN_TARGETS)
+    add_dependencies(tst_plugins ${PF_PLUGIN_TARGETS})
+endif()
+
+# And §2's degradation with none of them: an empty plugin directory is what a
+# build without the optional dependencies looks like at run time.
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/no-plugins")
+pf_add_test(tst_plugins_missing SOURCES tst_plugins_missing.cpp LIBS pf_ui pf_model
+    ENVIRONMENT "PANEFILE_PLUGIN_DIR=${CMAKE_CURRENT_BINARY_DIR}/no-plugins")
 pf_add_test(tst_archives    SOURCES tst_archives.cpp    LIBS pf_fs)
 pf_add_test(tst_mounts      SOURCES tst_mounts.cpp      LIBS pf_platform)
 pf_add_test(tst_paths       SOURCES tst_paths.cpp       LIBS pf_platform)

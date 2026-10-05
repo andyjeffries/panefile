@@ -215,7 +215,7 @@ private:
         }
 
         if (m_desiredBytes <= 0) {
-            // The renderer opens the file itself — the media and PDF cards, whose
+            // The renderer opens the file itself — media and PDF, whose
             // libraries stream far better than a wholesale read would.
             m_content.facts.append({QObject::tr("Size"), formatSize(m_content.entry.size)});
             return;

@@ -66,8 +66,8 @@ public:
     void setMaxFileSizeMb(int megabytes);
 
     /// §7.7's `thumbnails.video`. Video thumbnailing needs ffmpegthumbnailer,
-    /// which §3.4 keeps behind the optional plugin host; until that exists this
-    /// only records the preference.
+    /// which §3.4 keeps behind the optional plugin host: without the
+    /// pf-video-thumb plugin, videos are skipped, and never fail-cached.
     void setVideoEnabled(bool enabled);
 
     /// Reads a cached thumbnail, or returns a null image when there is none or
@@ -107,6 +107,9 @@ Q_SIGNALS:
     void failed(const QString &absolutePath);
 
 private:
+    enum class Kind { None, Image, Video };
+    Kind kindFor(const QString &absolutePath) const;
+
     void writeFailMarker(const QString &absolutePath) const;
     QString failMarkerPath(const QString &absolutePath) const;
 
@@ -133,6 +136,10 @@ private:
     int m_maxFileSizeMb = 200;
     bool m_enabled = true;
     bool m_video = true;
+
+    /// Set when a worker found no pf-video-thumb plugin, so that videos stop
+    /// being queued for the rest of the session.
+    bool m_videoUnavailable = false;
 };
 
 } // namespace pf

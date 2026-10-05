@@ -1,7 +1,9 @@
 #include "model/ThumbnailCache.h"
 
+#include "plugins/PluginInterfaces.h"
 #include "core/Logging.h"
 #include "platform/Paths.h"
+#include "platform/PluginHost.h"
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -55,17 +57,44 @@ bool isThumbnailable(const QMimeType &mime)
     return false;
 }
 
+/// How a generation attempt ended.
+enum class Outcome {
+    Generated,
+    /// The file could not be decoded; recorded in the fail cache (§7.7).
+    Failed,
+    /// Nothing in this installation can decode it — a video with no
+    /// pf-video-thumb plugin. Not fail-cached, so installing the plugin later
+    /// is enough to start getting thumbnails.
+    Unavailable,
+};
+
+/// Decodes an image file, scaled at decode time where the format allows it so
+/// a 40-megapixel JPEG never materialises in full just to produce a 128 px
+/// square.
+QImage decodeImage(const QString &path, int target)
+{
+    QImageReader reader(path);
+    reader.setAutoTransform(true);
+
+    const QSize source = reader.size();
+    if (source.isValid() && (source.width() > target || source.height() > target)) {
+        reader.setScaledSize(source.scaled(target, target, Qt::KeepAspectRatio));
+    }
+    return reader.read();
+}
+
 /// The generation worker. Holds no pointer back to the cache: it reports
 /// through a QObject-free callback bound to a shared cancellation flag, and the
 /// cache connects to it with a queued connection.
 class ThumbnailTask : public QRunnable
 {
 public:
-    ThumbnailTask(QString path, ThumbnailCache::Size size, QString destination,
+    ThumbnailTask(QString path, ThumbnailCache::Size size, bool video, QString destination,
                   std::shared_ptr<std::atomic<bool>> cancelled,
-                  std::function<void(QString, QImage, bool)> report)
-        : m_path(std::move(path)), m_size(size), m_destination(std::move(destination)),
-          m_cancelled(std::move(cancelled)), m_report(std::move(report))
+                  std::function<void(QString, QImage, Outcome)> report)
+        : m_path(std::move(path)), m_size(size), m_video(video),
+          m_destination(std::move(destination)), m_cancelled(std::move(cancelled)),
+          m_report(std::move(report))
     {
         setAutoDelete(true);
     }
@@ -77,21 +106,27 @@ public:
         }
 
         const QFileInfo info(m_path);
-        QImageReader reader(m_path);
-        reader.setAutoTransform(true);
-
-        const QSize source = reader.size();
         const int target = ThumbnailCache::pixelsFor(m_size);
 
-        // Scaled at decode time where the format allows it, so a 40-megapixel
-        // JPEG never materialises in full just to produce a 128 px square.
-        if (source.isValid() && (source.width() > target || source.height() > target)) {
-            reader.setScaledSize(source.scaled(target, target, Qt::KeepAspectRatio));
+        QImage image;
+        if (m_video) {
+            // Loaded here, on the worker, and never on the GUI thread: the
+            // plugin pulls in libffmpegthumbnailer and the whole of libav*,
+            // which is not a cost a directory listing should pause to pay.
+            const auto *thumbnailer =
+                platform::plugin<plugins::VideoThumbnailPlugin>(platform::Plugin::VideoThumbnails);
+            if (thumbnailer == nullptr) {
+                m_report(m_path, QImage(), Outcome::Unavailable);
+                return;
+            }
+            QString error;
+            image = thumbnailer->thumbnail(m_path, target, &error);
+        } else {
+            image = decodeImage(m_path, target);
         }
 
-        QImage image = reader.read();
         if (image.isNull() || m_cancelled->load(std::memory_order_relaxed)) {
-            m_report(m_path, QImage(), image.isNull());
+            m_report(m_path, QImage(), image.isNull() ? Outcome::Failed : Outcome::Generated);
             return;
         }
 
@@ -119,16 +154,17 @@ public:
         }
 
         if (!m_cancelled->load(std::memory_order_relaxed)) {
-            m_report(m_path, image, false);
+            m_report(m_path, image, Outcome::Generated);
         }
     }
 
 private:
     QString m_path;
     ThumbnailCache::Size m_size;
+    bool m_video = false;
     QString m_destination;
     std::shared_ptr<std::atomic<bool>> m_cancelled;
-    std::function<void(QString, QImage, bool)> m_report;
+    std::function<void(QString, QImage, Outcome)> m_report;
 };
 
 } // namespace
@@ -297,37 +333,42 @@ QImage ThumbnailCache::lookup(const QString &absolutePath, Size size) const
     return image;
 }
 
-bool ThumbnailCache::canThumbnail(const QString &absolutePath) const
+ThumbnailCache::Kind ThumbnailCache::kindFor(const QString &absolutePath) const
 {
     if (!m_enabled) {
-        return false;
+        return Kind::None;
     }
 
     const QFileInfo info(absolutePath);
     if (!info.isFile() || info.isSymLink()) {
-        return false;
+        return Kind::None;
     }
     if (info.size() > static_cast<qint64>(m_maxFileSizeMb) * 1024 * 1024) {
-        return false;
+        return Kind::None;
     }
 
     static const QMimeDatabase database;
     const QMimeType mime = database.mimeTypeForFile(info);
 
     if (mime.name().startsWith(QLatin1String("video/"))) {
-        // Deliberately not fail-cached: §3.4 puts ffmpegthumbnailer behind the
-        // optional plugin host, and marking every video as failed now would
-        // stop a build that has it from ever generating one.
-        return false;
+        // §7.7's `thumbnails.video`, and pf-video-thumb (§3.4). Whether the
+        // plugin is installed is found out on the worker that first tries,
+        // because loading it here would load libav* on the GUI thread.
+        return m_video && !m_videoUnavailable ? Kind::Video : Kind::None;
     }
 
-    return isThumbnailable(mime);
+    return isThumbnailable(mime) ? Kind::Image : Kind::None;
+}
+
+bool ThumbnailCache::canThumbnail(const QString &absolutePath) const
+{
+    return kindFor(absolutePath) != Kind::None;
 }
 
 void ThumbnailCache::request(const QString &absolutePath, Size size)
 {
-    if (!canThumbnail(absolutePath) || m_pendingFlags.contains(absolutePath) ||
-        hasFailed(absolutePath)) {
+    const Kind kind = kindFor(absolutePath);
+    if (kind == Kind::None || m_pendingFlags.contains(absolutePath) || hasFailed(absolutePath)) {
         return;
     }
 
@@ -343,18 +384,25 @@ void ThumbnailCache::request(const QString &absolutePath, Size size)
     // long the decode takes, and the queued invocation must not resurrect a
     // destroyed cache.
     const QPointer<ThumbnailCache> self(this);
-    auto report = [self, cancelled](const QString &path, const QImage &image, bool failure) {
+    auto report = [self, cancelled](const QString &path, const QImage &image, Outcome outcome) {
         if (cancelled->load(std::memory_order_relaxed)) {
             return;
         }
         QMetaObject::invokeMethod(
             self,
-            [self, path, image, failure] {
+            [self, path, image, outcome] {
                 if (self.isNull()) {
                     return;
                 }
                 self->m_pendingFlags.remove(path);
-                if (failure || image.isNull()) {
+                if (outcome == Outcome::Unavailable) {
+                    // The plugin host remembers a missing plugin for the life
+                    // of the process, so asking again would only queue work
+                    // that is certain to end here.
+                    self->m_videoUnavailable = true;
+                    return;
+                }
+                if (outcome == Outcome::Failed || image.isNull()) {
                     self->writeFailMarker(path);
                     Q_EMIT self->failed(path);
                     return;
@@ -368,7 +416,7 @@ void ThumbnailCache::request(const QString &absolutePath, Size size)
             Qt::QueuedConnection);
     };
 
-    m_pool->start(new ThumbnailTask(absolutePath, size,
+    m_pool->start(new ThumbnailTask(absolutePath, size, kind == Kind::Video,
                                     thumbnailPathFor(absolutePath, size, m_root), cancelled,
                                     std::move(report)));
 }

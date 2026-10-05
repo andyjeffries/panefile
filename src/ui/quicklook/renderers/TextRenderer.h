@@ -3,6 +3,8 @@
 #include "ui/quicklook/QuickLookRenderer.h"
 
 #include <QCoreApplication>
+#include <QPointer>
+#include <QSyntaxHighlighter>
 
 class QPlainTextEdit;
 
@@ -17,7 +19,8 @@ namespace pf::ui {
 /// KSyntaxHighlighting's definition repository costs tens of milliseconds and
 /// must never happen at startup, so this renderer works without it and asks for
 /// it only once it has text to highlight. Plain text is the documented fallback
-/// (§2), not a failure.
+/// (§2), not a failure — both when the pf-syntax plugin is not installed and
+/// when the file is too long to highlight without stalling (kHighlightLimit).
 class TextRenderer : public QuickLookRenderer
 {
     // tr() without QObject: a renderer implements an interface and has no
@@ -45,10 +48,27 @@ public:
     /// are `application/*` by MIME yet plainly text to a reader.
     static bool isTextual(const QMimeType &mime);
 
+    /// Above this many characters the text is shown plain. QSyntaxHighlighter
+    /// highlights the whole document synchronously on the GUI thread, so the
+    /// cap is what keeps §11's "Quick Look open → first paint, 4 MB text file,
+    /// < 120 ms" true with the plugin installed.
+    ///
+    /// Measured on C++ (release, Arch, 2026): highlighting adds about 100 ms
+    /// per million characters on top of the plain-text layout — 26 ms at 256 K,
+    /// 107 ms at 1 M. At 1 M the highlight alone would spend the whole budget;
+    /// at 256 K it is a fifth of it, and few hand-written source files are
+    /// longer.
+    static constexpr qsizetype kHighlightLimit = qsizetype{256} * 1024;
+
+    /// Whether a highlighter is attached to the current file.
+    bool isHighlighted() const;
+
 private:
     void toggleWrap();
+    void highlight(const QuickLookContent &content);
 
     QPlainTextEdit *m_view = nullptr;
+    QPointer<QSyntaxHighlighter> m_highlighter;
     QString m_status;
     bool m_wrap = false;
 };

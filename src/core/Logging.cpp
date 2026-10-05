@@ -8,6 +8,7 @@ Q_LOGGING_CATEGORY(pfKeys, "panefile.keys")
 Q_LOGGING_CATEGORY(pfUi, "panefile.ui")
 Q_LOGGING_CATEGORY(pfIpc, "panefile.ipc")
 Q_LOGGING_CATEGORY(pfStartup, "panefile.startup")
+Q_LOGGING_CATEGORY(pfPlugins, "panefile.plugins")
 
 namespace pf {
 

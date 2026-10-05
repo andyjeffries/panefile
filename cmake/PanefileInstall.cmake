@@ -6,6 +6,10 @@
 
 include(GNUInstallDirs)
 
+# The optional-feature plugins (§3.4), where platform/Paths.cpp looks for them
+# relative to the binary.
+get_property(PF_PLUGIN_TARGETS GLOBAL PROPERTY PF_PLUGIN_TARGETS)
+
 if(PF_PLATFORM_DARWIN)
     install(TARGETS pf BUNDLE DESTINATION .)
 
@@ -40,6 +44,11 @@ if(PF_PLATFORM_DARWIN)
     # what `cmake --install` produces alongside it — has no bundle to carry it.
     install(FILES "${PROJECT_SOURCE_DIR}/data/icons/panefile.icns"
         DESTINATION "Panefile.app/Contents/Resources")
+
+    if(PF_PLUGIN_TARGETS)
+        install(TARGETS ${PF_PLUGIN_TARGETS}
+            LIBRARY DESTINATION "Panefile.app/Contents/PlugIns/panefile")
+    endif()
 else()
     install(TARGETS pf RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
@@ -54,4 +63,9 @@ else()
 
     install(FILES "${CMAKE_CURRENT_BINARY_DIR}/data/pf.1"
         DESTINATION "${CMAKE_INSTALL_MANDIR}/man1")
+
+    if(PF_PLUGIN_TARGETS)
+        install(TARGETS ${PF_PLUGIN_TARGETS}
+            LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}/panefile/plugins")
+    endif()
 endif()

@@ -209,6 +209,12 @@ QWidget *QuickLookView::pageFor(QuickLookRenderer *renderer)
 
     QWidget *page = renderer->createWidget(m_stack);
     m_stack->addWidget(page);
+
+    renderer->setStatusChangedHandler([this, renderer] {
+        if (m_current == renderer) {
+            m_hint->setText(renderer->statusText());
+        }
+    });
     m_pages.insert(id, page);
     return page;
 }

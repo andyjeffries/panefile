@@ -30,6 +30,7 @@ set(PF_PLATFORM_SOURCES
     platform/LauncherCommon.cpp
     platform/MountTable.cpp
     platform/Paths.cpp
+    platform/PluginHost.cpp
     platform/WatchBackend.cpp
     # AUTOMOC only scans a header when a source of the same basename is in the
     # target. VolumeMonitor's implementations are per platform and named
@@ -207,6 +208,7 @@ pf_layer_library(pf_ui
         ui/quicklook/renderers/ImageRenderer.cpp
         ui/quicklook/renderers/MediaRenderer.cpp
         ui/quicklook/renderers/PdfRenderer.cpp
+        ui/quicklook/renderers/PluginBackedRenderer.cpp
         ui/quicklook/renderers/TextRenderer.cpp
         ui/modals/FindModal.cpp
         ui/modals/InputModal.cpp
@@ -313,3 +315,9 @@ if(PF_PLATFORM_DARWIN)
             "$<TARGET_BUNDLE_CONTENT_DIR:pf>/Resources/themes"
         COMMENT "Staging themes into the bundle")
 endif()
+
+# ---------------------------------------------------------------------------
+# The optional-feature plugins (§3.4) — after pf, which depends on them being
+# built but never links them.
+# ---------------------------------------------------------------------------
+add_subdirectory(plugins)

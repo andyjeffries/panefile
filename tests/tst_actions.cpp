@@ -8,10 +8,13 @@
 #include "app/SearchController.h"
 #include "fs/JobEngine.h"
 #include "fs/UndoStack.h"
+#include "ui/FilePanel.h"
 #include "ui/MainWindow.h"
 #include "ui/PanelStrip.h"
+#include "ui/PanelView.h"
 
 #include <QFile>
+#include <QTemporaryDir>
 #include <QTest>
 
 using namespace pf;
@@ -42,7 +45,6 @@ const QStringList kRegisteredByTheCompositionRoot{
     QStringLiteral("quit"),
     QStringLiteral("toggle_sidebar"),
     QStringLiteral("open_help_menu"),
-    QStringLiteral("toggle_theme_dark_light"),
     QStringLiteral("focus_on_process_bar"),
     QStringLiteral("open_command_line"),
     QStringLiteral("open_panefile_prompt"),
@@ -91,6 +93,53 @@ private Q_SLOTS:
     /// supported in the help modal and in §6.3's table, and pressing it does
     /// nothing whatsoever. That is how an entire implemented feature — archive
     /// compression and extraction — stayed unreachable.
+    /// Shift+Down extends from the row the cursor leaves; a plain arrow
+    /// afterwards ends the selection rather than leaving it behind.
+    void shiftArrowsSelectAndPlainArrowsCollapse()
+    {
+        QTemporaryDir root;
+        for (const char *name : {"a.txt", "b.txt", "c.txt", "d.txt", "e.txt"}) {
+            QFile file(root.filePath(QString::fromLatin1(name)));
+            QVERIFY(file.open(QIODevice::WriteOnly));
+        }
+
+        ui::MainWindow window;
+        input::ActionRegistry registry;
+        fs::JobEngine engine;
+        fs::UndoStack undo;
+        PanelController panels(&window, window.panelStrip(), window.sidebar(), &registry);
+        panels.registerActions();
+        FileOperations operations(&window, window.panelStrip(), &registry, &engine, &undo);
+        operations.registerActions();
+
+        ui::FilePanel *panel = window.panelStrip()->addPanel(root.path());
+        QTRY_COMPARE_WITH_TIMEOUT(panel->view()->model()->rowCount(), 5, 5000);
+        panel->moveCursorToStart();
+
+        // A click earlier left an anchor elsewhere; with nothing selected, the
+        // range must still start at the cursor.
+        panel->handleClickPress(QStringLiteral("d.txt"), Qt::NoModifier);
+        panel->setCursorName(QStringLiteral("a.txt"));
+
+        QVERIFY(registry.invoke(QStringLiteral("select_down")));
+        QVERIFY(registry.invoke(QStringLiteral("select_down")));
+        QCOMPARE(panel->selectionCount(), 3);
+        QCOMPARE(panel->cursorName(), QStringLiteral("c.txt"));
+
+        QVERIFY(registry.invoke(QStringLiteral("select_up")));
+        QCOMPARE(panel->selectionCount(), 2);
+
+        QVERIFY(registry.invoke(QStringLiteral("list_down")));
+        QCOMPARE(panel->selectionCount(), 0);
+        QCOMPARE(panel->cursorName(), QStringLiteral("c.txt"));
+
+        // Selection mode keeps its selection through plain movement.
+        panel->setSelectionMode(true);
+        QVERIFY(registry.invoke(QStringLiteral("select_down")));
+        QVERIFY(registry.invoke(QStringLiteral("page_down")));
+        QCOMPARE(panel->selectionCount(), 2);
+    }
+
     void everyBindingReachesARegisteredAction()
     {
         ui::MainWindow window;

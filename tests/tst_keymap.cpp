@@ -12,9 +12,14 @@
 #include "input/DefaultKeymap.h"
 #include "input/Keymap.h"
 #include "app/KeyDispatcher.h"
+#include "app/TextInput.h"
 
 #include <QKeyEvent>
+#include <QLineEdit>
+#include <QListView>
+#include <QPlainTextEdit>
 #include <QSignalSpy>
+#include <QSpinBox>
 #include <QTest>
 
 using namespace pf;
@@ -81,19 +86,26 @@ private Q_SLOTS:
         QCOMPARE(keymap.lookup(KeymapLayer::Global, *binding).actionId, QStringLiteral("undo"));
     }
 
-    /// Selecting everything should not require entering a mode first.
-    void selectAllWorksOutsideSelectionMode()
+    /// Selecting everything takes the universal chord, in either mode, and
+    /// compress — which held Ctrl+A — moves aside for it.
+    void selectAllIsCtrlA()
     {
         Keymap keymap;
         installDefaultKeymap(keymap);
 
-        const auto binding = parseBinding(QStringLiteral("A"));
-        QVERIFY(binding.has_value());
+        const auto selectAll = parseBinding(QStringLiteral("Ctrl+A"));
+        QVERIFY(selectAll.has_value());
+        for (const QList<KeymapLayer> &layers :
+             {QList<KeymapLayer>{KeymapLayer::Normal, KeymapLayer::Global},
+              QList<KeymapLayer>{KeymapLayer::Selection, KeymapLayer::Normal,
+                                 KeymapLayer::Global}}) {
+            QCOMPARE(keymap.lookup(layers, *selectAll).actionId, QStringLiteral("select_all"));
+        }
 
-        QCOMPARE(keymap.lookup(KeymapLayer::Normal, *binding).actionId,
-                 QStringLiteral("select_all"));
-        QCOMPARE(keymap.lookup(KeymapLayer::Selection, *binding).actionId,
-                 QStringLiteral("select_all"));
+        const auto compress = parseBinding(QStringLiteral("Ctrl+Shift+A"));
+        QVERIFY(compress.has_value());
+        QCOMPARE(keymap.lookup(KeymapLayer::Global, *compress).actionId,
+                 QStringLiteral("compress_file"));
     }
 
     void init();
@@ -127,6 +139,10 @@ private Q_SLOTS:
     void defaultKeymapBindsTheDocumentedKeys();
     void defaultKeymapHasNoConflicts();
     void defaultKeymapKeepsLowerAndUpperCaseDistinct();
+    void defaultKeymapLeavesTextForTyping();
+    void leaderContinuationIgnoresAHeldControl();
+    void textInputsAreRecognised();
+    void textEditingChordsAreRecognised();
 };
 
 void TestKeymap::init()
@@ -504,21 +520,28 @@ void TestKeymap::defaultKeymapBindsTheDocumentedKeys()
 
     // A representative row from each table of §6.3.
     constexpr Expectation kExpectations[] = {
-        {KeymapLayer::Normal, "j", "list_down"},
-        {KeymapLayer::Normal, "k", "list_up"},
-        {KeymapLayer::Normal, "h", "parent_directory"},
-        {KeymapLayer::Normal, "l", "confirm"},
-        {KeymapLayer::Normal, "g g", "list_top"},
-        {KeymapLayer::Normal, "g h", "go_home"},
-        {KeymapLayer::Normal, "g t", "go_trash"},
-        {KeymapLayer::Normal, "n", "create_new_file_panel"},
-        {KeymapLayer::Normal, "N", "split_file_panel"},
-        {KeymapLayer::Normal, "w", "close_file_panel"},
+        {KeymapLayer::Global, "Down", "list_down"},
+        {KeymapLayer::Global, "Up", "list_up"},
+        {KeymapLayer::Global, "Left", "parent_directory"},
+        {KeymapLayer::Global, "Return", "confirm"},
+        {KeymapLayer::Global, "Home", "list_top"},
+        {KeymapLayer::Normal, "Ctrl+G g", "list_top"},
+        {KeymapLayer::Normal, "Ctrl+G h", "go_home"},
+        {KeymapLayer::Normal, "Ctrl+G t", "go_trash"},
+        {KeymapLayer::Normal, "Ctrl+G s", "focus_on_sidebar"},
+        {KeymapLayer::Global, "Ctrl+T", "create_new_file_panel"},
+        {KeymapLayer::Global, "Ctrl+\\", "split_file_panel"},
+        {KeymapLayer::Global, "Ctrl+W", "close_file_panel"},
         {KeymapLayer::Global, "Tab", "next_file_panel"},
         {KeymapLayer::Global, "Ctrl+C", "copy_items"},
         {KeymapLayer::Global, "Ctrl+V", "paste_items"},
-        {KeymapLayer::Normal, "?", "open_help_menu"},
-        {KeymapLayer::Selection, "J", "select_down"},
+        {KeymapLayer::Global, "Ctrl+?", "open_help_menu"},
+        {KeymapLayer::Global, "Ctrl+/", "search_bar"},
+        {KeymapLayer::Global, "Ctrl+O", "open_sort_options_menu"},
+        {KeymapLayer::Global, "F4", "open_file_with_editor"},
+        {KeymapLayer::Normal, ".", "toggle_dot_file"},
+        {KeymapLayer::Global, "Space", "quick_look"},
+        {KeymapLayer::Global, "Shift+Down", "select_down"},
     };
 
     for (const Expectation &expected : kExpectations) {
@@ -552,15 +575,93 @@ void TestKeymap::defaultKeymapKeepsLowerAndUpperCaseDistinct()
 
     // The property the text-form chord exists for. If these collapsed, one of
     // the two actions would be unreachable.
-    QCOMPARE(m_keymap.lookup(KeymapLayer::Normal, parse(QStringLiteral("n"))).actionId,
-             QStringLiteral("create_new_file_panel"));
-    QCOMPARE(m_keymap.lookup(KeymapLayer::Normal, parse(QStringLiteral("N"))).actionId,
-             QStringLiteral("split_file_panel"));
+    QCOMPARE(m_keymap.lookup(KeymapLayer::Normal, parse(QStringLiteral("Ctrl+G g"))).actionId,
+             QStringLiteral("list_top"));
+    QCOMPARE(m_keymap.lookup(KeymapLayer::Normal, parse(QStringLiteral("Ctrl+G G"))).actionId,
+             QStringLiteral("list_bottom"));
+}
 
-    QCOMPARE(m_keymap.lookup(KeymapLayer::Normal, parse(QStringLiteral("e"))).actionId,
-             QStringLiteral("open_file_with_editor"));
-    QCOMPARE(m_keymap.lookup(KeymapLayer::Normal, parse(QStringLiteral("E"))).actionId,
-             QStringLiteral("open_current_directory_with_editor"));
+void TestKeymap::defaultKeymapLeavesTextForTyping()
+{
+    installDefaultKeymap(m_keymap);
+
+    // Typing a name in a panel moves the cursor to it, so no default may start
+    // with a key that types a character. `.` (hidden files) is the one
+    // exception; Space is the other, and is a key-form chord, so it is not in
+    // this loop at all.
+    const QList<KeymapLayer> layers{KeymapLayer::Selection, KeymapLayer::Normal,
+                                    KeymapLayer::Global};
+    for (char16_t character = u'!'; character <= u'~'; ++character) {
+        const QString text(QChar{character});
+        if (text == QLatin1String(".")) {
+            continue;
+        }
+        const Binding binding{Chord{.modifiers = Qt::NoModifier, .key = 0, .text = text}};
+        QVERIFY2(m_keymap.lookup(layers, binding).type == Keymap::MatchType::NoMatch,
+                 qPrintable(QStringLiteral("`%1` is bound, so it cannot be typed").arg(text)));
+    }
+}
+
+void TestKeymap::leaderContinuationIgnoresAHeldControl()
+{
+    defineAction(QStringLiteral("go_home"));
+    defineAction(QStringLiteral("list_bottom"));
+    bindTo(KeymapLayer::Normal, QStringLiteral("Ctrl+G h"), QStringLiteral("go_home"));
+    bindTo(KeymapLayer::Normal, QStringLiteral("Ctrl+G G"), QStringLiteral("list_bottom"));
+
+    KeyDispatcher dispatcher(&m_registry, &m_keymap);
+    dispatcher.setActiveLayers({KeymapLayer::Normal});
+
+    // Ctrl never let go of: Ctrl+G, Ctrl+H.
+    QVERIFY(press(dispatcher, Qt::Key_G, Qt::ControlModifier, QString(QChar(7))));
+    QVERIFY(dispatcher.hasPending());
+    QVERIFY(press(dispatcher, Qt::Key_H, Qt::ControlModifier, QString(QChar(8))));
+    QCOMPARE(m_fired, QStringList{"go_home"});
+
+    // Shift is kept, so Ctrl+Shift+G is the capital.
+    QVERIFY(press(dispatcher, Qt::Key_G, Qt::ControlModifier, QString(QChar(7))));
+    QVERIFY(press(dispatcher, Qt::Key_G, Qt::ControlModifier | Qt::ShiftModifier, QString()));
+    QCOMPARE(m_fired, (QStringList{"go_home", "list_bottom"}));
+}
+
+void TestKeymap::textInputsAreRecognised()
+{
+    const QLineEdit line;
+    const QSpinBox spin;
+    QPlainTextEdit editable;
+    QPlainTextEdit preview;
+    preview.setReadOnly(true);
+    const QListView list;
+
+    QVERIFY(isTextInput(&line));
+    // The spin box, not the line edit inside it, is what holds the focus.
+    QVERIFY(isTextInput(&spin));
+    QVERIFY(isTextInput(&editable));
+    // Quick Look's text preview: nothing to edit, so its keys are the app's.
+    QVERIFY(!isTextInput(&preview));
+    QVERIFY(!isTextInput(&list));
+    QVERIFY(!isTextInput(nullptr));
+}
+
+void TestKeymap::textEditingChordsAreRecognised()
+{
+    const auto chord = [](int key, Qt::KeyboardModifiers modifiers) {
+        const QKeyEvent event(QEvent::KeyPress, key, modifiers);
+        return isTextEditingChord(&event);
+    };
+
+    // Ctrl is ⌘ on macOS in both the event and the standard keys, so these
+    // hold on every platform.
+    QVERIFY(chord(Qt::Key_A, Qt::ControlModifier));
+    QVERIFY(chord(Qt::Key_C, Qt::ControlModifier));
+    QVERIFY(chord(Qt::Key_X, Qt::ControlModifier));
+    QVERIFY(chord(Qt::Key_V, Qt::ControlModifier));
+    QVERIFY(chord(Qt::Key_Z, Qt::ControlModifier));
+
+    // Application chords still reach the keymap from a text field.
+    QVERIFY(!chord(Qt::Key_Q, Qt::ControlModifier));
+    QVERIFY(!chord(Qt::Key_O, Qt::ControlModifier | Qt::ShiftModifier));
+    QVERIFY(!chord(Qt::Key_G, Qt::ControlModifier));
 }
 
 QTEST_MAIN(TestKeymap)

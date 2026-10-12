@@ -8,7 +8,7 @@ compositor-managed resource, and reaching for the mouse breaks flow.
 
 Panefile puts **N independent directory panels side by side in one window**.
 Each panel keeps its own working directory, cursor, history and filter, and
-any folder you sort differently remembers that order. You create, split, close and cycle panels with single keystrokes, and
+any folder you sort differently remembers that order. You create, split, close and cycle panels from the keyboard, and
 copy between them without ever opening a second window.
 
 ```
@@ -113,8 +113,37 @@ copy_items = ["Ctrl+C", "Super+C", "y y"]
 go_home    = ["g h", "Alt+Home"]
 ```
 
+The sections are `[normal]`, `[selection]`, `[global]` and `[typing]`. Listing
+an action in one replaces that action's bindings in that section only; an empty
+list unbinds it there.
+
 State — pinned directories, session, window geometry — is written to
 `~/.local/share/panefile/`.
+
+### Keys
+
+Plain letters are not bound by default, so that typing in a panel can find a
+file: the cursor moves to the first entry whose name starts with what you have
+typed, ignoring case and leading dots, and pressing the same letter again steps
+through the entries that start with it. The typed name lasts
+`type_ahead_timeout_ms` between keys (default 1000, in the `[keys]` table of
+`hotkeys.toml`). The only plain keys bound are `.` (hidden files) and `Space`
+(Quick Look); everything else takes `Ctrl` (`⌘` on macOS) or `Alt`, or is a key
+that types nothing, such as an arrow or `F1`, which lists every binding.
+
+To get vim-style movement back:
+
+```toml
+[normal]
+list_down        = ["j"]
+list_up          = ["k"]
+parent_directory = ["h"]
+confirm          = ["l"]
+```
+
+The arrow keys, `Enter` and `Backspace` keep working, because their defaults
+live in `[global]`. A letter bound this way runs its action instead of starting
+a typed name, so `j`, `k`, `h` and `l` can no longer begin a search for a file.
 
 ## Default file manager
 

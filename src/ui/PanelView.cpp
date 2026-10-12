@@ -14,6 +14,7 @@
 #include <QDragMoveEvent>
 #include <QDropEvent>
 #include <QFileInfo>
+#include <QKeyEvent>
 #include <QMenu>
 #include <QMimeData>
 #include <QMouseEvent>
@@ -53,6 +54,138 @@ PanelView::PanelView(QWidget *parent) : QListView(parent)
     // For the hover pill. Without tracking the view only hears the pointer
     // while a button is down, and the delegate never sees State_MouseOver.
     setMouseTracking(true);
+
+    m_typeAheadTimer.setSingleShot(true);
+    connect(&m_typeAheadTimer, &QTimer::timeout, this, &PanelView::clearTypeAhead);
+}
+
+bool PanelView::isTypingAhead() const
+{
+    return !m_typeAhead.isEmpty();
+}
+
+QString PanelView::typeAheadText() const
+{
+    return m_typeAhead;
+}
+
+void PanelView::clearTypeAhead()
+{
+    setTypeAhead({});
+}
+
+void PanelView::setTypeAhead(const QString &text)
+{
+    if (text.isEmpty()) {
+        m_typeAheadTimer.stop();
+    } else {
+        m_typeAheadTimer.start(QApplication::keyboardInputInterval());
+    }
+    if (m_typeAhead == text) {
+        return;
+    }
+    m_typeAhead = text;
+    Q_EMIT typeAheadChanged(m_typeAhead);
+}
+
+int PanelView::typeAheadRow(const QString &typed, int from) const
+{
+    const QAbstractItemModel *items = model();
+    const int count = items != nullptr ? items->rowCount(rootIndex()) : 0;
+    for (int offset = 0; offset < count; ++offset) {
+        const int row = (from + offset) % count;
+        const QString name =
+            items->index(row, 0, rootIndex()).data(DirectoryModel::NameRole).toString();
+        qsizetype dots = 0;
+        while (dots < name.size() && name.at(dots) == QLatin1Char('.')) {
+            ++dots;
+        }
+        if (QStringView(name).mid(dots).startsWith(typed, Qt::CaseInsensitive)) {
+            return row;
+        }
+    }
+    return -1;
+}
+
+void PanelView::keyboardSearch(const QString &search)
+{
+    if (search.isEmpty() || !search.front().isPrint()) {
+        return;
+    }
+    QString typed = m_typeAhead + search;
+
+    // Names are compared without their leading dots, so a buffer never needs
+    // to start with one — and `.` with nothing typed is the hidden-files key.
+    while (typed.startsWith(QLatin1Char('.'))) {
+        typed.remove(0, 1);
+    }
+    if (typed.isEmpty()) {
+        return;
+    }
+    setTypeAhead(typed);
+
+    int row = typeAheadRow(typed, 0);
+
+    // The same letter again, with no name starting with the repeat: the next
+    // entry starting with that letter, after the cursor.
+    if (row < 0 && typed.size() > 1 && typed.count(typed.front()) == typed.size()) {
+        const int current = currentIndex().isValid() ? currentIndex().row() : -1;
+        row = typeAheadRow(typed.left(1), current + 1);
+    }
+    if (row < 0) {
+        return;
+    }
+
+    m_typeAheadMoving = true;
+    setCurrentIndex(model()->index(row, 0, rootIndex()));
+    m_typeAheadMoving = false;
+    Q_EMIT cursorMovedByTyping();
+}
+
+void PanelView::keyPressEvent(QKeyEvent *event)
+{
+    const bool modified =
+        (event->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier)) != 0;
+
+    if (isTypingAhead() && !modified) {
+        switch (event->key()) {
+        case Qt::Key_Backspace:
+            // The cursor stays: whatever matched the longer name matches the
+            // shorter one too.
+            setTypeAhead(m_typeAhead.chopped(1));
+            event->accept();
+            return;
+        case Qt::Key_Escape:
+            clearTypeAhead();
+            event->accept();
+            return;
+        case Qt::Key_Space:
+            // QAbstractItemView would also select the row.
+            keyboardSearch(QStringLiteral(" "));
+            event->accept();
+            return;
+        default:
+            break;
+        }
+    }
+
+    QListView::keyPressEvent(event);
+}
+
+void PanelView::focusOutEvent(QFocusEvent *event)
+{
+    clearTypeAhead();
+    QListView::focusOutEvent(event);
+}
+
+void PanelView::currentChanged(const QModelIndex &current, const QModelIndex &previous)
+{
+    QListView::currentChanged(current, previous);
+    // The cursor moved some other way — an arrow, a click, a new directory —
+    // so the next letter starts a new name.
+    if (!m_typeAheadMoving) {
+        clearTypeAhead();
+    }
 }
 
 void PanelView::setPanelActive(bool active)

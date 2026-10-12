@@ -2,6 +2,7 @@
 
 #include <QListView>
 #include <QString>
+#include <QTimer>
 
 namespace pf::ui {
 
@@ -82,6 +83,26 @@ public:
     /// picked (Alt, per §7.12's "Alt shows a menu").
     static bool wantsMenu(Qt::KeyboardModifiers modifiers);
 
+    /// Type-to-select: typing a name moves the cursor to the first entry that
+    /// starts with it.
+    ///
+    /// Replaces Qt's own search, which skips the current row, compares the
+    /// whole display text and forgets what was typed after 400 ms. Here a name
+    /// is compared without its leading dots — `.bashrc` is found by typing
+    /// `ba` — matching ignores case, and the buffer lasts
+    /// QApplication::keyboardInputInterval(), which the `type_ahead_timeout_ms`
+    /// setting controls. Typing one letter repeatedly cycles through the
+    /// entries starting with it, unless a name starts with the repeat itself.
+    void keyboardSearch(const QString &search) override;
+
+    /// Whether a name is being typed: the buffer is non-empty and has not timed
+    /// out. While it is, Space and `.` belong to the name rather than to Quick
+    /// Look and hidden files, Backspace edits it and Escape abandons it, so the
+    /// application routes those keys here ahead of its key bindings.
+    bool isTypingAhead() const;
+    QString typeAheadText() const;
+    void clearTypeAhead();
+
 Q_SIGNALS:
     /// Files were dropped. `destinationDirectory` is the directory row under
     /// the pointer, or the panel's own directory when the drop was on empty
@@ -116,6 +137,12 @@ Q_SIGNALS:
     /// The directory this view is showing, for resolving a drop on empty space.
     void currentDirectoryRequested(QString *path);
 
+    /// The type-ahead buffer changed; empty once it is cleared or expires.
+    void typeAheadChanged(const QString &text);
+
+    /// Type-ahead moved the cursor to the entry matching the typed name.
+    void cursorMovedByTyping();
+
 private:
     /// The local file paths in a drag payload, ignoring anything that is not a
     /// file — a browser's http:// URL is a download request, not a copy.
@@ -137,6 +164,9 @@ protected:
     void mouseDoubleClickEvent(QMouseEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     void paintEvent(QPaintEvent *event) override;
+    void keyPressEvent(QKeyEvent *event) override;
+    void focusOutEvent(QFocusEvent *event) override;
+    void currentChanged(const QModelIndex &current, const QModelIndex &previous) override;
 
     void dragEnterEvent(QDragEnterEvent *event) override;
     void dragMoveEvent(QDragMoveEvent *event) override;
@@ -162,6 +192,12 @@ private:
 
     void setDropTargetRow(int row);
 
+    /// The first row, counting from `from` and wrapping, whose name without
+    /// its leading dots starts with `typed`; -1 when there is none.
+    int typeAheadRow(const QString &typed, int from) const;
+
+    void setTypeAhead(const QString &text);
+
     QPoint m_pressPosition;
     bool m_pressed = false;
     int m_dropTargetRow = -1;
@@ -172,6 +208,11 @@ private:
     int m_bodyInsetHorizontal = 0;
     int m_bodyInsetVertical = 0;
     int m_appliedBottomInset = -1;
+    QString m_typeAhead;
+    QTimer m_typeAheadTimer;
+    /// Set while type-ahead itself moves the cursor, so that the move does not
+    /// count as the user leaving the name they are typing.
+    bool m_typeAheadMoving = false;
 };
 
 } // namespace pf::ui

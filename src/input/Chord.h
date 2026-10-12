@@ -18,11 +18,11 @@ namespace pf::input {
 ///   * **Key form** — `key` holds a Qt key code and `text` is empty. Used for
 ///     everything else: named keys, and anything with a modifier.
 ///
-/// The split exists because QKeySequence cannot represent what §6.3's default
-/// keymap requires. It parses `j` and `J` to the same value — Key_J — yet the
-/// defaults bind `j` to list_down and `J` to select_down, which have to stay
-/// distinct. Matching bare keys on the character they produce also makes
-/// non-US layouts work: `?` is Shift+/ on one keyboard and its own key on
+/// The split exists because QKeySequence cannot represent what a keymap needs.
+/// It parses `j` and `J` to the same value — Key_J — yet `Ctrl+G g` and
+/// `Ctrl+G G` are list_top and list_bottom, and a hotkeys.toml may bind `j`
+/// and `J` apart, so the two have to stay distinct. Matching bare keys on the character they
+/// produce also makes non-US layouts work: `?` is Shift+/ on one keyboard and its own key on
 /// another, and in both cases the text is "?".
 struct Chord {
     Qt::KeyboardModifiers modifiers = Qt::NoModifier;

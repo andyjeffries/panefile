@@ -181,6 +181,13 @@ FilePanel::FilePanel(QWidget *parent)
     // §7.12. The view asks rather than reads, because the selection and the
     // working directory both live here — the view has neither.
     connect(m_view, &PanelView::rowClicked, this, &FilePanel::handleClickPress);
+    // Finding a file by typing its name is plain movement, so outside
+    // Selection mode it ends the selection the way an arrow key does.
+    connect(m_view, &PanelView::cursorMovedByTyping, this, [this] {
+        if (!m_selectionMode) {
+            clearSelection();
+        }
+    });
     connect(m_view, &PanelView::clickCompleted, this, &FilePanel::handleClickRelease);
     connect(m_view, &PanelView::dragPathsRequested, this,
             [this](QStringList *paths) { *paths = selectedPaths(); });
@@ -828,6 +835,15 @@ void FilePanel::toggleSelectionAt(const QString &name)
     m_view->viewport()->update();
     updateHeader();
     Q_EMIT selectionChanged(static_cast<int>(m_selection.size()));
+}
+
+void FilePanel::extendSelectionBy(int delta)
+{
+    if (m_selection.isEmpty()) {
+        m_selectionAnchor = cursorName();
+    }
+    moveCursor(delta);
+    extendSelectionTo(cursorName());
 }
 
 void FilePanel::extendSelectionTo(const QString &name)

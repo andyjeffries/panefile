@@ -89,7 +89,7 @@ public:
     /// §7.8's `config.search.fuzzy`.
     void setFuzzyMatching(bool fuzzy);
 
-    /// §7.8's in-panel filter: `/` opens the box, `Enter` keeps the filter and
+    /// §7.8's in-panel filter: Ctrl+/ opens the box, `Enter` keeps the filter and
     /// returns focus to the list, `Esc` clears it and closes.
     void openFilterBar();
     void closeFilterBar(bool keepFilter);
@@ -117,6 +117,12 @@ public:
     /// is sorted — what Shift+click means everywhere else, and the reason the
     /// anchor is remembered rather than derived from the cursor.
     void extendSelectionTo(const QString &name);
+
+    /// Moves the cursor `delta` rows and extends the selection over the rows
+    /// passed — Shift+Up and Shift+Down. With nothing selected, the range starts
+    /// at the row the cursor is leaving, not wherever an earlier click put the
+    /// anchor.
+    void extendSelectionBy(int delta);
 
     /// Applies a click's modifiers to the selection (§6.1 by mouse).
     ///
@@ -223,7 +229,7 @@ private:
     QLabel *m_header = nullptr;
     QLabel *m_headerCount = nullptr;
 
-    /// §3.4: built on the first `/`, not at startup. A user who never filters
+    /// §3.4: built the first time it opens, not at startup. A user who never filters
     /// never pays for it.
     QLineEdit *m_filterBar = nullptr;
 

@@ -14,6 +14,7 @@
 #include "app/SearchController.h"
 #include "app/Session.h"
 #include "app/SingleInstance.h"
+#include "app/TextInput.h"
 #include "config/Config.h"
 #include "config/ConfigWatcher.h"
 #include "config/Hotkeys.h"
@@ -234,6 +235,13 @@ void Application::configurePanel(ui::FilePanel *panel) const
                 tr("Could not open %1").arg(QFileInfo(path).fileName()));
         }
     });
+
+    // The name being typed shows where a half-typed chord does.
+    connect(panel->view(), &ui::PanelView::typeAheadChanged, m_mainWindow.get(),
+            [window = m_mainWindow.get()](const QString &text) {
+                window->showPendingKeys(text.isEmpty() ? QString()
+                                                       : QStringLiteral("“%1”").arg(text));
+            });
 
     panel->setShowHidden(m_settings.panels.showHidden);
     panel->setDefaultSortKey(sortKeyFromName(m_settings.panels.defaultSort));
@@ -457,6 +465,7 @@ void Application::loadConfiguration()
         config::loadConfig(platform::configDir() + QStringLiteral("/config.toml"));
     m_settings = configResult.settings;
     m_configIssues = configResult.issues;
+    QApplication::setKeyboardInputInterval(m_settings.keys.typeAheadTimeoutMs);
 
     const config::ThemeLoadResult themeResult =
         config::loadActiveTheme(platform::configDir() + QStringLiteral("/theme.toml"));
@@ -527,6 +536,9 @@ void Application::loadHotkeys()
 
     m_dispatcher->setSequenceTimeout(m_settings.keys.sequenceTimeoutMs);
     m_dispatcher->setAmbiguityTimeout(m_settings.keys.ambiguityTimeoutMs);
+    // Qt's own setting for how long typed letters run together, so the
+    // sidebar's built-in type-ahead and the panels' agree.
+    QApplication::setKeyboardInputInterval(m_settings.keys.typeAheadTimeoutMs);
 
     updateDefaultFileManagerKeyHints();
 
@@ -878,7 +890,7 @@ ui::InputModal *Application::shellPromptModal()
             // Through a shell, because the whole point of a command line is
             // that pipes, redirection and globs work. Detached, because
             // Panefile is not a terminal and has nowhere to show the output —
-            // a command that wants to be watched belongs in `T`.
+            // a command that wants to be watched belongs in a terminal.
             const QString shell = qEnvironmentVariable("SHELL", QStringLiteral("/bin/sh"));
             if (QProcess::startDetached(shell, {QStringLiteral("-c"), command}, panel->path())) {
                 m_mainWindow->showStatusMessage(tr("Running: %1").arg(command));
@@ -1255,7 +1267,7 @@ void Application::startAsDbusService()
 
     // Never offers anything — the bus started it, which it can only have done
     // because Panefile is already the default — but its actions are
-    // registered like any other run's, so `?` lists the same keys.
+    // registered like any other run's, so the help modal lists the same keys.
     defaultFileManagerOffer();
 
     // The bus started this process because somebody called. If the call never
@@ -1286,26 +1298,39 @@ void Application::startAsDbusService()
 
 bool Application::notify(QObject *receiver, QEvent *event)
 {
-    // An open popup — the `o` sort menu, a context menu — owns the keyboard
-    // until it closes. Offering its keys to the dispatcher first would let `j`,
-    // the arrows and Escape act on the panel behind it, leaving the menu
+    // An open popup — the sort menu, a context menu — owns the keyboard until
+    // it closes. Offering its keys to the dispatcher first would let the
+    // arrows and Escape act on the panel behind it, leaving the menu
     // unnavigable and impossible to dismiss from the keyboard.
     if (event->type() == QEvent::KeyPress && m_dispatcher != nullptr &&
         activePopupWidget() == nullptr) {
         auto *keyEvent = static_cast<QKeyEvent *>(event);
 
         // §6.2 step 2: while a text input has focus, bare printable keys belong
-        // to the widget. Only modified chords and the confirm/cancel keys are
-        // considered, so typing a filename cannot trigger `d d`.
+        // to the widget, so typing a filename cannot trigger a binding. So do
+        // the text-editing chords — Ctrl+A, Ctrl+C, Ctrl+V and the rest — which
+        // would otherwise select, copy or paste files from inside a text box.
+        // Every other chord still reaches the keymap.
+        //
+        // A panel part-way through a typed name counts as a text input for
+        // the keys that edit the name: Space and `.` continue it rather than
+        // opening Quick Look or toggling hidden files, Backspace deletes from
+        // it rather than going up a directory, and Escape abandons it.
         const auto *focus = focusWidget();
-        const bool typing =
-            focus != nullptr && focus->inherits("QLineEdit") &&
+        const bool unmodified =
             !(keyEvent->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier));
+        const auto *panelView = qobject_cast<const ui::PanelView *>(focus);
+        const bool editsTypedName =
+            panelView != nullptr && panelView->isTypingAhead() &&
+            (keyEvent->key() == Qt::Key_Backspace || keyEvent->key() == Qt::Key_Escape ||
+             (!keyEvent->text().isEmpty() && keyEvent->text().front().isPrint()));
+        const bool typing = (isTextInput(focus) && (unmodified || isTextEditingChord(keyEvent))) ||
+                            (unmodified && editsTypedName);
 
-        // §7.6's per-renderer keys — `+`/`-`/`0`, `[`/`]`, `/` — are offered to
-        // the renderer before the dispatcher. Movement keys are never consumed
-        // there, which is what keeps "the arrow keys still move the panel
-        // cursor" true while a preview is open.
+        // §7.6's per-renderer keys — Alt with `+`/`-`/`0`, `[`/`]`, `w`, `p` —
+        // are offered to the renderer before the dispatcher. Movement keys are
+        // never consumed there, which is what keeps "the arrow keys still move
+        // the panel cursor" true while a preview is open.
         if (!typing && m_quickLook != nullptr && m_quickLook->handleKey(keyEvent)) {
             return true;
         }

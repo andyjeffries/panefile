@@ -16,6 +16,21 @@ namespace {
 constexpr int kDefaultSequenceTimeoutMs = 1000;
 constexpr int kDefaultAmbiguityTimeoutMs = 500;
 constexpr int kDefaultHintDelayMs = 450;
+
+/// A Ctrl+letter chord as the plain letter it would have typed, or nothing for
+/// any other chord. Shift is kept, so Ctrl+Shift+G reads as `G`.
+std::optional<Chord> withoutControl(const Chord &chord)
+{
+    const Qt::KeyboardModifiers rest = chord.modifiers & ~Qt::ShiftModifier;
+    if (rest != Qt::ControlModifier || chord.key < Qt::Key_A || chord.key > Qt::Key_Z) {
+        return std::nullopt;
+    }
+    const QChar letter(static_cast<char16_t>(chord.key));
+    return Chord{.modifiers = Qt::NoModifier,
+                 .key = 0,
+                 .text = chord.modifiers.testFlag(Qt::ShiftModifier) ? letter.toUpper()
+                                                                     : letter.toLower()};
+}
 } // namespace
 
 KeyDispatcher::KeyDispatcher(input::ActionRegistry *registry, Keymap *keymap, QObject *parent)
@@ -166,7 +181,22 @@ bool KeyDispatcher::handleKeyPress(QKeyEvent *event)
     input::Binding candidate = m_pending;
     candidate.append(*chord);
 
-    const Keymap::Match match = m_keymap->lookup(m_layers, candidate);
+    Keymap::Match match = m_keymap->lookup(m_layers, candidate);
+
+    // A leader's continuation is a plain key — `Ctrl+G h` — but a hand that
+    // has not let go of Ctrl sends Ctrl+H. Read that as the plain letter
+    // rather than discarding the sequence the user was plainly finishing.
+    if (match.type == Keymap::MatchType::NoMatch && !m_pending.isEmpty()) {
+        if (const std::optional<Chord> released = withoutControl(*chord)) {
+            input::Binding retry = m_pending;
+            retry.append(*released);
+            const Keymap::Match retried = m_keymap->lookup(m_layers, retry);
+            if (retried.type != Keymap::MatchType::NoMatch) {
+                candidate = retry;
+                match = retried;
+            }
+        }
+    }
 
     switch (match.type) {
     case Keymap::MatchType::ExactMatch:

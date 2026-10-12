@@ -148,7 +148,7 @@ void QuickLookController::connectPanel(ui::FilePanel *panel)
         connect(panel, &ui::FilePanel::cursorChanged, this, [this](const QString &) {
             // §7.6: "while it is open the arrow keys still move the panel
             // cursor, and the Quick Look content follows". The 120 ms debounce
-            // that makes holding `j` survivable lives in the loader, so this
+            // that makes holding Down survivable lives in the loader, so this
             // stays a straight call.
             followCursor();
         });

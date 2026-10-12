@@ -254,6 +254,7 @@ pf_layer_library(pf_app
         app/SearchController.cpp
         app/Session.cpp
         app/SingleInstance.cpp
+        app/TextInput.cpp
     PUBLIC_DEPENDS
         Qt6::Core Qt6::Gui Qt6::Widgets
         pf_core pf_platform pf_config pf_input pf_fs)

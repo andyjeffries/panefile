@@ -19,7 +19,7 @@ namespace pf {
 
 /// §7.8's two searches.
 ///
-/// "Two distinct things, don't conflate them": the in-panel filter (`/`) narrows
+/// "Two distinct things, don't conflate them": the in-panel filter (Ctrl+/) narrows
 /// what the focused panel is already showing, and the recursive finder
 /// (`Ctrl+F`) walks its subtree. They share a matcher and nothing else — the
 /// filter never leaves the directory, and the finder never changes what the

@@ -27,7 +27,7 @@ namespace pf {
 /// Registering handlers rather than exposing methods also keeps the "current
 /// panel" question in one place. Each handler asks the strip which panel has
 /// focus at the moment it runs, so an action fired from a keystroke, from the
-/// `>` prompt or from a menu all act on the same panel.
+/// action prompt or from a menu all act on the same panel.
 class PanelController : public QObject
 {
     Q_OBJECT
@@ -51,7 +51,7 @@ Q_SIGNALS:
     void panelModeChanged();
 
 private:
-    /// §6.3's `o` menu: the sort key, plus whether it runs backwards.
+    /// The sort menu: the sort key, plus whether it runs backwards.
     void showSortMenu(ui::FilePanel *panel);
 
     ui::FilePanel *focused() const;

@@ -13,6 +13,7 @@
 #include "ui/FolderSortMemory.h"
 #include "ui/MainWindow.h"
 #include "ui/PanelStrip.h"
+#include "ui/PanelView.h"
 
 #include <QDir>
 
@@ -96,8 +97,9 @@ private Q_SLOTS:
     void sortOrderBelongsToTheDirectory();
     void sortOrderSetBackToTheDefaultIsForgotten();
     void sortOrdersSurviveTheirFile();
-    void navigatesWithHjkl();
+    void navigatesWithArrows();
     void sequenceNavigatesHome();
+    void clickingAPanelMakesItTheActiveOne();
     void compactLayoutShowsOnlyTheFocusedPanel();
     void panelsShareTheWidthEqually();
 };
@@ -192,15 +194,15 @@ void TestPanels::startsWithOnePanel()
 
 void TestPanels::createsAndClosesPanels()
 {
-    press(QStringLiteral("n"));
+    pressKey(Qt::Key_T, Qt::ControlModifier);
     settle();
     QCOMPARE(m_strip->count(), 2);
 
-    press(QStringLiteral("N")); // split
+    pressKey(Qt::Key_Backslash, Qt::ControlModifier); // split
     settle();
     QCOMPARE(m_strip->count(), 3);
 
-    press(QStringLiteral("w"));
+    pressKey(Qt::Key_W, Qt::ControlModifier);
     QCOMPARE(m_strip->count(), 2);
 }
 
@@ -210,7 +212,7 @@ void TestPanels::refusesToCloseTheLastPanel()
     // it and no way to get a panel back.
     QSignalSpy status(m_strip, &ui::PanelStrip::statusMessage);
 
-    press(QStringLiteral("w"));
+    pressKey(Qt::Key_W, Qt::ControlModifier);
 
     QCOMPARE(m_strip->count(), 1);
     QCOMPARE(status.count(), 1);
@@ -359,7 +361,7 @@ void TestPanels::sortOrdersSurviveTheirFile()
              ui::SortOrder{.key = SortKey::Size});
 }
 
-void TestPanels::navigatesWithHjkl()
+void TestPanels::navigatesWithArrows()
 {
     ui::FilePanel *panel = m_strip->focusedPanel();
     panel->moveCursorToStart();
@@ -367,19 +369,19 @@ void TestPanels::navigatesWithHjkl()
     const QString first = panel->cursorName();
     QCOMPARE(first, QStringLiteral("alpha"));
 
-    press(QStringLiteral("j"));
+    pressKey(Qt::Key_Down);
     QCOMPARE(panel->cursorName(), QStringLiteral("beta"));
 
-    press(QStringLiteral("k"));
+    pressKey(Qt::Key_Up);
     QCOMPARE(panel->cursorName(), first);
 
-    // `l` enters the directory under the cursor.
-    press(QStringLiteral("l"));
+    // Right enters the directory under the cursor.
+    pressKey(Qt::Key_Right);
     settle();
     QCOMPARE(panel->path(), QDir::cleanPath(path(QStringLiteral("alpha"))));
 
-    // `h` goes back up, and the cursor lands on where we came from (§5.2).
-    press(QStringLiteral("h"));
+    // Left goes back up, and the cursor lands on where we came from (§5.2).
+    pressKey(Qt::Key_Left);
     settle();
     QCOMPARE(panel->path(), QDir::cleanPath(m_root.path()));
     QCOMPARE(panel->cursorName(), QStringLiteral("alpha"));
@@ -387,18 +389,41 @@ void TestPanels::navigatesWithHjkl()
 
 void TestPanels::sequenceNavigatesHome()
 {
-    // The `g` prefix of §6.2, end to end through the dispatcher.
+    // The Ctrl+G leader, end to end through the dispatcher.
     ui::FilePanel *panel = m_strip->focusedPanel();
 
-    press(QStringLiteral("g"));
+    pressKey(Qt::Key_G, Qt::ControlModifier);
     QVERIFY(m_dispatcher->hasPending());
-    QCOMPARE(m_dispatcher->pendingText(), QStringLiteral("g-"));
+    QCOMPARE(m_dispatcher->pendingText(),
+             QKeySequence(Qt::ControlModifier | Qt::Key_G).toString(QKeySequence::NativeText) +
+                 QLatin1Char('-'));
 
     press(QStringLiteral("h"));
     settle();
 
     QVERIFY(!m_dispatcher->hasPending());
     QCOMPARE(panel->path(), QDir::cleanPath(QDir::homePath()));
+}
+
+void TestPanels::clickingAPanelMakesItTheActiveOne()
+{
+    // The keys go wherever the click put the focus, so the actions must too.
+    // Before, the active panel stayed the last one used from the keyboard, and
+    // Delete after a click acted on the other panel's file.
+    ui::FilePanel *first = m_strip->focusedPanel();
+    ui::FilePanel *second = m_strip->addPanel(m_root.path());
+    settle();
+    m_strip->show();
+    QVERIFY(QTest::qWaitForWindowActive(m_strip));
+    QCOMPARE(m_strip->focusedPanel(), second);
+
+    const QListView *view = first->view();
+    const QRect row = view->visualRect(view->model()->index(1, 0));
+    QTest::mouseClick(first->view()->viewport(), Qt::LeftButton, Qt::NoModifier, row.center());
+
+    QCOMPARE(m_strip->focusedPanel(), first);
+    QVERIFY(first->isActive());
+    QVERIFY(!second->isActive());
 }
 
 void TestPanels::compactLayoutShowsOnlyTheFocusedPanel()

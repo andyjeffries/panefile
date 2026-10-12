@@ -66,10 +66,14 @@ public:
     /// Applied on resize.
     void applyResponsiveLayout(int availableWidth);
 
+    /// Makes a panel active when its list takes the focus — a click, above
+    /// all. Public because QObject declares it so.
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
 Q_SIGNALS:
     /// A panel has been constructed but has not yet scanned. The composition
     /// root applies `[panels]` and `[thumbnails]` here, so a panel created by
-    /// `n`, by a split or by the command line all start out configured the same
+    /// the new-panel key, by a split or by the command line all start out configured the same
     /// way without the strip having to know what the settings are.
     void panelCreated(FilePanel *panel);
 
@@ -82,7 +86,7 @@ protected:
     void resizeEvent(QResizeEvent *event) override;
 
 private:
-    void connectPanel(FilePanel *panel) const;
+    void connectPanel(FilePanel *panel);
 
     QSplitter *m_splitter = nullptr;
     QWidget *m_quickLookSlot = nullptr;

@@ -45,7 +45,8 @@ private Q_SLOTS:
 
     void cleanupTestCase() { m_dir.reset(); }
 
-    /// The whole point: `v` then `j` selects, and the count goes up.
+    /// The whole point: entering the mode then pressing Down selects, and the
+    /// count goes up.
     ///
     /// None of this worked. setActiveLayers() was never called, so the
     /// dispatcher sat on {Normal, Global} for the life of the process and every
@@ -85,43 +86,43 @@ private Q_SLOTS:
                     : QList<KeymapLayer>{KeymapLayer::Normal, KeymapLayer::Global});
         });
 
-        // Before the mode, `j` is plain movement and selects nothing.
-        QVERIFY(press(dispatcher, Qt::Key_J, QStringLiteral("j")));
+        // Before the mode, Down is plain movement and selects nothing.
+        QVERIFY(press(dispatcher, Qt::Key_Down, QString()));
         QCOMPARE(panel.selectionCount(), 0);
 
         panel.moveCursorToStart();
-        QVERIFY(press(dispatcher, Qt::Key_V, QStringLiteral("v")));
+        QVERIFY(press(dispatcher, Qt::Key_V, QString(), Qt::ControlModifier | Qt::ShiftModifier));
         QVERIFY(panel.isSelectionMode());
 
         // Entering the mode selects the row under the cursor. It used to select
-        // nothing until you moved, so `v` looked as though it had done nothing.
+        // nothing until you moved, so the mode key looked as though it had done nothing.
         QCOMPARE(panel.selectionCount(), 1);
 
         // Movement extends a range from there.
-        QVERIFY(press(dispatcher, Qt::Key_J, QStringLiteral("j")));
+        QVERIFY(press(dispatcher, Qt::Key_Down, QString()));
         QCOMPARE(panel.selectionCount(), 2);
 
-        QVERIFY(press(dispatcher, Qt::Key_J, QStringLiteral("j")));
+        QVERIFY(press(dispatcher, Qt::Key_Down, QString()));
         QCOMPARE(panel.selectionCount(), 3);
 
-        // Leaving the mode gives `j` back to movement, and keeps the selection.
-        QVERIFY(press(dispatcher, Qt::Key_V, QStringLiteral("v")));
+        // Leaving the mode gives Down back to movement, and keeps the selection.
+        QVERIFY(press(dispatcher, Qt::Key_V, QString(), Qt::ControlModifier | Qt::ShiftModifier));
         QVERIFY(!panel.isSelectionMode());
-        QVERIFY(press(dispatcher, Qt::Key_J, QStringLiteral("j")));
+        QVERIFY(press(dispatcher, Qt::Key_Down, QString()));
         QCOMPARE(panel.selectionCount(), 3);
     }
 
     /// §6.2: "Current panel mode (Selection before Normal)" — the Selection
-    /// layer's binding wins over Normal's for the same key.
+    /// layer's binding wins over Global's for the same key.
     void theSelectionLayerOutranksNormal()
     {
         Keymap keymap;
         installDefaultKeymap(keymap);
 
-        const auto binding = parseBinding(QStringLiteral("j"));
+        const auto binding = parseBinding(QStringLiteral("Down"));
         QVERIFY(binding.has_value());
 
-        QCOMPARE(keymap.lookup(KeymapLayer::Normal, *binding).actionId,
+        QCOMPARE(keymap.lookup({KeymapLayer::Normal, KeymapLayer::Global}, *binding).actionId,
                  QStringLiteral("list_down"));
         QCOMPARE(keymap.lookup(KeymapLayer::Selection, *binding).actionId,
                  QStringLiteral("select_down"));
@@ -134,17 +135,18 @@ private Q_SLOTS:
                  QStringLiteral("select_down"));
     }
 
-    /// The arrows extend too, and they are bound in Global for plain movement —
-    /// so this also checks that Selection beats Global, not just Normal.
-    void theArrowsExtendAsWell()
+    /// Shift+arrows extend whether or not the mode is on, as in every other
+    /// file manager.
+    void shiftArrowsExtendInEitherMode()
     {
         Keymap keymap;
         installDefaultKeymap(keymap);
 
-        const auto down = parseBinding(QStringLiteral("Down"));
+        const auto down = parseBinding(QStringLiteral("Shift+Down"));
         QVERIFY(down.has_value());
 
-        QCOMPARE(keymap.lookup(KeymapLayer::Global, *down).actionId, QStringLiteral("list_down"));
+        QCOMPARE(keymap.lookup({KeymapLayer::Normal, KeymapLayer::Global}, *down).actionId,
+                 QStringLiteral("select_down"));
         QCOMPARE(
             keymap.lookup({KeymapLayer::Selection, KeymapLayer::Normal, KeymapLayer::Global}, *down)
                 .actionId,

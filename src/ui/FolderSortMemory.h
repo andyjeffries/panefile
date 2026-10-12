@@ -10,7 +10,7 @@
 
 namespace pf::ui {
 
-/// A sort key and its direction — what the `o` menu chooses.
+/// A sort key and its direction — what the sort menu chooses.
 struct SortOrder {
     SortKey key = SortKey::Name;
     bool reverse = false;

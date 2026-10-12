@@ -66,6 +66,26 @@ Qt::KeyboardModifiers significantModifiers(Qt::KeyboardModifiers modifiers)
     return modifiers & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier);
 }
 
+/// Whether a key code is a punctuation character, which names the character
+/// the key produces rather than the key itself.
+bool isPunctuationKey(int key)
+{
+    const bool digit = key >= Qt::Key_0 && key <= Qt::Key_9;
+    const bool letter = key >= Qt::Key_A && key <= Qt::Key_Z;
+    return key >= Qt::Key_Exclam && key <= Qt::Key_AsciiTilde && !digit && !letter;
+}
+
+/// A key-form chord's modifiers, with Shift dropped when the key is
+/// punctuation.
+///
+/// The same reasoning as the text form: Ctrl+Shift+/ arrives as Key_Question,
+/// so the Shift is already in the character. Keeping it would make the config's
+/// `Ctrl+?` — the binding anyone would write — never match the key press.
+Qt::KeyboardModifiers keyFormModifiers(int key, Qt::KeyboardModifiers modifiers)
+{
+    return isPunctuationKey(key) ? modifiers & ~Qt::ShiftModifier : modifiers;
+}
+
 } // namespace
 
 std::optional<Chord> parseChord(const QString &text)
@@ -93,7 +113,9 @@ std::optional<Chord> parseChord(const QString &text)
             const std::optional<Chord> stand = parseChord(trimmed.chopped(1) + QLatin1Char('A'));
             if (stand.has_value() && stand->key == Qt::Key_A &&
                 stand->modifiers != Qt::NoModifier) {
-                return Chord{.modifiers = stand->modifiers, .key = Qt::Key_Comma, .text = {}};
+                return Chord{.modifiers = keyFormModifiers(Qt::Key_Comma, stand->modifiers),
+                             .key = Qt::Key_Comma,
+                             .text = {}};
             }
         }
         return std::nullopt;
@@ -119,8 +141,9 @@ std::optional<Chord> parseChord(const QString &text)
     // A modifier plus a printable key still uses the key form, because the
     // character a modified key produces is not dependable: Ctrl+C yields a
     // control character, or nothing at all, depending on the platform.
-    return Chord{
-        .modifiers = combination.keyboardModifiers(), .key = combination.key(), .text = {}};
+    return Chord{.modifiers = keyFormModifiers(combination.key(), combination.keyboardModifiers()),
+                 .key = combination.key(),
+                 .text = {}};
 }
 
 std::optional<Binding> parseBinding(const QString &text, QString *error)
@@ -208,7 +231,7 @@ std::optional<Chord> chordFromKeyEvent(int key, Qt::KeyboardModifiers modifiers,
         return Chord{.modifiers = Qt::NoModifier, .key = 0, .text = eventText};
     }
 
-    return Chord{.modifiers = modifiers, .key = key, .text = {}};
+    return Chord{.modifiers = keyFormModifiers(key, modifiers), .key = key, .text = {}};
 }
 
 size_t qHash(const Chord &chord, size_t seed) noexcept

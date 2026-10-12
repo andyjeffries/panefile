@@ -38,7 +38,7 @@ struct Action {
 ///
 /// The registry deliberately knows nothing about keys. Bindings live in the
 /// Keymap and are resolved to an id before anything reaches here, which is what
-/// lets the same action be invoked from a keystroke, the `>` prompt or a menu
+/// lets the same action be invoked from a keystroke, the action prompt or a menu
 /// without three code paths.
 class ActionRegistry
 {

@@ -71,6 +71,9 @@ HotkeysLoadResult applyHotkeys(const QString &text, input::Keymap &keymap, Setti
         if (const auto value = table["keys"]["ambiguity_timeout_ms"].value<int64_t>()) {
             keys->ambiguityTimeoutMs = std::clamp(static_cast<int>(*value), 0, 5000);
         }
+        if (const auto value = table["keys"]["type_ahead_timeout_ms"].value<int64_t>()) {
+            keys->typeAheadTimeoutMs = std::clamp(static_cast<int>(*value), 100, 10000);
+        }
     }
 
     for (const Section &section : kSections) {
@@ -147,8 +150,8 @@ HotkeysLoadResult applyHotkeys(const QString &text, input::Keymap &keymap, Setti
 
                 // Take the chord from whatever default holds it. Without this a
                 // remap loses to the default it was written to replace —
-                // binding list_down to "s" would be rejected because `s` is
-                // focus_on_sidebar by default, which is precisely backwards:
+                // binding list_down to "Ctrl+J" would be rejected because
+                // Ctrl+J is toggle_footer by default, which is precisely backwards:
                 // the user asked for this and the default did not.
                 keymap.removeBinding(section.layer, *binding);
                 claimed.insert(claimKey);

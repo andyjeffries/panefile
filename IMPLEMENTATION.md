@@ -15,7 +15,7 @@ A keyboard-driven, multi-panel file manager for Wayland, built with C++20 and Qt
 
 Conventional GTK/Qt file managers open a window (or tab) per location and expect the mouse. On a tiling Wayland compositor this is a poor fit: windows are a scarce, compositor-managed resource, and reaching for the mouse breaks flow.
 
-Panefile takes the interaction model of [superfile](https://superfile.dev) — a terminal file manager — and implements it as a native GUI application. The core idea is that **one window contains N independent directory panels side by side**. Each panel has its own working directory, cursor position, history, sort order and filter. You create, split, close and cycle panels with single keystrokes, and copy between them without ever opening a second window.
+Panefile takes the interaction model of [superfile](https://superfile.dev) — a terminal file manager — and implements it as a native GUI application. The core idea is that **one window contains N independent directory panels side by side**. Each panel has its own working directory, cursor position, history, sort order and filter. You create, split, close and cycle panels from the keyboard, and copy between them without ever opening a second window.
 
 ### Goals
 
@@ -194,7 +194,7 @@ Post these with `QTimer::singleShot(0, …)` — or a small idle-work queue that
 - **`QuickLook` and every renderer.** No renderer class is instantiated until Quick Look is first opened. This matters most for `KSyntaxHighlighting`: loading its syntax definition repository costs tens of milliseconds and must never happen at startup.
 - **All modals.** Help, sort, conflict, input, fuzzy — created on first invocation, then cached.
 - **`ProcessBar`** — created when the first job starts.
-- **`Prompt`** — created on first `:` or `>`.
+- **`Prompt`** — created on first `open_command_line` or `open_panefile_prompt`.
 - **`MountMonitor` and all D-Bus.** Never open a bus connection at startup. Connect to udisks2 the first time the sidebar's Devices section becomes visible. A `QDBusConnection` plus `GetManagedObjects` is easily 20–40 ms and is pure waste for a user who never touches removable media.
 - **libarchive, QtMultimedia, QtPdf, poppler.** See linking, below.
 - **`QMimeDatabase`** — first call populates shared-mime-info caches. This is unavoidable but happens on the scanner thread, not the GUI thread, and only for entries that become visible.
@@ -304,7 +304,7 @@ With Quick Look invoked in its default floating mode, pressing `Space` overlays 
 │ Projec░░░│░░│                                          │░░░│
 │ ─────    │  │  A keyboard-driven, multi-panel file …   │   │
 │ /mnt/usb │  │                                          │   │
-├──────────┤  │  ↑↓ move  ␣ close  ⏎ open  d dock        │   │
+├──────────┤  │  ↑↓ move  ␣ close  ⏎ open  ^␣ dock       │   │
 │ Footer:  │  └──────────────────────────────────────────┘   │
 └──────────┴────────────────────────────────────────────────-┘
 ```
@@ -313,18 +313,18 @@ Regions:
 
 | Region | Widget | Toggle | Notes |
 | --- | --- | --- | --- |
-| Sidebar | `Sidebar` | `s` focuses, `Ctrl+S` toggles visibility | Home, XDG user dirs, pinned dirs, mounted volumes |
+| Sidebar | `Sidebar` | `Ctrl+G s` focuses, `Ctrl+S` toggles visibility | Home, XDG user dirs, pinned dirs, mounted volumes |
 | Panel strip | `PanelStrip` | always visible | `QSplitter(Qt::Horizontal)` of `FilePanel`s |
 | Quick Look | `QuickLook` | `Space` | Floating overlay by default; dockable — see §7.6 |
-| Footer | `Footer` | `F` | Metadata for cursor item; permissions, owner, size, mtime, MIME |
-| Process bar | `ProcessBar` | auto-shows when jobs active; `p` focuses | Aggregate progress, expandable to per-job list |
-| Prompt | `Prompt` | `:` shell, `>` internal | Single-line, overlays the footer |
+| Footer | `Footer` | `Ctrl+J` | Metadata for cursor item; permissions, owner, size, mtime, MIME |
+| Process bar | `ProcessBar` | auto-shows when jobs active; `Ctrl+G j` focuses | Aggregate progress, expandable to per-job list |
+| Prompt | `Prompt` | `Ctrl+Shift+R` shell, `Ctrl+Shift+P` internal | Single-line, overlays the footer |
 
 Panel widths are equal by default and user-draggable via the splitter. `Ctrl+=` resets to equal.
 
 ### 5.2 `FilePanel`
 
-Contains a header (breadcrumb path, item count, sort indicator, mode badge), a `QListView` in `ListMode` with `setUniformItemSizes(true)`, and an inline search bar that appears on `/`.
+Contains a header (breadcrumb path, item count, sort indicator, mode badge), a `QListView` in `ListMode` with `setUniformItemSizes(true)`, and an inline search bar that appears on `Ctrl+/`.
 
 Per-panel state, all independently persisted:
 
@@ -362,9 +362,9 @@ Modals are frameless child widgets centred over the main window with a dimmed ba
 
 | Mode | Entered by | Effect |
 | --- | --- | --- |
-| `Normal` | default | Single-key bindings active |
-| `Selection` | `v` | Movement extends the selection; a badge shows in the panel header |
-| `Typing` | `/`, `:`, `>`, or any input modal | All single-key bindings suspended; only `confirm_typing`/`cancel_typing` and editing keys apply |
+| `Normal` | default | Panel bindings active; typing a name moves the cursor to it (§6.3) |
+| `Selection` | `Ctrl+Shift+V` | Movement extends the selection; a badge shows in the panel header |
+| `Typing` | `Ctrl+/`, `Ctrl+Shift+R`, `Ctrl+Shift+P`, or any input modal | All single-key bindings suspended; only `confirm_typing`/`cancel_typing` and editing keys apply |
 
 Mode is **per panel**, except `Typing` which is global while an input has focus.
 
@@ -416,63 +416,70 @@ Two actions bound to the identical sequence *within the same layer* is a config 
 
 #### Sequence-friendly defaults
 
-Reserve `g` as the "go" prefix. Bundled defaults use `gg` (top), `gh` (home), `gr` (root), `gc` (config dir), `gt` (trash), `gp` (previous directory). Users can add their own without any code change.
+Reserve `Ctrl+G` as the "go" leader; the key after it is plain. Bundled defaults use `Ctrl+G g` (top), `Ctrl+G G` (bottom), `Ctrl+G h` (home), `Ctrl+G r` (root), `Ctrl+G c` (config dir), `Ctrl+G t` / `Ctrl+G w` (trash), `Ctrl+G p` (previous directory), `Ctrl+G s` (sidebar) and `Ctrl+G j` (process bar). Holding `Ctrl` for the second key works too. Because the second key ends a sequence, it is consumed by the dispatcher and never reaches the list as a typed name. Users can add their own without any code change.
 
 ### 6.3 Default keymap
 
-Derived from superfile's defaults so muscle memory carries over. All remappable.
+Originally derived from superfile's defaults, then reworked so that letters belong to type-to-select. All remappable. On macOS, `Ctrl` in these tables is `⌘`, as Qt maps it.
+
+**Policy.** No default binding starts with a key that types a character, with two deliberate exceptions: `.` (`toggle_dot_file`) and `Space` (`quick_look`). Every other default's first chord carries `Ctrl` or `Alt`, or is a key that types nothing — arrows, `Enter`, `Tab`, `Delete`, `Backspace`, F-keys and the like. This leaves printable keys free for **type-to-select**: typing in a panel moves the cursor to the first entry whose name starts with the typed text, compared case-insensitively and ignoring leading dots. Pressing the same letter repeatedly cycles through the entries starting with it. The typed text lasts `type_ahead_timeout_ms` (default 1000, in the `[keys]` table — §8.2) between keystrokes. While a name is being typed, `Space` and `.` extend it rather than running their bindings, `Backspace` deletes one character, and `Esc` abandons it. A user binding to a plain letter (§8.2) is honoured, at the cost of that letter no longer starting a typed name.
 
 **General**
 
 | Action id | Default | Description |
 | --- | --- | --- |
-| `confirm` | `Enter`, `Right`, `l` | Enter directory / open file |
-| `quit` | `q`, `Esc` | Close modal, or quit if none |
-| `open_help_menu` | `?` | Help modal listing all bindings |
-| `open_command_line` | `:` | Shell command in panel's cwd |
-| `open_panefile_prompt` | `>` | Internal command prompt (action ids) |
+| `confirm` | `Enter`, `Right` | Enter directory / open file |
+| `cancel` | `Esc` | Dismiss the modal, the preview, the filter or Selection mode; never quits |
+| `quit` | `Ctrl+Q` | |
+| `open_help_menu` | `F1`, `Ctrl+?` | Help modal listing all bindings |
+| `open_command_line` | `Ctrl+Shift+R` | Shell command in panel's cwd |
+| `open_panefile_prompt` | `Ctrl+Shift+P` | Internal command prompt (action ids) |
 | `open_fuzzy_find` | `Ctrl+F` | Recursive fuzzy finder modal |
-| `toggle_theme_dark_light` | `Ctrl+T` | |
+| `open_settings` | `Ctrl+,` | |
+| `toggle_theme_dark_light` | — | No default; menu and command prompt only |
+| `default_file_manager_yes` / `_not_now` / `_never` | `Alt+Y` / `Alt+N` / `Alt+Shift+N` | Answers to the default-file-manager bar; active only while it is shown |
 
 **Panel management**
 
 | Action id | Default | Description |
 | --- | --- | --- |
-| `create_new_file_panel` | `n` | New panel at home |
-| `split_file_panel` | `N` | New panel duplicating the focused one |
-| `close_file_panel` | `w` | Close focused panel (never the last) |
-| `next_file_panel` | `Tab`, `L` | |
-| `previous_file_panel` | `Shift+Tab`, `H` | |
+| `create_new_file_panel` | `Ctrl+T` | New panel at home |
+| `split_file_panel` | `Ctrl+\` | New panel duplicating the focused one |
+| `close_file_panel` | `Ctrl+W` | Close focused panel (never the last) |
+| `next_file_panel` | `Tab`, `Ctrl+PgDn` | |
+| `previous_file_panel` | `Shift+Tab`, `Ctrl+PgUp` | |
 | `quick_look` | `Space` | Toggle Quick Look (§7.6) |
 | `quick_look_cycle_dock` | `Ctrl+Space` | float → right → bottom → left → panel |
 | `quick_look_fullscreen` | `Ctrl+Shift+Space` | |
-| `toggle_footer` | `F` | |
-| `focus_on_sidebar` | `s` | |
-| `focus_on_process_bar` | `p` | |
-| `open_sort_options_menu` | `o` | |
-| `toggle_reverse_sort` | `R` | |
+| `toggle_footer` | `Ctrl+J` | |
+| `focus_on_sidebar` | `Ctrl+G s` | |
+| `toggle_sidebar` | `Ctrl+S` | |
+| `focus_on_process_bar` | `Ctrl+G j` | |
+| `unmount_device` | `Ctrl+Shift+E` | §7.11 |
+| `open_sort_options_menu` | `Ctrl+O` | |
+| `toggle_reverse_sort` | `Ctrl+Shift+O` | |
 | `equalise_panels` | `Ctrl+=` | |
 
 **Movement**
 
 | Action id | Default | Description |
 | --- | --- | --- |
-| `list_up` / `list_down` | `k` / `j`, arrows | |
+| `list_up` / `list_down` | `Up` / `Down` | |
 | `page_up` / `page_down` | `PgUp` / `PgDn`, `Ctrl+U` / `Ctrl+D` | |
-| `list_top` / `list_bottom` | `g g` / `G` | |
-| `go_home` | `g h`, `Alt+Home` | Navigate panel to `$HOME` |
-| `go_root` | `g r` | Navigate panel to `/` |
-| `go_config` | `g c` | Navigate to the config directory |
-| `go_trash` | `g t` | Open trash view in this panel |
-| `go_previous` | `g p` | Last visited directory |
-| `parent_directory` | `h`, `Left`, `Backspace` | |
+| `list_top` / `list_bottom` | `Home` / `End`, `Ctrl+G g` / `Ctrl+G G` | |
+| `go_home` | `Ctrl+G h`, `Alt+Home` | Navigate panel to `$HOME` |
+| `go_root` | `Ctrl+G r` | Navigate panel to `/` |
+| `go_config` | `Ctrl+G c` | Navigate to the config directory |
+| `go_trash` | `Ctrl+G t`, `Ctrl+G w` | Open trash view in this panel |
+| `go_previous` | `Ctrl+G p` | Last visited directory |
+| `parent_directory` | `Left`, `Backspace` | |
 | `go_back` / `go_forward` | `Alt+Left` / `Alt+Right` | History |
 | `toggle_dot_file` | `.` | |
-| `search_bar` | `/` | Filter within current directory |
-| `change_panel_mode` | `v` | Normal ⇄ Selection |
-| `select_all` | `A` | Selection mode only |
-| `select_up` / `select_down` | `K` / `J`, `Shift`+arrows | Selection mode only |
-| `pinned_directory` | `P` | Pin/unpin to sidebar |
+| `search_bar` | `Ctrl+/` | Filter within current directory; `Esc` clears it |
+| `change_panel_mode` | `Ctrl+Shift+V` | Normal ⇄ Selection |
+| `select_all` | `Ctrl+A` | Select every visible entry |
+| `select_up` / `select_down` | `Shift+Up` / `Shift+Down` in either mode; `Up` / `Down` in Selection mode | Extend the selection. In Normal mode, a plain arrow (or typing a name) afterwards clears it |
+| `pinned_directory` | `Ctrl+Shift+D` | Pin/unpin to sidebar |
 
 **File operations**
 
@@ -483,16 +490,17 @@ Derived from superfile's defaults so muscle memory carries over. All remappable.
 | `bulk_rename` | `Ctrl+B` | Selection → `$EDITOR` (see §7.7) |
 | `copy_items` / `cut_items` | `Ctrl+C` / `Ctrl+X` | |
 | `paste_items` | `Ctrl+V` | |
-| `delete_items` | `Ctrl+D`, `Delete` | To trash |
-| `permanently_delete_items` | `D`, `Shift+Delete` | Confirms twice |
+| `undo` | `Ctrl+Z` | §7.13 |
+| `delete_items` | `Delete` | To trash. Not `Ctrl+D`, which is `page_down` |
+| `permanently_delete_items` | `Shift+Delete` | Confirms twice |
 | `copy_path` | `Ctrl+P` | Absolute path(s) to clipboard |
-| `copy_present_working_directory` | `c` | |
-| `compress_file` | `Ctrl+A` | |
+| `copy_present_working_directory` | `Ctrl+Shift+C` | |
+| `compress_file` | `Ctrl+Shift+A` | |
 | `extract_file` | `Ctrl+E` | |
-| `open_file_with_editor` | `e` | `$EDITOR` in a terminal |
-| `open_current_directory_with_editor` | `E` | |
+| `open_file_with_editor` | `F4` | `$EDITOR` in a terminal |
+| `open_current_directory_with_editor` | `Shift+F4` | |
 | `open_with_default_app` | `Ctrl+Enter` | `xdg-open` |
-| `open_terminal_here` | `T` | `$TERMINAL` in cwd |
+| `open_terminal_here` | `Ctrl+Shift+T` | `$TERMINAL` in cwd |
 
 ---
 
@@ -502,6 +510,7 @@ Derived from superfile's defaults so muscle memory carries over. All remappable.
 
 - Minimum 1 panel, maximum 10. Attempting to exceed shows a transient footer message.
 - Closing the focused panel moves focus to the panel on its left, or right if it was leftmost.
+- Clicking anywhere in a panel makes it the focused panel.
 - New panels open at `$HOME` unless `config.new_panel_path` says otherwise; `split_file_panel` copies the focused panel's path, sort and filter settings but not its selection.
 - Below a total width of 600 px, hide the sidebar automatically; below 400 px, show only the focused panel.
 
@@ -551,7 +560,7 @@ Requirements:
 - **Cancellation** is cooperative and must leave no half-written destination file — write to `name.pf-partial` and `rename` on completion.
 - Refuse, with a clear error, to copy a directory into itself or into its own descendant.
 
-The `ProcessBar` shows the aggregate of all active jobs; expanding it (`p` then `Enter`) lists each with its own progress and a cancel button. Completed jobs linger for 5 s then fade.
+The `ProcessBar` shows the aggregate of all active jobs; expanding it (`Ctrl+G j` then `Enter`) lists each with its own progress and a cancel button. Completed jobs linger for 5 s then fade.
 
 ### 7.5 Trash
 
@@ -564,7 +573,7 @@ Also implement a trash browser: the sidebar has a `Trash` entry that opens a pan
 
 ### 7.6 Quick Look
 
-Modelled on macOS Quick Look. A single `Space` press shows a large, rich preview of the cursor item; a second `Space` dismisses it. Crucially, **while it is open the arrow keys still move the panel cursor**, and the Quick Look content follows — so you can hold `j` and flick through a directory of images.
+Modelled on macOS Quick Look. A single `Space` press shows a large, rich preview of the cursor item; a second `Space` dismisses it. Crucially, **while it is open the arrow keys still move the panel cursor**, and the Quick Look content follows — so you can hold `Down` and flick through a directory of images.
 
 This replaces the always-on preview pane. Quick Look is transient by default, but can be pinned into a dock position for users who do want it permanently visible.
 
@@ -591,15 +600,19 @@ Behaviour that differs between float and docked:
 | Key | Action |
 | --- | --- |
 | `Space` | Toggle Quick Look |
-| `j`/`k`, arrows | Move the source panel's cursor; content follows |
+| Arrows | Move the source panel's cursor; content follows |
 | `Enter` | Open in the default application and dismiss |
-| `e` | Open in `$EDITOR` and dismiss |
+| `F4` | Open in `$EDITOR` and dismiss |
 | `Ctrl+Space` | Cycle dock position |
 | `Ctrl+Shift+Space` | Toggle full-screen mode |
 | `Esc` | Dismiss (float) or return focus to panel (docked) |
-| `+` / `-` / `0` | Zoom in / out / fit — image and PDF renderers |
-| `[` / `]` | Previous / next page — PDF and archive renderers |
-| `/` | Search within the rendered content — text renderer |
+| `Alt+=` / `Alt+-` / `Alt+0` | Zoom in / out / fit — image and PDF renderers |
+| `Alt+[` / `Alt+]` | Previous / next page — PDF and archive renderers |
+| `Alt+W` | Toggle line wrap — text renderer |
+| `Alt+P` | Play / pause — video and audio renderers |
+| `Alt+/` | Search within the rendered content — text renderer |
+
+A renderer's own keys take `Alt`, whether Quick Look is floating, docked or full-screen: plain keys stay with the panel, where typing a name moves the cursor (§6.3), and `Ctrl` chords belong to the application. `QuickLookView` strips the `Alt` before calling `handleKey`, so renderers match the unmodified key.
 
 The header bar shows filename, size, MIME description and a close affordance. The footer bar shows renderer-specific hints and, when it applies, page or zoom state. Both are themed and can be hidden via `quicklook.chrome = false`.
 
@@ -631,7 +644,7 @@ public:
 | `DirectoryRenderer` | `isDir` | Child listing (first 200), item count, aggregate size computed lazily and cancellably, `du`-style top-5 largest children |
 | `TextRenderer` | `text/*` and known code MIME types | Full file up to the read cap, syntax highlighted via `KSyntaxHighlighting`, line numbers, wrap toggle, in-content search |
 | `ImageRenderer` | `image/*` | Full-resolution decode off-thread, zoom and pan, EXIF summary (dimensions, camera, date), animated GIF/WebP playback |
-| `VideoRenderer` | `video/*` | `QMediaPlayer` playback with scrub bar, `p` to play/pause, plus duration, resolution and codec. Falls back to a static thumbnail if QtMultimedia is unavailable |
+| `VideoRenderer` | `video/*` | `QMediaPlayer` playback with scrub bar, `Alt+P` to play/pause, plus duration, resolution and codec. Falls back to a static thumbnail if QtMultimedia is unavailable |
 | `AudioRenderer` | `audio/*` | Waveform-free minimal player, plus tag metadata |
 | `PdfRenderer` | `application/pdf` | Paged rendering via `QtPdf` (preferred) or `poppler-qt6`, with page navigation and zoom |
 | `ArchiveRenderer` | archive MIME types, via libarchive | Entry tree with sizes and compression ratios. No extraction |
@@ -640,7 +653,7 @@ public:
 #### Loading rules
 
 - Content loading is **always** off the GUI thread, into a `QuickLookContent` value type handed back by queued signal.
-- Debounce cursor changes by 120 ms so holding `j` doesn't queue a hundred loads. Cancel any in-flight load when the cursor moves again.
+- Debounce cursor changes by 120 ms so holding `Down` doesn't queue a hundred loads. Cancel any in-flight load when the cursor moves again.
 - Show a skeleton/spinner state after 200 ms of loading, never before — instant content must not flash a spinner.
 - `quicklook.max_read_bytes` (default 64 MiB) caps text and hex reads. Images and video are streamed by their respective libraries and are not subject to it, but files above `quicklook.max_decode_mb` (default 500) show a metadata-only card with an "open anyway" action.
 - Cache the last 5 rendered contents keyed on path plus mtime, so moving back and forth between two files is instant.
@@ -660,7 +673,7 @@ Implement the freedesktop thumbnail spec so the cache is shared with other appli
 
 Two distinct things, don't conflate them:
 
-1. **In-panel filter** (`/`): filters the current directory's model live via the proxy. Substring by default, fuzzy if `config.search.fuzzy = true`. `Enter` keeps the filter and returns focus to the list; `Esc` clears it.
+1. **In-panel filter** (`Ctrl+/`): filters the current directory's model live via the proxy. Substring by default, fuzzy if `config.search.fuzzy = true`. `Enter` keeps the filter and returns focus to the list; `Esc` clears it.
 2. **Recursive finder** (`Ctrl+F`): a modal that walks the panel's subtree on a worker thread, streaming candidates into a scored list. `Enter` navigates the panel to the result's directory and puts the cursor on it.
 
 Implement `FuzzyMatcher` as an fzf-style matcher: a case-insensitive subsequence test as a fast reject, then a scoring pass rewarding consecutive matches, matches at word boundaries and camelCase humps, matches after path separators, and penalising gap length. Return both the score and the matched character spans so the delegate can highlight them. This must be a pure, header-testable function — see §14.
@@ -682,7 +695,7 @@ Cap the recursive walk at `config.search.max_results` (default 10,000) and respe
 
 Via libarchive:
 
-- **Create** (`Ctrl+A`): modal picks format (`zip`, `tar.gz`, `tar.zst`, `7z` if supported) and name, defaulting to the cursor item's basename. Progress via the job engine.
+- **Create** (`Ctrl+Shift+A`): modal picks format (`zip`, `tar.gz`, `tar.zst`, `7z` if supported) and name, defaulting to the cursor item's basename. Progress via the job engine.
 - **Extract** (`Ctrl+E`): extracts into `<archive-basename>/` in the panel's cwd. Detect "tarbombs" — if the archive has a single top-level directory, extract directly instead of nesting.
 - **Guard against path traversal.** Reject any entry whose resolved destination escapes the extraction root. This is not optional.
 - Password-protected archives prompt; if libarchive can't handle the format, fail with a clear message rather than partially extracting.
@@ -691,7 +704,7 @@ Via libarchive:
 
 - Enumerate mounted filesystems from `/proc/self/mountinfo`, re-read on `IN_MODIFY`.
 - Discover mountable-but-unmounted devices via udisks2 on the system bus (`org.freedesktop.UDisks2`, `ObjectManager.GetManagedObjects`), filtering to block devices with `HintAuto` or removable media.
-- Sidebar shows these under a "Devices" heading with a mount state indicator. `Enter` mounts (via `org.freedesktop.UDisks2.Filesystem.Mount`) and navigates; `u` on a mounted device unmounts.
+- Sidebar shows these under a "Devices" heading with a mount state indicator. `Enter` mounts (via `org.freedesktop.UDisks2.Filesystem.Mount`) and navigates; `Ctrl+Shift+E` on a mounted device unmounts.
 - Watch `InterfacesAdded`/`InterfacesRemoved` for hotplug.
 - Never block the GUI thread on a D-Bus call — use `QDBusPendingCallWatcher` throughout.
 
@@ -735,7 +748,7 @@ single_instance      = true
 default_count        = 1
 max_count            = 10
 directories_first    = true
-default_sort         = "name"       # name | size | modified | type; `o` overrides it per folder
+default_sort         = "name"       # name | size | modified | type; `Ctrl+O` overrides it per folder
 show_hidden          = false
 
 [quicklook]
@@ -781,10 +794,12 @@ Each action maps to a list of bindings. Every binding in the list is active simu
 
 ```toml
 [keys]
-sequence_timeout_ms  = 1000     # time to complete a started sequence
-ambiguity_timeout_ms = 500      # wait before firing a binding that is also a prefix
+sequence_timeout_ms   = 1000    # time to complete a started sequence
+ambiguity_timeout_ms  = 500     # wait before firing a binding that is also a prefix
+type_ahead_timeout_ms = 1000    # how long a typed name lasts between letters (§6.3)
 
 [normal]
+# A plain letter bound here runs its action instead of starting a typed name (§6.3)
 list_down    = ["j", "Down"]
 list_up      = ["k", "Up"]
 confirm      = ["Return", "Right", "l"]
@@ -810,7 +825,7 @@ Notes for the implementer:
 - Parse each chord with `QKeySequence::fromString`, then reject any chord string that parses to more than one element — Qt's own four-element sequence syntax (comma-separated) is **not** used here; whitespace separation is the sequence syntax, so the two don't collide.
 - Reject and warn on: unparseable chords, sequences longer than 5 chords, and any binding whose first chord is `Esc`.
 - `unbind` is available as a pseudo-action to remove a default without replacing it: `open_zoxide = []` also works.
-- The help modal (`?`) lists every action with all of its bindings, rendered as `Ctrl+C  ·  Super+C  ·  y y`.
+- The help modal (`F1`) lists every action with all of its bindings, rendered as `Ctrl+C  ·  Super+C  ·  y y`.
 
 ### 8.3 Validation and reload
 
@@ -942,7 +957,7 @@ Measure these; they are acceptance criteria, not aspirations.
 | Idle memory, 2 panels | < 80 MiB RSS |
 | Cursor movement → Quick Look content shown (cached) | < 50 ms |
 | Quick Look open → first paint, 4 MB text file | < 120 ms |
-| Holding `j` through 200 files with Quick Look open | no queued backlog, no dropped frames |
+| Holding `Down` through 200 files with Quick Look open | no queued backlog, no dropped frames |
 
 Include a `--benchmark <dir>` hidden flag that scans a directory and prints timings, so regressions are measurable.
 
@@ -960,7 +975,7 @@ Include a `--benchmark <dir>` hidden flag that scans a directory and prints timi
 ## 13. Security considerations
 
 - Archive extraction must reject path traversal (§7.10).
-- The shell prompt (`:`) executes via `/bin/sh -c` in the panel's cwd. Do not attempt to sanitise — it is an explicit shell — but never construct shell strings from filenames elsewhere in the app. Everywhere else, use `QProcess` with an argument list, never `startCommand`.
+- The shell prompt (`Ctrl+Shift+R`) executes via `/bin/sh -c` in the panel's cwd. Do not attempt to sanitise — it is an explicit shell — but never construct shell strings from filenames elsewhere in the app. Everywhere else, use `QProcess` with an argument list, never `startCommand`.
 - Never pass a filename to `xdg-open` without verifying the file exists and resolving it to an absolute path.
 - Treat `.desktop` files in the filesystem as data, not as things to execute.
 

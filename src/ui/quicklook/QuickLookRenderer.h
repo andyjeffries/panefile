@@ -86,6 +86,9 @@ public:
     virtual QString statusText() const { return {}; }
 
     /// Returns true when the key was consumed (§7.6's per-renderer keys).
+    ///
+    /// The user pressed Alt with the key; QuickLookView takes the Alt off
+    /// before calling this, so a renderer matches the plain key.
     virtual bool handleKey(QKeyEvent *event)
     {
         Q_UNUSED(event)

@@ -92,6 +92,9 @@ struct Settings {
     struct Keys {
         int sequenceTimeoutMs = 1000;
         int ambiguityTimeoutMs = 500;
+        /// How long a typed name lasts in a panel before the next letter
+        /// starts a new one.
+        int typeAheadTimeoutMs = 1000;
     } keys;
 };
 

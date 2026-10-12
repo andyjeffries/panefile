@@ -157,10 +157,10 @@ private:
     /// and a repaint of the delegates that read the palette directly.
     void applyTheme(const config::Theme &theme);
 
-    /// §6.3's `p`: show the running-jobs panel and put focus in it.
+    /// focus_on_process_bar: show the running-jobs panel and put focus in it.
     void focusProcessBar();
 
-    /// §6.3's `:` and `>`: a shell command in the panel's directory, and a
+    /// open_command_line and open_panefile_prompt: a shell command in the panel's directory, and a
     /// Panefile action by id.
     void promptForShellCommand();
     void promptForAction();
@@ -207,7 +207,7 @@ private:
 
     /// §3.4: modals are constructed on first invocation, then cached. The help
     /// modal builds a tree of every action, which is not work to do at startup
-    /// for a user who never presses `?`. Owned by the window through the Qt
+    /// for a user who never opens it. Owned by the window through the Qt
     /// parent-child relationship, so this is a raw observing pointer.
     ui::HelpModal *m_helpModal = nullptr;
 

@@ -53,7 +53,7 @@ public:
 
     /// Registers the three answers. Actions rather than button mnemonics, so
     /// they go through the keymap like every other key — remappable, and
-    /// listed by `?` — and enabled only while the bar is asking, so outside it
+    /// listed in the help modal — and enabled only while the bar is asking, so outside it
     /// their keys do nothing.
     void registerActions(input::ActionRegistry *registry);
 

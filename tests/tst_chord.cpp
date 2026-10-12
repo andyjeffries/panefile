@@ -223,6 +223,22 @@ void TestChord::keyEventsMatchParsedChords_data()
     QTest::newRow(",") << "," << int(Qt::Key_Comma) << Qt::KeyboardModifiers(Qt::NoModifier) << ",";
     QTest::newRow("Ctrl+,") << "Ctrl+," << int(Qt::Key_Comma)
                             << Qt::KeyboardModifiers(Qt::ControlModifier) << QString();
+    // Shifted punctuation arrives as the shifted character with Shift still
+    // held, and the config names only the character.
+    QTest::newRow("Ctrl+?") << "Ctrl+?" << int(Qt::Key_Question)
+                            << Qt::KeyboardModifiers(Qt::ControlModifier | Qt::ShiftModifier)
+                            << QString();
+    QTest::newRow("Ctrl++") << "Ctrl++" << int(Qt::Key_Plus)
+                            << Qt::KeyboardModifiers(Qt::ControlModifier | Qt::ShiftModifier)
+                            << QString();
+    QTest::newRow("Ctrl+/") << "Ctrl+/" << int(Qt::Key_Slash)
+                            << Qt::KeyboardModifiers(Qt::ControlModifier) << QString();
+    QTest::newRow("Ctrl+\\") << "Ctrl+\\" << int(Qt::Key_Backslash)
+                             << Qt::KeyboardModifiers(Qt::ControlModifier) << QString();
+    // Letters keep Shift: Ctrl+Shift+O and Ctrl+O are different bindings.
+    QTest::newRow("Ctrl+Shift+O") << "Ctrl+Shift+O" << int(Qt::Key_O)
+                                  << Qt::KeyboardModifiers(Qt::ControlModifier | Qt::ShiftModifier)
+                                  << QString();
 }
 
 void TestChord::keyEventsMatchParsedChords()

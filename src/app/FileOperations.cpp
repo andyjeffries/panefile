@@ -790,22 +790,16 @@ void FileOperations::registerActions()
                                ActionCategory::Selection,
                                onPanel([](ui::FilePanel *panel) { panel->selectAll(); }));
 
-    // §6.1: "Movement extends the selection" in Selection mode — the entry the
-    // cursor leaves is the one that gets selected, so a run of J selects the
-    // run it passes over.
+    // §6.1: "Movement extends the selection" in Selection mode, and Shift+Up
+    // and Shift+Down extend it in either mode — the run of rows the cursor
+    // passes over, from the row it started on.
     m_registry->registerAction(QStringLiteral("select_down"), tr("Extend the selection downwards"),
-                               ActionCategory::Selection, onPanel([](ui::FilePanel *panel) {
-                                   // Move first, then take everything from the
-                                   // anchor to where the cursor now is.
-                                   panel->moveCursor(1);
-                                   panel->extendSelectionTo(panel->cursorName());
-                               }));
+                               ActionCategory::Selection,
+                               onPanel([](ui::FilePanel *panel) { panel->extendSelectionBy(1); }));
 
     m_registry->registerAction(QStringLiteral("select_up"), tr("Extend the selection upwards"),
-                               ActionCategory::Selection, onPanel([](ui::FilePanel *panel) {
-                                   panel->moveCursor(-1);
-                                   panel->extendSelectionTo(panel->cursorName());
-                               }));
+                               ActionCategory::Selection,
+                               onPanel([](ui::FilePanel *panel) { panel->extendSelectionBy(-1); }));
 }
 
 } // namespace pf

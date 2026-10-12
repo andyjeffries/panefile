@@ -6,7 +6,7 @@
 // it did, and nothing in the application was connected to it — so on a real
 // desktop Enter and double-click on a file did nothing at all.
 //
-// It also drives the `o` sort menu, which broke in the same gap: the menu
+// It also drives the sort menu (Ctrl+O), which broke in the same gap: the menu
 // works on its own, but the application's key dispatcher took its keys.
 //
 // xdg-open is replaced, through PATH, by a script that writes down what it was
@@ -20,9 +20,11 @@
 #include "ui/PanelStrip.h"
 #include "ui/PanelView.h"
 
+#include <QClipboard>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QLineEdit>
 #include <QMenu>
 #include <QTemporaryDir>
 #include <QTest>
@@ -80,7 +82,7 @@ private Q_SLOTS:
         QCOMPARE(recorded(), m_root + QStringLiteral("/clip.mp4"));
     }
 
-    // The `o` menu is opened from the keyboard, so it has to be usable from
+    // The sort menu is opened from the keyboard, so it has to be usable from
     // it: arrows move, Return chooses, Escape dismisses. The dispatcher sees
     // every key first, and must leave an open popup's keys alone.
     void sortMenuIsDrivenByTheKeyboard()
@@ -103,7 +105,7 @@ private Q_SLOTS:
             }
         });
         m_panel->view()->setFocus();
-        QTest::keyClick(m_panel->view(), Qt::Key_O, Qt::NoModifier);
+        QTest::keyClick(m_panel->view(), Qt::Key_O, Qt::ControlModifier);
 
         QVERIFY(sawMenu);
         QCOMPARE(m_panel->sortKey(), SortKey::Size);
@@ -118,10 +120,85 @@ private Q_SLOTS:
                 }
             }
         });
-        QTest::keyClick(m_panel->view(), Qt::Key_O, Qt::NoModifier);
+        QTest::keyClick(m_panel->view(), Qt::Key_O, Qt::ControlModifier);
 
         QVERIFY(escapeClosed);
         QCOMPARE(m_panel->sortKey(), SortKey::Size);
+    }
+
+    // A name being typed owns the keys that edit it. Space and `.` reach the
+    // panel rather than Quick Look and the hidden-files toggle, Backspace
+    // deletes a letter rather than going up, and Escape abandons the name.
+    // Driven through the application, because the routing lives there.
+    void aTypedNameKeepsItsEditingKeys()
+    {
+        for (const char *name : {"my file.txt", "my.notes"}) {
+            QFile file(m_root + QLatin1Char('/') + QString::fromLatin1(name));
+            QVERIFY(file.open(QIODevice::WriteOnly));
+        }
+        QTRY_COMPARE_WITH_TIMEOUT(m_panel->view()->model()->rowCount(), 3, 5000);
+
+        ui::PanelView *view = m_panel->view();
+        view->setFocus();
+        const bool hidden = m_panel->showHidden();
+
+        QTest::keyClicks(view, QStringLiteral("my"));
+        QTest::keyClick(view, Qt::Key_Space);
+        QCOMPARE(view->typeAheadText(), QStringLiteral("my "));
+        QCOMPARE(m_panel->cursorName(), QStringLiteral("my file.txt"));
+
+        QTest::keyClick(view, Qt::Key_Backspace);
+        QCOMPARE(view->typeAheadText(), QStringLiteral("my"));
+        QCOMPARE(m_panel->path(), m_root);
+
+        QTest::keyClick(view, Qt::Key_Period, Qt::NoModifier);
+        QCOMPARE(view->typeAheadText(), QStringLiteral("my."));
+        QCOMPARE(m_panel->cursorName(), QStringLiteral("my.notes"));
+        QCOMPARE(m_panel->showHidden(), hidden);
+
+        QTest::keyClick(view, Qt::Key_Escape);
+        QVERIFY(!view->isTypingAhead());
+
+        // With nothing typed, `.` is the hidden-files key again.
+        QTest::keyClick(view, Qt::Key_Period, Qt::NoModifier);
+        QCOMPARE(m_panel->showHidden(), !hidden);
+        QTest::keyClick(view, Qt::Key_Period, Qt::NoModifier);
+        QCOMPARE(m_panel->showHidden(), hidden);
+    }
+
+    // Inside a text field, the text-editing chords edit the text. They used
+    // to reach the keymap first: Ctrl+A in the filter box selected every file
+    // and Ctrl+V pasted files into the directory. Chords that are not about
+    // editing text still work from the field.
+    void textFieldsKeepTheirEditingChords()
+    {
+        ui::PanelView *view = m_panel->view();
+        view->setFocus();
+        QTest::keyClick(view, Qt::Key_Slash, Qt::ControlModifier);
+
+        auto *filter = m_panel->findChild<QLineEdit *>(QStringLiteral("panelFilter"));
+        QVERIFY(filter != nullptr);
+        QTRY_COMPARE(QApplication::focusWidget(), filter);
+
+        QTest::keyClicks(filter, QStringLiteral("my"));
+        QTest::keyClick(filter, Qt::Key_A, Qt::ControlModifier);
+        QCOMPARE(filter->selectedText(), QStringLiteral("my"));
+        QCOMPARE(m_panel->selectionCount(), 0);
+
+        QTest::keyClick(filter, Qt::Key_C, Qt::ControlModifier);
+        QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("my"));
+
+        QTest::keyClick(filter, Qt::Key_End);
+        QTest::keyClick(filter, Qt::Key_V, Qt::ControlModifier);
+        QCOMPARE(filter->text(), QStringLiteral("mymy"));
+
+        const bool reversed = m_panel->reverseSort();
+        QTest::keyClick(filter, Qt::Key_O, Qt::ControlModifier | Qt::ShiftModifier);
+        QCOMPARE(m_panel->reverseSort(), !reversed);
+        m_panel->setReverseSort(reversed);
+
+        QTest::keyClick(filter, Qt::Key_Escape);
+        QVERIFY(!m_panel->isFilterBarOpen());
     }
 
 private:

@@ -128,9 +128,26 @@ bool PanelStrip::closeFocusedPanel()
     return closePanel(focusedPanel());
 }
 
-void PanelStrip::connectPanel(FilePanel *panel) const
+void PanelStrip::connectPanel(FilePanel *panel)
 {
     connect(panel, &FilePanel::statusMessage, this, &PanelStrip::statusMessage);
+    panel->view()->installEventFilter(this);
+}
+
+bool PanelStrip::eventFilter(QObject *watched, QEvent *event)
+{
+    // Clicking in a panel gives its list the keyboard focus, and the panel
+    // with the focus has to be the active one: otherwise the keys go to the
+    // panel just clicked while every action applies to the one used last.
+    if (event->type() == QEvent::FocusIn) {
+        for (FilePanel *panel : std::as_const(m_panels)) {
+            if (panel->view() == watched) {
+                setFocusedPanel(panel);
+                break;
+            }
+        }
+    }
+    return QWidget::eventFilter(watched, event);
 }
 
 void PanelStrip::setFocusedPanel(FilePanel *panel)

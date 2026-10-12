@@ -181,6 +181,8 @@ void applyTable(const toml::table &table, Settings &settings, const QString &fil
     // meaningless one, so both files are accepted.
     reader.readNumber("keys", "sequence_timeout_ms", settings.keys.sequenceTimeoutMs, 100, 10000);
     reader.readNumber("keys", "ambiguity_timeout_ms", settings.keys.ambiguityTimeoutMs, 0, 5000);
+    reader.readNumber("keys", "type_ahead_timeout_ms", settings.keys.typeAheadTimeoutMs, 100,
+                      10000);
 }
 
 } // namespace

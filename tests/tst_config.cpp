@@ -464,7 +464,7 @@ void TestConfig::hotkeysLeaveUnmentionedActionsAlone()
 
     applyHotkeys(QStringLiteral("[normal]\nlist_down = [\"s\"]\n"), keymap);
 
-    QCOMPARE(keymap.lookup(input::KeymapLayer::Normal, *input::parseBinding(QStringLiteral("k")))
+    QCOMPARE(keymap.lookup(input::KeymapLayer::Global, *input::parseBinding(QStringLiteral("Up")))
                  .actionId,
              QStringLiteral("list_up"));
 }
@@ -506,14 +506,15 @@ void TestConfig::remapTakesTheChordFromTheDefaultThatHeldIt()
     input::Keymap keymap;
     input::installDefaultKeymap(keymap);
 
-    applyHotkeys(QStringLiteral("[normal]\nlist_down = [\"s\"]\n"), keymap);
+    applyHotkeys(QStringLiteral("[global]\nlist_down = [\"Ctrl+J\"]\n"), keymap);
 
-    // The chord now belongs to list_down, and focus_on_sidebar has lost it.
-    QCOMPARE(keymap.lookup(input::KeymapLayer::Normal, *input::parseBinding(QStringLiteral("s")))
-                 .actionId,
-             QStringLiteral("list_down"));
-    QVERIFY(keymap.bindingsFor(input::KeymapLayer::Normal, QStringLiteral("focus_on_sidebar"))
-                .isEmpty());
+    // The chord now belongs to list_down, and toggle_footer has lost it.
+    QCOMPARE(
+        keymap.lookup(input::KeymapLayer::Global, *input::parseBinding(QStringLiteral("Ctrl+J")))
+            .actionId,
+        QStringLiteral("list_down"));
+    QVERIFY(
+        keymap.bindingsFor(input::KeymapLayer::Global, QStringLiteral("toggle_footer")).isEmpty());
 }
 
 void TestConfig::twoBindingsForOneChordInOneFileConflict()

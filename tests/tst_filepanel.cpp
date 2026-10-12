@@ -23,6 +23,7 @@
 #include "ui/ThemePalette.h"
 #include "ui/modals/HelpModal.h"
 
+#include <QApplication>
 #include <QDir>
 #include <QFile>
 #include <QListView>
@@ -306,6 +307,12 @@ private Q_SLOTS:
     void listsTheDirectory();
     void hiddenFilesAreHiddenUntilToggled();
     void cursorMovesAndClamps();
+    void typingMovesTheCursorToTheFirstMatch();
+    void repeatingALetterCyclesThroughItsMatches();
+    void typingIgnoresLeadingDots();
+    void typedNamesCanBeEditedAndAbandoned();
+    void movingTheCursorStartsANewName();
+    void aTypedNameExpires();
     void enteringADirectoryChangesPath();
     void goingUpPutsTheCursorOnTheDirectoryJustLeft();
     void historyGoesBackAndForward();
@@ -371,6 +378,125 @@ void TestFilePanel::hiddenFilesAreHiddenUntilToggled()
 
     panel.toggleShowHidden();
     QCOMPARE(panel.view()->model()->rowCount(), visible);
+}
+
+void TestFilePanel::typingMovesTheCursorToTheFirstMatch()
+{
+    FilePanel panel;
+    navigateAndSettle(panel, m_root.path());
+    panel.moveCursorToEnd();
+
+    QTest::keyClicks(panel.view(), QStringLiteral("no"));
+    QCOMPARE(panel.cursorName(), QStringLiteral("notes.txt"));
+    QCOMPARE(panel.view()->typeAheadText(), QStringLiteral("no"));
+
+    // The first match from the top, whatever case was typed: the directory
+    // `alpha` sorts ahead of `archive.tar.gz`.
+    panel.view()->clearTypeAhead();
+    QTest::keyClicks(panel.view(), QStringLiteral("A"));
+    QCOMPARE(panel.cursorName(), QStringLiteral("alpha"));
+    QTest::keyClicks(panel.view(), QStringLiteral("r"));
+    QCOMPARE(panel.cursorName(), QStringLiteral("archive.tar.gz"));
+
+    // Nothing matches: the cursor stays, and the name is kept for Backspace.
+    QTest::keyClicks(panel.view(), QStringLiteral("z"));
+    QCOMPARE(panel.cursorName(), QStringLiteral("archive.tar.gz"));
+    QCOMPARE(panel.view()->typeAheadText(), QStringLiteral("Arz"));
+}
+
+void TestFilePanel::repeatingALetterCyclesThroughItsMatches()
+{
+    FilePanel panel;
+    navigateAndSettle(panel, m_root.path());
+
+    QTest::keyClicks(panel.view(), QStringLiteral("a"));
+    QCOMPARE(panel.cursorName(), QStringLiteral("alpha"));
+    QTest::keyClicks(panel.view(), QStringLiteral("a"));
+    QCOMPARE(panel.cursorName(), QStringLiteral("archive.tar.gz"));
+    // And round again.
+    QTest::keyClicks(panel.view(), QStringLiteral("a"));
+    QCOMPARE(panel.cursorName(), QStringLiteral("alpha"));
+}
+
+void TestFilePanel::typingIgnoresLeadingDots()
+{
+    FilePanel panel;
+    navigateAndSettle(panel, m_root.path());
+
+    // Hidden, so not a candidate.
+    QTest::keyClicks(panel.view(), QStringLiteral("hid"));
+    QVERIFY(panel.cursorName() != QStringLiteral(".hidden"));
+
+    panel.view()->clearTypeAhead();
+    panel.setShowHidden(true);
+    QTest::keyClicks(panel.view(), QStringLiteral("hid"));
+    QCOMPARE(panel.cursorName(), QStringLiteral(".hidden"));
+
+    // A dot typed first is dropped rather than starting a name with it.
+    panel.view()->clearTypeAhead();
+    QTest::keyClicks(panel.view(), QStringLiteral(".no"));
+    QCOMPARE(panel.cursorName(), QStringLiteral("notes.txt"));
+    QCOMPARE(panel.view()->typeAheadText(), QStringLiteral("no"));
+
+    // A dot further in is part of the name.
+    panel.view()->clearTypeAhead();
+    QTest::keyClicks(panel.view(), QStringLiteral("readme."));
+    QCOMPARE(panel.cursorName(), QStringLiteral("readme.md"));
+}
+
+void TestFilePanel::typedNamesCanBeEditedAndAbandoned()
+{
+    FilePanel panel;
+    navigateAndSettle(panel, m_root.path());
+
+    QTest::keyClicks(panel.view(), QStringLiteral("phx"));
+    QCOMPARE(panel.cursorName(), QStringLiteral("photo.png"));
+
+    QTest::keyClick(panel.view(), Qt::Key_Backspace);
+    QCOMPARE(panel.view()->typeAheadText(), QStringLiteral("ph"));
+    QCOMPARE(panel.path(), QDir::cleanPath(m_root.path()));
+
+    // Space is part of a name, not a selection toggle.
+    QTest::keyClick(panel.view(), Qt::Key_Space);
+    QCOMPARE(panel.view()->typeAheadText(), QStringLiteral("ph "));
+    QCOMPARE(panel.cursorName(), QStringLiteral("photo.png"));
+
+    QTest::keyClick(panel.view(), Qt::Key_Escape);
+    QVERIFY(!panel.view()->isTypingAhead());
+    QCOMPARE(panel.cursorName(), QStringLiteral("photo.png"));
+}
+
+void TestFilePanel::movingTheCursorStartsANewName()
+{
+    FilePanel panel;
+    navigateAndSettle(panel, m_root.path());
+
+    QSignalSpy changed(panel.view(), &PanelView::typeAheadChanged);
+    QTest::keyClicks(panel.view(), QStringLiteral("no"));
+    QVERIFY(panel.view()->isTypingAhead());
+
+    panel.moveCursor(1);
+    QVERIFY(!panel.view()->isTypingAhead());
+    QCOMPARE(changed.last().first().toString(), QString());
+}
+
+void TestFilePanel::aTypedNameExpires()
+{
+    const int interval = QApplication::keyboardInputInterval();
+    QApplication::setKeyboardInputInterval(100);
+
+    FilePanel panel;
+    navigateAndSettle(panel, m_root.path());
+
+    QTest::keyClicks(panel.view(), QStringLiteral("no"));
+    QVERIFY(panel.view()->isTypingAhead());
+    QTRY_VERIFY_WITH_TIMEOUT(!panel.view()->isTypingAhead(), 2000);
+
+    // So the next letter starts afresh.
+    QTest::keyClicks(panel.view(), QStringLiteral("s"));
+    QCOMPARE(panel.cursorName(), QStringLiteral("script.sh"));
+
+    QApplication::setKeyboardInputInterval(interval);
 }
 
 void TestFilePanel::cursorMovesAndClamps()

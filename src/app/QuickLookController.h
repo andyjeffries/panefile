@@ -58,8 +58,8 @@ public:
     void toggleFullscreen();
 
     /// Offers a key to the active renderer before the dispatcher sees it
-    /// (§7.6's `+`/`-`/`0`, `[`/`]`, `/`). Returns true when it was consumed —
-    /// movement keys never are, which is what keeps the panel cursor live.
+    /// (§7.6's `+`/`-`/`0`, `[`/`]` and the rest, pressed with Alt). Returns true when it was
+    /// consumed — movement keys never are, which is what keeps the panel cursor live.
     bool handleKey(QKeyEvent *event);
 
     /// Exposed for the tests. Null until Quick Look is first opened.

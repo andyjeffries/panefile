@@ -120,18 +120,31 @@ void PanelController::registerActions()
     };
 
     // ---------------------------------------------------------------- movement
+    //
+    // Outside Selection mode, moving the cursor without Shift ends the
+    // selection, as it does in every other file manager: Shift+Down twice then
+    // Down leaves one row highlighted, not three selected and a cursor
+    // elsewhere. Selection mode exists to keep it.
+    const auto move = [onPanel](auto &&step) {
+        return onPanel([step](ui::FilePanel *panel) {
+            if (!panel->isSelectionMode()) {
+                panel->clearSelection();
+            }
+            step(panel);
+        });
+    };
     reg("list_down", tr("Move the cursor down"), ActionCategory::Movement,
-        onPanel([](ui::FilePanel *panel) { panel->moveCursor(1); }));
+        move([](ui::FilePanel *panel) { panel->moveCursor(1); }));
     reg("list_up", tr("Move the cursor up"), ActionCategory::Movement,
-        onPanel([](ui::FilePanel *panel) { panel->moveCursor(-1); }));
+        move([](ui::FilePanel *panel) { panel->moveCursor(-1); }));
     reg("page_down", tr("Move down one screen"), ActionCategory::Movement,
-        onPanel([](ui::FilePanel *panel) { panel->movePage(1); }));
+        move([](ui::FilePanel *panel) { panel->movePage(1); }));
     reg("page_up", tr("Move up one screen"), ActionCategory::Movement,
-        onPanel([](ui::FilePanel *panel) { panel->movePage(-1); }));
+        move([](ui::FilePanel *panel) { panel->movePage(-1); }));
     reg("list_top", tr("Move to the first entry"), ActionCategory::Movement,
-        onPanel([](ui::FilePanel *panel) { panel->moveCursorToStart(); }));
+        move([](ui::FilePanel *panel) { panel->moveCursorToStart(); }));
     reg("list_bottom", tr("Move to the last entry"), ActionCategory::Movement,
-        onPanel([](ui::FilePanel *panel) { panel->moveCursorToEnd(); }));
+        move([](ui::FilePanel *panel) { panel->moveCursorToEnd(); }));
 
     reg("confirm", tr("Enter the directory, or open the file"), ActionCategory::Movement,
         onPanel([](ui::FilePanel *panel) { panel->activateCursorItem(); }));

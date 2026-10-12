@@ -17,7 +17,7 @@ enum class SortKey {
     Random,
 };
 
-/// Parses `panels.default_sort` and the `o` menu's names. Anything
+/// Parses `panels.default_sort` and the sort menu's names. Anything
 /// unrecognised is Name, which is §8's documented default.
 SortKey sortKeyFromName(const QString &name);
 QString sortKeyName(SortKey key);

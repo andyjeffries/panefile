@@ -9,7 +9,7 @@ pf \- keyboard-driven, multi-panel file manager
 is a file manager for Wayland in which one window contains any number of
 independent directory panels side by side. Each panel keeps its own working
 directory, cursor, history, sort order and filter. Panels are created, split,
-closed and cycled with single keystrokes, and files are copied between them
+closed and cycled from the keyboard, and files are copied between them
 without opening a second window.
 .PP
 Every action is reachable from the keyboard. The mouse is supported but never

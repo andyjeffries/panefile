@@ -283,7 +283,21 @@ bool QuickLookView::handleKey(QKeyEvent *event)
     if (m_current == nullptr) {
         return false;
     }
-    if (m_current->handleKey(event)) {
+
+    // A preview's own keys — zoom, pages, wrap, play — are Alt+key, docked or
+    // full-screen alike. Plain keys belong to the panel, where typing a name
+    // moves the cursor, and Ctrl chords to the application. Renderers are
+    // written against the unmodified key, so the Alt comes off before they see
+    // it; Shift stays, for `+`.
+    const Qt::KeyboardModifiers significant =
+        event->modifiers() & ~(Qt::ShiftModifier | Qt::KeypadModifier);
+    if (significant != Qt::AltModifier) {
+        return false;
+    }
+    QKeyEvent unmodified(event->type(), event->key(), event->modifiers() & ~Qt::AltModifier,
+                         event->text(), event->isAutoRepeat(), event->count());
+
+    if (m_current->handleKey(&unmodified)) {
         // The renderer may have changed page or zoom, which the footer reports.
         m_hint->setText(m_current->statusText());
         return true;

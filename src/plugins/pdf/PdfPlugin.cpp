@@ -146,7 +146,7 @@ public:
     PdfPageRenderer()
     {
         // One thread: jobs run in order and never touch the document at once,
-        // and a backlog of stale ones (holding `j` through a directory of
+        // and a backlog of stale ones (holding Down through a directory of
         // PDFs) drains in microseconds because each checks its generation
         // before doing anything.
         m_pool.setMaxThreadCount(1);

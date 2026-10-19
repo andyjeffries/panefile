@@ -1,0 +1,4 @@
+# Devteam hooks: https://github.com/andyjeffries/devteam
+[hooks]
+pre_merge  = ["scripts/ci-local.sh build"]  # in the task worktree, after the rebase; a failure blocks the merge
+post_merge = ["cmake --preset release && cmake --build --preset release && scripts/install-cli.sh"]  # in this checkout, after the fast-forward

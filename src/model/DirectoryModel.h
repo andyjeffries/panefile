@@ -105,6 +105,11 @@ Q_SIGNALS:
 private:
     void applyDelta(const fs::WatchDelta &delta);
 
+    /// Re-scans the current path and reconciles the rows in place, without the
+    /// model reset refresh() performs.
+    void rescan();
+    void mergeEntries(const QList<FileEntry> &entries);
+
     /// Re-reads one entry from disk and updates its row, or inserts it.
     /// Returns false when the entry has gone.
     bool refreshEntry(const QString &name);
@@ -125,6 +130,8 @@ private:
     std::unique_ptr<fs::DirectoryScanner> m_scanner;
     std::shared_ptr<fs::DirectoryWatcher> m_watcher;
     bool m_watchingEnabled = false;
+    bool m_rescanning = false;
+    QSet<QString> m_rescanSeen;
     bool m_thumbnailsEnabled = false;
 
     /// False until the first thumbnail request has wired this model to the

@@ -40,6 +40,7 @@ void DirectoryModel::refresh()
     // Clearing before the scan starts, rather than swapping the contents in
     // when it completes, is what makes a slow directory feel like it is loading
     // rather than like the application has frozen on the previous one.
+    m_rescanning = false;
     beginResetModel();
     m_entries.clear();
     m_error.clear();
@@ -55,9 +56,63 @@ void DirectoryModel::refresh()
     startWatching();
 }
 
+void DirectoryModel::rescan()
+{
+    // Unlike refresh(), the rows stay where they are while the scan runs and
+    // are reconciled as it reports in, so the view keeps its scroll position
+    // and the user keeps their selection and cursor.
+    m_rescanning = true;
+    m_rescanSeen.clear();
+    m_scanning = true;
+    m_scanner->scan(m_path);
+}
+
+void DirectoryModel::mergeEntries(const QList<FileEntry> &entries)
+{
+    // One name-to-row index per batch keeps the merge linear. It is rebuilt
+    // each time because watcher deltas may add or remove rows between batches.
+    QHash<QString, int> rows;
+    rows.reserve(static_cast<qsizetype>(m_entries.size() + entries.size()));
+    for (std::size_t i = 0; i < m_entries.size(); ++i) {
+        rows.insert(m_entries[i].name, static_cast<int>(i));
+    }
+
+    std::vector<FileEntry> added;
+    for (const FileEntry &entry : entries) {
+        m_rescanSeen.insert(entry.name);
+        const auto it = rows.constFind(entry.name);
+        if (it != rows.constEnd()) {
+            const int row = it.value();
+            if (std::cmp_less(row, m_entries.size())) {
+                m_entries[static_cast<std::size_t>(row)] = entry;
+                const QModelIndex changed = index(row, 0);
+                Q_EMIT dataChanged(changed, changed);
+            } else {
+                added[static_cast<std::size_t>(row) - m_entries.size()] = entry;
+            }
+            continue;
+        }
+        rows.insert(entry.name, static_cast<int>(m_entries.size() + added.size()));
+        added.push_back(entry);
+    }
+
+    if (!added.empty()) {
+        const int first = static_cast<int>(m_entries.size());
+        beginInsertRows({}, first, first + static_cast<int>(added.size()) - 1);
+        m_entries.insert(m_entries.end(), added.begin(), added.end());
+        endInsertRows();
+    }
+    Q_EMIT scanProgress(static_cast<int>(m_entries.size()));
+}
+
 void DirectoryModel::onEntriesReady(const QString &path, const QList<FileEntry> &entries)
 {
     if (path != m_path || entries.isEmpty()) {
+        return;
+    }
+
+    if (m_rescanning) {
+        mergeEntries(entries);
         return;
     }
 
@@ -258,7 +313,7 @@ void DirectoryModel::applyDelta(const fs::WatchDelta &delta)
         // §7.3's threshold was crossed, or the backend lost events. Either way
         // the deltas can no longer be trusted to describe the directory.
         qCDebug(pfFs) << "rescanning" << m_path << "after a large or lossy event burst";
-        refresh();
+        rescan();
         return;
     }
 
@@ -287,6 +342,19 @@ void DirectoryModel::onScanFinished(const QString &path, int total)
         return;
     }
     m_scanning = false;
+    if (m_rescanning) {
+        m_rescanning = false;
+        // Whatever the rescan did not report has gone since the last listing.
+        for (int row = static_cast<int>(m_entries.size()) - 1; row >= 0; --row) {
+            if (!m_rescanSeen.contains(m_entries[static_cast<std::size_t>(row)].name)) {
+                beginRemoveRows({}, row, row);
+                m_entries.erase(m_entries.begin() + row);
+                endRemoveRows();
+            }
+        }
+        m_rescanSeen.clear();
+        total = static_cast<int>(m_entries.size());
+    }
     qCDebug(pfFs) << "scan finished" << path << total << "entries";
     Q_EMIT scanFinished(path, total);
 }
@@ -297,6 +365,8 @@ void DirectoryModel::onScanFailed(const QString &path, const QString &reason)
         return;
     }
     m_scanning = false;
+    m_rescanning = false;
+    m_rescanSeen.clear();
     m_error = reason;
     qCDebug(pfFs) << "scan failed" << path << reason;
     Q_EMIT scanFailed(path, reason);

@@ -14,6 +14,7 @@
 
 #include "fs/DirectoryWatcher.h"
 #include "fs/WatchCoalescer.h"
+#include "model/DirectoryModel.h"
 
 #include <QDir>
 #include <QFile>
@@ -80,6 +81,7 @@ private Q_SLOTS:
     void watchersAreReleasedWhenDropped();
     void watchingAMissingDirectoryFailsQuietly();
     void realChangesArriveFromTheBackend();
+    void aRescanDoesNotResetTheModel();
 };
 
 void TestWatcher::singleCreate()
@@ -408,6 +410,37 @@ void TestWatcher::realChangesArriveFromTheBackend()
         }
     }
     QVERIFY2(sawIt, "the backend reported a change that did not mention the new file");
+}
+
+void TestWatcher::aRescanDoesNotResetTheModel()
+{
+    // A burst past the threshold falls back to a rescan. The view must keep its
+    // scroll position through it, which a model reset would throw away.
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    QVERIFY(QFile(directory.path() + QStringLiteral("/old.txt")).open(QIODevice::WriteOnly));
+
+    pf::DirectoryModel model;
+    model.setWatchingEnabled(true);
+    model.setPath(directory.path());
+    QTRY_VERIFY_WITH_TIMEOUT(!model.isScanning(), 5000);
+    if (!pf::fs::DirectoryWatcher::acquire(directory.path())->isActive()) {
+        QSKIP("no watch backend available here");
+    }
+    QCOMPARE(model.rowCount(), 1);
+
+    QSignalSpy resets(&model, &QAbstractItemModel::modelAboutToBeReset);
+
+    QFile::remove(directory.path() + QStringLiteral("/old.txt"));
+    for (int i = 0; i <= WatchCoalescer::kRescanThreshold + 10; ++i) {
+        QFile file(directory.path() + QStringLiteral("/f%1.txt").arg(i));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+    }
+
+    const int expected = WatchCoalescer::kRescanThreshold + 11;
+    QTRY_COMPARE_WITH_TIMEOUT(model.rowCount(), expected, 5000);
+    QCOMPARE(model.indexOfName(QStringLiteral("old.txt")), -1);
+    QCOMPARE(resets.count(), 0);
 }
 
 QTEST_MAIN(TestWatcher)

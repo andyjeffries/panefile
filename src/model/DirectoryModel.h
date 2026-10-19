@@ -88,6 +88,20 @@ public:
 
     bool isScanning() const;
 
+    /// True while a rescan is reconciling rows that are already showing, as
+    /// opposed to the initial scan that fills an empty model.
+    bool isRescanning() const;
+
+    /// Removes these rows now, ahead of the filesystem confirming it, and
+    /// remembers the names so a scan or watcher event that races the delete
+    /// cannot bring them back. Call finishRemoval() when the delete is over.
+    void expectRemoval(const QStringList &names);
+
+    /// Ends expectRemoval(): each name is re-checked on disk, and one that
+    /// still exists (the delete failed or was cancelled) gets its row back.
+    /// Deferred until a rescan in flight has ended.
+    void finishRemoval(const QStringList &names);
+
     /// Non-empty when the last scan failed; the panel renders this inline
     /// (§7.2) rather than replacing its listing with an error.
     QString errorMessage() const;
@@ -116,6 +130,9 @@ private:
 
     void removeEntry(const QString &name);
 
+    /// Forgets the pending names and restores the rows whose files remain.
+    void releaseRemovals(const QStringList &names);
+
     void startWatching();
 
     QString absolutePathFor(const FileEntry &entry) const;
@@ -132,6 +149,13 @@ private:
     bool m_watchingEnabled = false;
     bool m_rescanning = false;
     QSet<QString> m_rescanSeen;
+
+    /// Names hidden by expectRemoval() whose delete has not finished.
+    QSet<QString> m_pendingRemovals;
+
+    /// Names whose delete finished while a rescan was running; released when
+    /// the rescan ends so it cannot re-add a deleted row afterwards.
+    QStringList m_finishAfterRescan;
     bool m_thumbnailsEnabled = false;
 
     /// False until the first thumbnail request has wired this model to the

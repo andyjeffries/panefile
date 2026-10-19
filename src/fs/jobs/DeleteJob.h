@@ -29,6 +29,10 @@ public:
 
     QString description() const override;
 
+    /// Trashing is one rename per item and the panel already shows the result,
+    /// while a permanent delete of a tree can take long enough to need progress.
+    bool isQuiet() const override { return m_mode == Mode::Trash; }
+
     /// Where each trashed item ended up, in the order given. Undo needs these.
     QList<TrashedItem> trashedItems() const;
 

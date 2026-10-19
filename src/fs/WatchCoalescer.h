@@ -22,6 +22,9 @@ struct WatchDelta {
 
     /// §7.3: "Fall back to a full rescan if more than 200 events arrive in one
     /// debounce window." Also set on an overflow from the backend.
+    ///
+    /// A burst made up only of deletions still names what went in `deleted`, so
+    /// a model that already shows the result can tell the burst is its own echo.
     bool needsFullRescan = false;
 
     /// §7.3: "Detect IN_DELETE_SELF / IN_MOVE_SELF and walk the panel up to the

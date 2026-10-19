@@ -80,6 +80,12 @@ private:
     QTimer *m_appearTimer = nullptr;
 
     QHash<int, QTreeWidgetItem *> m_items;
+
+    /// Quiet jobs (see fs::Job::isQuiet) get no row and never show the bar, but
+    /// the engine still owns them, so they are tracked here to be forgotten
+    /// once they have finished.
+    QList<int> m_quietJobs;
+    QList<int> m_quietFinished;
     bool m_expanded = false;
 };
 

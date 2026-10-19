@@ -166,6 +166,9 @@ FilePanel::FilePanel(QWidget *parent)
     // A watcher can empty a directory, or fill an empty one, without a scan.
     connect(m_proxy, &QAbstractItemModel::rowsInserted, this, &FilePanel::updatePlaceholder);
     connect(m_proxy, &QAbstractItemModel::rowsRemoved, this, &FilePanel::updatePlaceholder);
+    // ...and the count in the header has to follow.
+    connect(m_proxy, &QAbstractItemModel::rowsInserted, this, &FilePanel::updateHeader);
+    connect(m_proxy, &QAbstractItemModel::rowsRemoved, this, &FilePanel::updateHeader);
     connect(m_proxy, &QAbstractItemModel::modelReset, this, &FilePanel::updatePlaceholder);
 
     connect(m_view->selectionModel(), &QItemSelectionModel::currentChanged, this,
@@ -966,6 +969,26 @@ void FilePanel::clearSelection()
     Q_EMIT selectionChanged(0);
 }
 
+void FilePanel::expectRemoval(const QStringList &names)
+{
+    bool selectionChangedNow = false;
+    for (const QString &name : names) {
+        selectionChangedNow |= m_selection.remove(name);
+    }
+    m_model->expectRemoval(names);
+    if (selectionChangedNow) {
+        m_view->viewport()->update();
+        Q_EMIT selectionChanged(static_cast<int>(m_selection.size()));
+    }
+    updateHeader();
+}
+
+void FilePanel::finishRemoval(const QStringList &names)
+{
+    m_model->finishRemoval(names);
+    updateHeader();
+}
+
 void FilePanel::selectNames(const QStringList &names)
 {
     m_selection = QSet<QString>(names.cbegin(), names.cend());
@@ -1111,7 +1134,9 @@ void FilePanel::updateHeader()
                                 : tr("%1 of %2").arg(shown).arg(total);
     }
 
-    if (m_model->isScanning()) {
+    // Not for a rescan: those rows are already on screen and being reconciled in
+    // place, so announcing a scan would flash the header for no reason.
+    if (m_model->isScanning() && !m_model->isRescanning()) {
         counts = tr("scanning… %1").arg(shown);
     }
 

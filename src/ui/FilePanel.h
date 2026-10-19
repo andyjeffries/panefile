@@ -107,6 +107,14 @@ public:
     void selectAll();
     void clearSelection();
 
+    /// Hides these entries at once, ahead of the filesystem confirming that
+    /// they are gone: drops them from the selection and from the model. The
+    /// view moves the cursor to the next surviving row itself.
+    void expectRemoval(const QStringList &names);
+
+    /// The delete is over. Anything that is still on disk comes back.
+    void finishRemoval(const QStringList &names);
+
     /// Replaces the selection with these entries — "Show in folder" asking for
     /// a file to be selected. They need not be listed yet: the selection is
     /// kept by name, so it survives the scan that is about to deliver them,

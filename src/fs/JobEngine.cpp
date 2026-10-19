@@ -31,6 +31,10 @@ struct JobEngine::Entry {
     quint64 bytesDone = 0;
     quint64 bytesTotal = 0;
     bool finished = false;
+
+    /// Cached from Job::isQuiet() at submit time, while the job is still on
+    /// the GUI thread.
+    bool quiet = false;
 };
 
 JobEngine::JobEngine(QObject *parent) : QObject(parent) {}
@@ -59,6 +63,7 @@ int JobEngine::submit(std::unique_ptr<Job> job)
     const int id = m_nextId++;
     auto entry = std::make_unique<Entry>();
     entry->description = job->description();
+    entry->quiet = job->isQuiet();
     entry->job = std::move(job);
 
     const Job *raw = entry->job.get();
@@ -147,7 +152,7 @@ void JobEngine::emitAggregate()
     int active = 0;
 
     for (const auto &[id, entry] : m_entries) {
-        if (entry->finished) {
+        if (entry->finished || entry->quiet) {
             continue;
         }
         done += entry->bytesDone;
@@ -209,6 +214,24 @@ int JobEngine::activeCount() const
 int JobEngine::queuedCount() const
 {
     return static_cast<int>(m_queue.size());
+}
+
+bool JobEngine::isQuiet(int jobId) const
+{
+    const auto found = m_entries.find(jobId);
+    return found != m_entries.end() && found->second->quiet;
+}
+
+int JobEngine::visibleCount() const
+{
+    int count = 0;
+    for (const int id : m_running) {
+        count += isQuiet(id) ? 0 : 1;
+    }
+    for (const int id : m_queue) {
+        count += isQuiet(id) ? 0 : 1;
+    }
+    return count;
 }
 
 void JobEngine::forget(int jobId)

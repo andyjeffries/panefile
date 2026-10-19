@@ -701,27 +701,65 @@ void FileOperations::startDelete(const QStringList &paths, bool permanent)
         permanent ? fs::DeleteJob::Mode::Permanent : fs::DeleteJob::Mode::Trash, paths);
 
     const fs::DeleteJob *raw = job.get();
-    const int jobId = m_engine->submit(std::move(job));
 
-    connect(m_engine, &fs::JobEngine::jobFinished, this,
-            [this, jobId, raw, permanent](int id, const fs::JobResult &result) {
-                if (id != jobId) {
-                    return;
-                }
-                if (!permanent && !result.cancelled && !raw->trashedItems().isEmpty()) {
-                    m_undoStack->push(fs::UndoEntry{.kind = fs::UndoEntry::Kind::Trash,
-                                                    .description = tr("Move to trash"),
-                                                    .movedPairs = {},
-                                                    .trashedItems = raw->trashedItems()});
-                }
-                if (!result.errors.isEmpty()) {
-                    Q_EMIT statusMessage(result.errors.first().reason);
-                }
-            });
+    // Group by parent directory: a selection comes from one panel, so this is
+    // one group in practice, but a caller may pass paths from anywhere.
+    QHash<QString, QStringList> byDirectory;
+    for (const QString &path : paths) {
+        const QFileInfo info(path);
+        byDirectory[QDir::cleanPath(info.absolutePath())].append(info.fileName());
+    }
+
+    // Applies to every panel showing the directory, not just the focused one:
+    // each has its own model. Walked afresh each time because a panel can close
+    // while the job runs.
+    const auto forMatchingPanels = [this, byDirectory](auto action) {
+        for (ui::FilePanel *candidate : m_strip->panels()) {
+            const auto found = byDirectory.constFind(QDir::cleanPath(candidate->path()));
+            if (found != byDirectory.constEnd()) {
+                action(candidate, found.value());
+            }
+        }
+    };
 
     if (panel != nullptr) {
         panel->clearSelection();
     }
+
+    // The rows go now rather than when the watcher reports the change a
+    // moment later; finishRemoval() puts back anything the job failed to
+    // remove.
+    forMatchingPanels([](ui::FilePanel *candidate, const QStringList &names) {
+        candidate->expectRemoval(names);
+    });
+
+    const int jobId = m_engine->submit(std::move(job));
+
+    auto *connection = new QMetaObject::Connection;
+    *connection =
+        connect(m_engine, &fs::JobEngine::jobFinished, this,
+                [this, jobId, raw, permanent, connection,
+                 forMatchingPanels](int id, const fs::JobResult &result) {
+                    if (id != jobId) {
+                        return;
+                    }
+                    disconnect(*connection);
+                    delete connection;
+
+                    forMatchingPanels([](ui::FilePanel *candidate, const QStringList &names) {
+                        candidate->finishRemoval(names);
+                    });
+
+                    if (!permanent && !result.cancelled && !raw->trashedItems().isEmpty()) {
+                        m_undoStack->push(fs::UndoEntry{.kind = fs::UndoEntry::Kind::Trash,
+                                                        .description = tr("Move to trash"),
+                                                        .movedPairs = {},
+                                                        .trashedItems = raw->trashedItems()});
+                    }
+                    if (!result.errors.isEmpty()) {
+                        Q_EMIT statusMessage(result.errors.first().reason);
+                    }
+                });
 }
 
 void FileOperations::undoLast()

@@ -82,6 +82,12 @@ public:
     /// Human-readable, for the process bar: "Copying 128 files".
     virtual QString description() const = 0;
 
+    /// A job whose outcome the panels show directly and which the user does
+    /// not need to watch, so it never puts the process bar on screen. Must be a
+    /// fixed property: the engine reads it on the GUI thread, before the job
+    /// moves to its worker thread.
+    virtual bool isQuiet() const { return false; }
+
     /// Runs the job to completion. Called on a worker thread.
     void run();
 

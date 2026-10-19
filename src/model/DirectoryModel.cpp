@@ -8,9 +8,24 @@
 #include <QDir>
 #include <QFileInfo>
 
+#include <algorithm>
 #include <utility>
 
 namespace pf {
+namespace {
+
+/// Whether a rescan found anything new about an entry. Ignores mimeName, which
+/// is filled in lazily and so is never part of what the scanner reports.
+bool sameListing(const FileEntry &a, const FileEntry &b)
+{
+    return a.name == b.name && a.size == b.size && a.modified == b.modified && a.mode == b.mode &&
+           a.uid == b.uid && a.gid == b.gid && a.isDir == b.isDir && a.isSymlink == b.isSymlink &&
+           a.isBroken == b.isBroken && a.isHidden == b.isHidden &&
+           a.isExecutable == b.isExecutable && a.linkTarget == b.linkTarget &&
+           a.statFailed == b.statFailed;
+}
+
+} // namespace
 
 DirectoryModel::DirectoryModel(QObject *parent)
     : QAbstractListModel(parent), m_scanner(std::make_unique<fs::DirectoryScanner>())
@@ -41,6 +56,9 @@ void DirectoryModel::refresh()
     // when it completes, is what makes a slow directory feel like it is loading
     // rather than like the application has frozen on the previous one.
     m_rescanning = false;
+    // A fresh listing is ground truth.
+    m_pendingRemovals.clear();
+    m_finishAfterRescan.clear();
     beginResetModel();
     m_entries.clear();
     m_error.clear();
@@ -80,13 +98,20 @@ void DirectoryModel::mergeEntries(const QList<FileEntry> &entries)
     std::vector<FileEntry> added;
     for (const FileEntry &entry : entries) {
         m_rescanSeen.insert(entry.name);
+        if (m_pendingRemovals.contains(entry.name)) {
+            continue;
+        }
         const auto it = rows.constFind(entry.name);
         if (it != rows.constEnd()) {
             const int row = it.value();
             if (std::cmp_less(row, m_entries.size())) {
-                m_entries[static_cast<std::size_t>(row)] = entry;
-                const QModelIndex changed = index(row, 0);
-                Q_EMIT dataChanged(changed, changed);
+                // Unchanged rows are left alone: no dataChanged, no repaint, and
+                // the resolved mimeName survives.
+                if (!sameListing(m_entries[static_cast<std::size_t>(row)], entry)) {
+                    m_entries[static_cast<std::size_t>(row)] = entry;
+                    const QModelIndex changed = index(row, 0);
+                    Q_EMIT dataChanged(changed, changed);
+                }
             } else {
                 added[static_cast<std::size_t>(row) - m_entries.size()] = entry;
             }
@@ -299,6 +324,55 @@ void DirectoryModel::removeEntry(const QString &name)
     endRemoveRows();
 }
 
+void DirectoryModel::expectRemoval(const QStringList &names)
+{
+    QList<int> rows;
+    for (const QString &name : names) {
+        m_pendingRemovals.insert(name);
+    }
+    for (std::size_t i = 0; i < m_entries.size(); ++i) {
+        if (m_pendingRemovals.contains(m_entries[i].name)) {
+            rows.append(static_cast<int>(i));
+        }
+    }
+
+    // One removal per contiguous run, from the bottom up so earlier rows keep
+    // their numbers. Removing a thousand scattered rows one at a time costs the
+    // proxy a pass over its rows each.
+    int end = static_cast<int>(rows.size()) - 1;
+    while (end >= 0) {
+        int begin = end;
+        while (begin > 0 && rows.at(begin - 1) == rows.at(begin) - 1) {
+            --begin;
+        }
+        const int first = rows.at(begin);
+        const int last = rows.at(end);
+        beginRemoveRows({}, first, last);
+        m_entries.erase(m_entries.begin() + first, m_entries.begin() + last + 1);
+        endRemoveRows();
+        end = begin - 1;
+    }
+}
+
+void DirectoryModel::finishRemoval(const QStringList &names)
+{
+    if (m_rescanning) {
+        m_finishAfterRescan.append(names);
+        return;
+    }
+    releaseRemovals(names);
+}
+
+void DirectoryModel::releaseRemovals(const QStringList &names)
+{
+    for (const QString &name : names) {
+        if (m_pendingRemovals.remove(name)) {
+            // Puts the row back only if the file is still there.
+            refreshEntry(name);
+        }
+    }
+}
+
 void DirectoryModel::applyDelta(const fs::WatchDelta &delta)
 {
     if (delta.selfGone) {
@@ -307,6 +381,25 @@ void DirectoryModel::applyDelta(const fs::WatchDelta &delta)
         // "up" is a navigation and navigation is the panel's business.
         Q_EMIT directoryVanished(m_path);
         return;
+    }
+
+    if (delta.needsFullRescan && delta.created.isEmpty() && delta.modified.isEmpty() &&
+        delta.renamed.isEmpty() && !delta.deleted.isEmpty()) {
+        // A burst of nothing but deletions. If none of those names has a row,
+        // the listing already shows the result (expectRemoval got there first),
+        // and rescanning a large folder would only repaint it for nothing.
+        QSet<QString> current;
+        current.reserve(static_cast<qsizetype>(m_entries.size()));
+        for (const FileEntry &entry : m_entries) {
+            current.insert(entry.name);
+        }
+        const bool echo =
+            std::none_of(delta.deleted.cbegin(), delta.deleted.cend(),
+                         [&current](const QString &n) { return current.contains(n); });
+        if (echo) {
+            qCDebug(pfFs) << "ignoring the echo of" << delta.deleted.size() << "deletions";
+            return;
+        }
     }
 
     if (delta.needsFullRescan) {
@@ -326,13 +419,20 @@ void DirectoryModel::applyDelta(const fs::WatchDelta &delta)
     }
     for (const auto &[from, to] : delta.renamed) {
         removeEntry(from);
-        refreshEntry(to);
+        if (!m_pendingRemovals.contains(to)) {
+            refreshEntry(to);
+        }
     }
+    // Names being deleted are skipped: finishRemoval() re-stats them anyway.
     for (const QString &name : delta.created) {
-        refreshEntry(name);
+        if (!m_pendingRemovals.contains(name)) {
+            refreshEntry(name);
+        }
     }
     for (const QString &name : delta.modified) {
-        refreshEntry(name);
+        if (!m_pendingRemovals.contains(name)) {
+            refreshEntry(name);
+        }
     }
 }
 
@@ -354,6 +454,9 @@ void DirectoryModel::onScanFinished(const QString &path, int total)
         }
         m_rescanSeen.clear();
         total = static_cast<int>(m_entries.size());
+
+        const QStringList deferred = std::exchange(m_finishAfterRescan, {});
+        releaseRemovals(deferred);
     }
     qCDebug(pfFs) << "scan finished" << path << total << "entries";
     Q_EMIT scanFinished(path, total);
@@ -367,6 +470,7 @@ void DirectoryModel::onScanFailed(const QString &path, const QString &reason)
     m_scanning = false;
     m_rescanning = false;
     m_rescanSeen.clear();
+    releaseRemovals(std::exchange(m_finishAfterRescan, {}));
     m_error = reason;
     qCDebug(pfFs) << "scan failed" << path << reason;
     Q_EMIT scanFailed(path, reason);
@@ -468,6 +572,11 @@ QHash<int, QByteArray> DirectoryModel::roleNames() const
 bool DirectoryModel::isScanning() const
 {
     return m_scanning;
+}
+
+bool DirectoryModel::isRescanning() const
+{
+    return m_rescanning;
 }
 
 QString DirectoryModel::errorMessage() const

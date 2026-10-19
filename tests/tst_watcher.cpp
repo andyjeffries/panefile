@@ -82,6 +82,20 @@ private Q_SLOTS:
     void watchingAMissingDirectoryFailsQuietly();
     void realChangesArriveFromTheBackend();
     void aRescanDoesNotResetTheModel();
+
+    // Optimistic removal
+    void aLargeDeletionBurstNamesWhatWentAway();
+    void expectRemovalHidesRowsImmediately();
+    void finishRemovalRestoresSurvivors();
+    void deletionEchoDoesNotRescanOrRepaint();
+    void rescanLeavesUnchangedRowsAlone();
+
+private:
+    static void touch(const QString &path)
+    {
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+    }
 };
 
 void TestWatcher::singleCreate()
@@ -441,6 +455,155 @@ void TestWatcher::aRescanDoesNotResetTheModel()
     QTRY_COMPARE_WITH_TIMEOUT(model.rowCount(), expected, 5000);
     QCOMPARE(model.indexOfName(QStringLiteral("old.txt")), -1);
     QCOMPARE(resets.count(), 0);
+}
+
+void TestWatcher::aLargeDeletionBurstNamesWhatWentAway()
+{
+    QList<WatchEvent> events;
+    for (int i = 0; i <= WatchCoalescer::kRescanThreshold; ++i) {
+        events.append(i % 2 == 0 ? deleted(QStringLiteral("f%1").arg(i))
+                                 : WatchEvent{.kind = WatchEvent::Kind::MovedFrom,
+                                              .name = QStringLiteral("f%1").arg(i)});
+    }
+    // A repeat of the first name is listed once.
+    events.append(deleted(QStringLiteral("f0")));
+
+    const WatchDelta delta = coalesce(events);
+
+    QVERIFY(delta.needsFullRescan);
+    QCOMPARE(delta.deleted.size(), WatchCoalescer::kRescanThreshold + 1);
+    QCOMPARE(delta.deleted.first(), QStringLiteral("f0"));
+    QVERIFY(delta.created.isEmpty());
+
+    // A single creation in the mix and the names are withheld again.
+    events.append(created(QStringLiteral("new")));
+    QVERIFY(coalesce(events).deleted.isEmpty());
+}
+
+void TestWatcher::expectRemovalHidesRowsImmediately()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    for (const char *name : {"a", "b", "c", "keep", "d", "e"}) {
+        touch(directory.path() + QLatin1Char('/') + QLatin1String(name));
+    }
+
+    pf::DirectoryModel model;
+    model.setPath(directory.path());
+    QTRY_VERIFY_WITH_TIMEOUT(!model.isScanning(), 5000);
+    QCOMPARE(model.rowCount(), 6);
+
+    QSignalSpy removed(&model, &QAbstractItemModel::rowsRemoved);
+    model.expectRemoval({"a", "b", "c", "d", "e"});
+
+    // Synchronous, and the rows went in runs rather than one signal each: the
+    // scan order is not guaranteed, so only bound the count.
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(model.entryAt(0)->name, QStringLiteral("keep"));
+    QVERIFY(removed.count() <= 5);
+    QVERIFY(removed.count() >= 1);
+}
+
+void TestWatcher::finishRemovalRestoresSurvivors()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    touch(directory.path() + QStringLiteral("/gone.txt"));
+    touch(directory.path() + QStringLiteral("/stays.txt"));
+
+    pf::DirectoryModel model;
+    model.setPath(directory.path());
+    QTRY_VERIFY_WITH_TIMEOUT(!model.isScanning(), 5000);
+
+    model.expectRemoval({"gone.txt", "stays.txt"});
+    QCOMPARE(model.rowCount(), 0);
+
+    QVERIFY(QFile::remove(directory.path() + QStringLiteral("/gone.txt")));
+    model.finishRemoval({"gone.txt", "stays.txt"});
+
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(model.entryAt(0)->name, QStringLiteral("stays.txt"));
+}
+
+void TestWatcher::deletionEchoDoesNotRescanOrRepaint()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const int count = WatchCoalescer::kRescanThreshold + 20;
+    QStringList names;
+    for (int i = 0; i < count; ++i) {
+        names << QStringLiteral("f%1.txt").arg(i);
+        touch(directory.path() + QLatin1Char('/') + names.last());
+    }
+    touch(directory.path() + QStringLiteral("/keep.txt"));
+
+    pf::DirectoryModel model;
+    model.setWatchingEnabled(true);
+    model.setPath(directory.path());
+    QTRY_VERIFY_WITH_TIMEOUT(!model.isScanning(), 5000);
+    if (!pf::fs::DirectoryWatcher::acquire(directory.path())->isActive()) {
+        QSKIP("no watch backend available here");
+    }
+    QCOMPARE(model.rowCount(), count + 1);
+
+    model.expectRemoval(names);
+    QCOMPARE(model.rowCount(), 1);
+
+    QSignalSpy started(&model, &pf::DirectoryModel::scanStarted);
+    QSignalSpy changed(&model, &QAbstractItemModel::dataChanged);
+    QSignalSpy inserted(&model, &QAbstractItemModel::rowsInserted);
+    QSignalSpy removed(&model, &QAbstractItemModel::rowsRemoved);
+    QSignalSpy resets(&model, &QAbstractItemModel::modelAboutToBeReset);
+    bool rescanned = false;
+    connect(&model, &pf::DirectoryModel::scanProgress, this,
+            [&rescanned](int) { rescanned = true; });
+
+    for (const QString &name : names) {
+        QVERIFY(QFile::remove(directory.path() + QLatin1Char('/') + name));
+    }
+    model.finishRemoval(names);
+
+    // Long enough for the debounce and for a rescan to have run, had one been
+    // started.
+    QTest::qWait(WatchCoalescer::kDefaultDebounceMs * 5);
+
+    QVERIFY(!model.isRescanning());
+    QVERIFY(!rescanned);
+    QCOMPARE(started.count(), 0);
+    QCOMPARE(changed.count(), 0);
+    QCOMPARE(inserted.count(), 0);
+    QCOMPARE(removed.count(), 0);
+    QCOMPARE(resets.count(), 0);
+    QCOMPARE(model.rowCount(), 1);
+}
+
+void TestWatcher::rescanLeavesUnchangedRowsAlone()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    for (int i = 0; i < 5; ++i) {
+        touch(directory.path() + QStringLiteral("/f%1").arg(i));
+    }
+
+    pf::DirectoryModel model;
+    model.setWatchingEnabled(true);
+    model.setPath(directory.path());
+    QTRY_VERIFY_WITH_TIMEOUT(!model.isScanning(), 5000);
+    if (!pf::fs::DirectoryWatcher::acquire(directory.path())->isActive()) {
+        QSKIP("no watch backend available here");
+    }
+
+    QSignalSpy changed(&model, &QAbstractItemModel::dataChanged);
+    QSignalSpy finished(&model, &pf::DirectoryModel::scanFinished);
+
+    // An overflow-style delta: nothing actually changed on disk.
+    pf::fs::WatchDelta overflow;
+    overflow.needsFullRescan = true;
+    Q_EMIT pf::fs::DirectoryWatcher::acquire(directory.path())->changed(overflow);
+    QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 5000);
+
+    QCOMPARE(changed.count(), 0);
+    QCOMPARE(model.rowCount(), 5);
 }
 
 QTEST_MAIN(TestWatcher)

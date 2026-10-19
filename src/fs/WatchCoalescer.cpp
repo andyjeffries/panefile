@@ -5,6 +5,8 @@
 #include <QMap>
 #include <QSet>
 
+#include <algorithm>
+
 namespace pf::fs {
 
 bool WatchDelta::isEmpty() const
@@ -23,6 +25,24 @@ WatchDelta coalesce(const QList<WatchEvent> &events)
         // means something is rewriting the directory wholesale, and the events
         // describing it are likely already incomplete.
         delta.needsFullRescan = true;
+
+        // A burst of nothing but deletions still says what went. A model that
+        // has already removed those rows can tell the burst is its own echo and
+        // skip the rescan. Anything else keeps the lists empty.
+        const bool onlyDeletions =
+            std::all_of(events.cbegin(), events.cend(), [](const WatchEvent &event) {
+                return event.kind == WatchEvent::Kind::Deleted ||
+                       event.kind == WatchEvent::Kind::MovedFrom;
+            });
+        if (onlyDeletions) {
+            QSet<QString> seen;
+            for (const WatchEvent &event : events) {
+                if (!seen.contains(event.name)) {
+                    seen.insert(event.name);
+                    delta.deleted.append(event.name);
+                }
+            }
+        }
         return delta;
     }
 

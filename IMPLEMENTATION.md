@@ -530,7 +530,7 @@ One `DirectoryWatcher` per distinct open path (refcounted — two panels on the 
 - Apply targeted `IN_CREATE` / `IN_DELETE` / `IN_MOVED_FROM` / `IN_MOVED_TO` / `IN_ATTRIB` updates to the model rather than rescanning.
 - Detect `IN_DELETE_SELF` / `IN_MOVE_SELF` and walk the panel up to the nearest existing ancestor.
 
-Fall back to a full rescan if more than 200 events arrive in one debounce window.
+Fall back to a full rescan if more than 200 events arrive in one debounce window. A burst made up only of deletions still names what went, so a model that has already removed those rows (see 7.5) needs no rescan. When a rescan does run, it reconciles rows in place and leaves unchanged rows unpainted.
 
 ### 7.4 Job engine
 
@@ -561,6 +561,8 @@ Requirements:
 - Refuse, with a clear error, to copy a directory into itself or into its own descendant.
 
 The `ProcessBar` shows the aggregate of all active jobs; expanding it (`Ctrl+G j` then `Enter`) lists each with its own progress and a cancel button. Completed jobs linger for 5 s then fade.
+
+Moving to the trash is a *quiet* job: the panels show its result directly, so it never puts the `ProcessBar` on screen. The rows vanish as soon as the delete starts, and any item that fails reappears with the error in the footer. A permanent delete removes rows the same way but keeps the process bar, since a large tree can take a while.
 
 ### 7.5 Trash
 

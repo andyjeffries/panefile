@@ -42,6 +42,12 @@ public:
     int activeCount() const;
     int queuedCount() const;
 
+    /// Whether the job is quiet (see Job::isQuiet): the process bar ignores it.
+    bool isQuiet(int jobId) const;
+
+    /// Running plus queued jobs that aren't quiet: what the process bar shows.
+    int visibleCount() const;
+
     /// Discards a finished job. Called when the process bar's five seconds are
     /// up, so results linger exactly as long as they are being shown.
     void forget(int jobId);

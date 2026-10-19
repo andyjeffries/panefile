@@ -79,7 +79,7 @@ ProcessBar::ProcessBar(fs::JobEngine *engine, QWidget *parent)
     connect(m_appearTimer, &QTimer::timeout, this, [this] {
         // Still working, so it is worth looking at. A job that finished inside
         // the delay never gets here, and the bar never appears for it.
-        if (m_engine->activeCount() > 0 || m_engine->queuedCount() > 0) {
+        if (m_engine->visibleCount() > 0) {
             Q_EMIT shouldAppear();
         }
     });
@@ -89,10 +89,16 @@ ProcessBar::ProcessBar(fs::JobEngine *engine, QWidget *parent)
     connect(m_lingerTimer, &QTimer::timeout, this, [this] {
         // §7.4: "Completed jobs linger for 5 s then fade." Only once nothing is
         // running — a job that started while the timer ran keeps the bar up.
-        if (m_engine->activeCount() == 0 && m_engine->queuedCount() == 0) {
+        if (m_engine->visibleCount() == 0) {
             for (const int id : m_items.keys()) {
                 m_engine->forget(id);
             }
+            // Only the finished ones: forget() waits on the job's thread.
+            for (const int id : m_quietFinished) {
+                m_engine->forget(id);
+                m_quietJobs.removeAll(id);
+            }
+            m_quietFinished.clear();
             m_items.clear();
             m_jobs->clear();
             Q_EMIT becameIdle();
@@ -107,6 +113,11 @@ ProcessBar::ProcessBar(fs::JobEngine *engine, QWidget *parent)
 
 void ProcessBar::onSubmitted(int jobId, const QString &description)
 {
+    if (m_engine->isQuiet(jobId)) {
+        m_quietJobs.append(jobId);
+        return;
+    }
+
     auto *item = new QTreeWidgetItem(m_jobs);
     item->setText(0, description);
     item->setText(1, tr("waiting"));
@@ -147,6 +158,10 @@ void ProcessBar::onProgress(int jobId, quint64 bytesDone, quint64 bytesTotal, in
 
 void ProcessBar::onFinished(int jobId, const fs::JobResult &result)
 {
+    if (m_quietJobs.contains(jobId)) {
+        m_quietFinished.append(jobId);
+    }
+
     QTreeWidgetItem *item = m_items.value(jobId);
     if (item != nullptr) {
         if (result.cancelled) {
@@ -169,7 +184,7 @@ void ProcessBar::onFinished(int jobId, const fs::JobResult &result)
 
 void ProcessBar::scheduleIdleCheck()
 {
-    if (m_engine->activeCount() == 0 && m_engine->queuedCount() == 0) {
+    if (m_engine->visibleCount() == 0) {
         m_appearTimer->stop();
         m_lingerTimer->start();
     }

@@ -134,6 +134,13 @@ private Q_SLOTS:
     /// Not a file:// URI: answered, and ignored.
     void otherSchemesAreIgnored()
     {
+        // A panel of its own to leave alone: ctest runs each function in a
+        // fresh process, so none of the panels opened above exist here.
+        const QString folder = m_root + QStringLiteral("/Music");
+        QVERIFY(QDir().mkpath(folder));
+        QVERIFY(call(QStringLiteral("ShowFolders"), {uri(folder + QLatin1Char('/'))}));
+        QTRY_VERIFY(panelShowing(folder) != nullptr && focusedPanel() != nullptr);
+
         const qsizetype before = panelCount();
         const QString path = focusedPanel()->path();
         QVERIFY(call(QStringLiteral("ShowItems"), {QStringLiteral("https://example.com/a.txt")}));

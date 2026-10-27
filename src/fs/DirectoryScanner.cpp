@@ -6,6 +6,7 @@
 #include <QFile>
 #include <QMimeDatabase>
 #include <QRunnable>
+#include <QThread>
 #include <QThreadPool>
 
 #include "core/WorkerPools.h"
@@ -280,20 +281,53 @@ void DirectoryScanner::scan(const QString &path)
     m_path = path;
     m_scanning = true;
 
-    // deleteLater rather than delete: the last reference may be dropped on a
-    // worker thread, and a QObject must be destroyed in the thread it lives in.
-    m_channel =
-        std::shared_ptr<Channel>(new Channel, [](Channel *channel) { channel->deleteLater(); });
+    // deleteLater when the last reference is dropped on a worker thread, since
+    // a QObject must be destroyed in the thread it lives in. On this thread it
+    // is deleted at once: a deferred delete posted as the application shuts
+    // down is never run, and leaked the channel of every panel still open.
+    m_channel = std::shared_ptr<Channel>(new Channel, [](Channel *channel) {
+        if (channel->thread() == QThread::currentThread()) {
+            delete channel;
+        } else {
+            channel->deleteLater();
+        }
+    });
 
-    connect(m_channel.get(), &Channel::started, this, &DirectoryScanner::started);
-    connect(m_channel.get(), &Channel::entriesReady, this, &DirectoryScanner::entriesReady);
+    // §7.2's "abandon rather than deliver" holds only if a signal already in
+    // the queue is dropped too: disconnecting a queued connection does not
+    // recall an event the worker posted just before the scan was superseded.
+    // Each delivery therefore checks on arrival that its scan is still the
+    // current one; the weak reference makes that safe once the channel is gone.
+    const std::weak_ptr<Channel> channel = m_channel;
+    const auto live = [channel] {
+        const auto current = channel.lock();
+        return current && !current->cancelled.load(std::memory_order_relaxed);
+    };
+
+    connect(m_channel.get(), &Channel::started, this, [this, live](const QString &scanPath) {
+        if (live()) {
+            Q_EMIT started(scanPath);
+        }
+    });
+    connect(m_channel.get(), &Channel::entriesReady, this,
+            [this, live](const QString &scanPath, const QList<FileEntry> &entries) {
+                if (live()) {
+                    Q_EMIT entriesReady(scanPath, entries);
+                }
+            });
     connect(m_channel.get(), &Channel::failed, this,
-            [this](const QString &scanPath, const QString &reason) {
+            [this, live](const QString &scanPath, const QString &reason) {
+                if (!live()) {
+                    return;
+                }
                 m_scanning = false;
                 Q_EMIT failed(scanPath, reason);
             });
     connect(m_channel.get(), &Channel::finished, this,
-            [this](const QString &scanPath, int totalCount) {
+            [this, live](const QString &scanPath, int totalCount) {
+                if (!live()) {
+                    return;
+                }
                 m_scanning = false;
                 Q_EMIT finished(scanPath, totalCount);
             });

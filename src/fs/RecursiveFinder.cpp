@@ -288,11 +288,30 @@ void RecursiveFinder::search(const QString &root, const QString &query)
 
     m_channel = std::make_shared<Channel>();
 
-    connect(m_channel.get(), &Channel::batch, this, &RecursiveFinder::resultsReady,
-            Qt::QueuedConnection);
+    // A signal the worker emitted before cancel() is already queued, and
+    // cancelling does not recall it. Each one therefore checks on arrival that
+    // its search is still the live one; the weak reference makes that safe
+    // when the worker has since let go of the channel.
+    const std::weak_ptr<Channel> channel = m_channel;
+    const auto live = [channel] {
+        const auto current = channel.lock();
+        return current && !current->cancelled.load(std::memory_order_relaxed);
+    };
+
+    connect(
+        m_channel.get(), &Channel::batch, this,
+        [this, live](const QList<FindResult> &results) {
+            if (live()) {
+                Q_EMIT resultsReady(results);
+            }
+        },
+        Qt::QueuedConnection);
     connect(
         m_channel.get(), &Channel::done, this,
-        [this](int total, bool truncated) {
+        [this, live](int total, bool truncated) {
+            if (!live()) {
+                return;
+            }
             m_channel.reset();
             Q_EMIT finished(total, truncated);
         },

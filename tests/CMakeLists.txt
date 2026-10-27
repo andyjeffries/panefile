@@ -4,11 +4,22 @@
 # GUI tests run under the offscreen platform plugin so that the whole suite is
 # runnable headless, in CI and over SSH. That is set here rather than left to
 # the caller so a bare `ctest` behaves the same as `ctest --preset dev`.
+#
+# The input method is cleared for the same reason: a desktop's QT_IM_MODULE
+# (fcitx, ibus) would otherwise load into every test, send the keys the tests
+# type to the developer's own input-method daemon, and leak at exit under ASan.
 
 # pf_add_test(<name> SOURCES ... [LIBS ...] [WRAPPER command...] [ENVIRONMENT VAR=value...])
 #
 # WRAPPER runs the test under another program — dbus-run-session, for the one
 # test that needs a session bus of its own.
+#
+# Each test *function* is a ctest test of its own, named <binary>::<function>
+# and labelled <binary>, so `ctest -j` can spread one slow binary across cores
+# instead of waiting on its functions one after another: tst_filepanel alone
+# was the whole suite's wall-clock. The functions are listed by the binary
+# itself once it links (see cmake/PanefileDiscoverTests.cmake), so a new test
+# slot is picked up without a reconfigure.
 function(pf_add_test name)
     cmake_parse_arguments(ARG "" "" "SOURCES;LIBS;WRAPPER;ENVIRONMENT" ${ARGN})
 
@@ -17,10 +28,34 @@ function(pf_add_test name)
     target_include_directories(${name} PRIVATE "${PROJECT_SOURCE_DIR}/src")
     set_target_properties(${name} PROPERTIES MACOSX_BUNDLE OFF)
 
-    add_test(NAME ${name} COMMAND ${ARG_WRAPPER} $<TARGET_FILE:${name}>)
-    set_tests_properties(${name} PROPERTIES
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_LOGGING_RULES=panefile.*.debug=false;${ARG_ENVIRONMENT}"
-        TIMEOUT 120)
+    set(command ${ARG_WRAPPER} "$<TARGET_FILE:${name}>")
+    set(environment "QT_QPA_PLATFORM=offscreen;QT_IM_MODULE=;QT_IM_MODULES=;QT_LOGGING_RULES=panefile.*.debug=false;${ARG_ENVIRONMENT}")
+    set(params "${CMAKE_CURRENT_BINARY_DIR}/${name}_params.cmake")
+    set(registered "${CMAKE_CURRENT_BINARY_DIR}/${name}_tests.cmake")
+    set(include "${CMAKE_CURRENT_BINARY_DIR}/${name}_include.cmake")
+    set(discover "${PROJECT_SOURCE_DIR}/cmake/PanefileDiscoverTests.cmake")
+
+    file(GENERATE OUTPUT "${params}" CONTENT
+        "set(name [==[${name}]==])\nset(command [==[${command}]==])\nset(environment [==[${environment}]==])\n")
+
+    # Re-listed whenever the binary relinks, and when its wrapper or
+    # environment change.
+    add_custom_command(OUTPUT "${registered}"
+        COMMAND "${CMAKE_COMMAND}" "-DPARAMS=${params}" "-DOUTPUT=${registered}" -P "${discover}"
+        DEPENDS ${name} "${params}" "${discover}"
+        COMMENT "Listing the test functions in ${name}"
+        VERBATIM)
+    add_custom_target(${name}_functions ALL DEPENDS "${registered}")
+
+    # A binary that has not been built yet still shows up, as a failure,
+    # rather than its tests silently going missing.
+    file(WRITE "${include}"
+        "if(EXISTS [==[${registered}]==])\n"
+        "    include([==[${registered}]==])\n"
+        "else()\n"
+        "    add_test([==[${name}_NOT_BUILT]==] [==[${name}_NOT_BUILT]==])\n"
+        "endif()\n")
+    set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES "${include}")
 endfunction()
 
 pf_add_test(tst_instance    SOURCES tst_instance.cpp    LIBS pf_app)

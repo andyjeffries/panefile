@@ -61,7 +61,12 @@ void dropUrls(QWidget *viewport, const QList<QUrl> &urls)
     QMimeData mime;
     mime.setUrls(urls);
     const QPoint centre = viewport->rect().center();
+    // Qt 6.12 added a QPointF constructor and deprecated the QPoint one.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 12, 0)
+    QDragEnterEvent enter(QPointF(centre), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+#else
     QDragEnterEvent enter(centre, Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+#endif
     QApplication::sendEvent(viewport, &enter);
     QDropEvent drop(QPointF(centre), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
     QApplication::sendEvent(viewport, &drop);

@@ -61,6 +61,12 @@ void TestStartupTrace::remarkingKeepsTheFirstTimestamp()
 
 void TestStartupTrace::reportListsOnlyReachedPhases()
 {
+    // Reached here rather than relied on from the tests above: ctest runs each
+    // test function in a process of its own. Re-marking keeps the first time.
+    StartupTrace::mark(StartupPhase::ProcessStart);
+    StartupTrace::mark(StartupPhase::ArgvParsed);
+    StartupTrace::mark(StartupPhase::FirstPaint);
+
     const QString report = StartupTrace::formatReport();
 
     QVERIFY(report.contains(QLatin1String("argv")));

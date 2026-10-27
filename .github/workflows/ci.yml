@@ -10,6 +10,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# ctest registers every test function separately (tests/CMakeLists.txt), and
+# most of them spend their time waiting on timers and the filesystem: run
+# them several at a time rather than one after another. Hosted runners have
+# three or four cores.
+env:
+  CTEST_PARALLEL_LEVEL: 4
+
 jobs:
   # Arch is the primary target: the newest Qt, every optional dependency
   # present, and the only job that enforces the §11 startup budget — that

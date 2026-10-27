@@ -35,7 +35,6 @@ struct DefaultBinding {
 constexpr DefaultBinding kDefaults[] = {
     // General
     {KeymapLayer::Global, "confirm", "Return"},
-    {KeymapLayer::Global, "confirm", "Right"},
     // §6.3 binds `quit` to both `q` and `Esc`. Escape is bound to `cancel`
     // instead — see the note in Application::registerGlobalActions. Quitting
     // takes the chord the platform already uses: Cmd+Q on macOS, Ctrl+Q on
@@ -107,7 +106,6 @@ constexpr DefaultBinding kDefaults[] = {
     // The wastebasket, as GNOME calls it; `t` for anyone who says trash.
     {KeymapLayer::Normal, "go_trash", "Ctrl+G w"},
     {KeymapLayer::Normal, "go_previous", "Ctrl+G p"},
-    {KeymapLayer::Global, "parent_directory", "Left"},
     {KeymapLayer::Global, "parent_directory", "Backspace"},
     {KeymapLayer::Global, "go_back", "Alt+Left"},
     {KeymapLayer::Global, "go_forward", "Alt+Right"},

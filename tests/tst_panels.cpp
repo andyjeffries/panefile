@@ -375,13 +375,13 @@ void TestPanels::navigatesWithArrows()
     pressKey(Qt::Key_Up);
     QCOMPARE(panel->cursorName(), first);
 
-    // Right enters the directory under the cursor.
-    pressKey(Qt::Key_Right);
+    // Enter enters the directory under the cursor.
+    pressKey(Qt::Key_Return);
     settle();
     QCOMPARE(panel->path(), QDir::cleanPath(path(QStringLiteral("alpha"))));
 
-    // Left goes back up, and the cursor lands on where we came from (§5.2).
-    pressKey(Qt::Key_Left);
+    // Backspace goes back up, and the cursor lands on where we came from (§5.2).
+    pressKey(Qt::Key_Backspace);
     settle();
     QCOMPARE(panel->path(), QDir::cleanPath(m_root.path()));
     QCOMPARE(panel->cursorName(), QStringLiteral("alpha"));

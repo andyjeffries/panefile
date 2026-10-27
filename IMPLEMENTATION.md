@@ -428,7 +428,7 @@ Originally derived from superfile's defaults, then reworked so that letters belo
 
 | Action id | Default | Description |
 | --- | --- | --- |
-| `confirm` | `Enter`, `Right` | Enter directory / open file |
+| `confirm` | `Enter` | Enter directory / open file |
 | `cancel` | `Esc` | Dismiss the modal, the preview, the filter or Selection mode; never quits |
 | `quit` | `Ctrl+Q` | |
 | `open_help_menu` | `F1`, `Ctrl+?` | Help modal listing all bindings |
@@ -472,7 +472,7 @@ Originally derived from superfile's defaults, then reworked so that letters belo
 | `go_config` | `Ctrl+G c` | Navigate to the config directory |
 | `go_trash` | `Ctrl+G t`, `Ctrl+G w` | Open trash view in this panel |
 | `go_previous` | `Ctrl+G p` | Last visited directory |
-| `parent_directory` | `Left`, `Backspace` | |
+| `parent_directory` | `Backspace` | |
 | `go_back` / `go_forward` | `Alt+Left` / `Alt+Right` | History |
 | `toggle_dot_file` | `.` | |
 | `search_bar` | `Ctrl+/` | Filter within current directory; `Esc` clears it |
@@ -804,7 +804,7 @@ type_ahead_timeout_ms = 1000    # how long a typed name lasts between letters (ย
 # A plain letter bound here runs its action instead of starting a typed name (ยง6.3)
 list_down    = ["j", "Down"]
 list_up      = ["k", "Up"]
-confirm      = ["Return", "Right", "l"]
+confirm      = ["Return", "l"]
 
 # Multiple simultaneous bindings, mixing modifiers
 copy_items   = ["Ctrl+C", "Meta+C", "y y"]

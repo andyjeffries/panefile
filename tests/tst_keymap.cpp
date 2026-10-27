@@ -522,7 +522,7 @@ void TestKeymap::defaultKeymapBindsTheDocumentedKeys()
     constexpr Expectation kExpectations[] = {
         {KeymapLayer::Global, "Down", "list_down"},
         {KeymapLayer::Global, "Up", "list_up"},
-        {KeymapLayer::Global, "Left", "parent_directory"},
+        {KeymapLayer::Global, "Backspace", "parent_directory"},
         {KeymapLayer::Global, "Return", "confirm"},
         {KeymapLayer::Global, "Home", "list_top"},
         {KeymapLayer::Normal, "Ctrl+G g", "list_top"},

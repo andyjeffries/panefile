@@ -78,6 +78,11 @@ Q_SIGNALS:
     /// The set of volumes changed — hotplug, or a mount state change.
     void volumesChanged();
 
+    /// The first enumeration after start() is over, whether it found anything
+    /// or not, and whether or not it could reach the service: volumes() now
+    /// says what there is. Emitted once.
+    void enumerated();
+
     /// A mount finished, with the path it landed on, so the caller can navigate
     /// there (§7.11: "Enter mounts … and navigates").
     void mounted(const QString &id, const QString &mountPoint);

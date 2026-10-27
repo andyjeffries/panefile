@@ -6,7 +6,9 @@
 #include "ui/modals/SettingsWindow.h"
 
 #include <QCheckBox>
+#include <QCoreApplication>
 #include <QFile>
+#include <QLabel>
 #include <QListWidget>
 #include <QTemporaryDir>
 #include <QTest>
@@ -64,7 +66,13 @@ private Q_SLOTS:
         QVERIFY(!QFile::exists(theme));
 
         m_settings->present();
-        QTest::qWait(50);
+        // Opening's one piece of work off the GUI thread: once its answer is
+        // shown, everything opening does has happened.
+        if (const auto *status = m_settings->findChild<QLabel *>(
+                QStringLiteral("settingsDefaultFileManagerStatus"))) {
+            QTRY_VERIFY_WITH_TIMEOUT(!status->text().isEmpty(), 5000);
+        }
+        QCoreApplication::processEvents();
 
         QVERIFY2(!QFile::exists(config), "opening settings must not create config.toml");
         QVERIFY2(!QFile::exists(theme), "opening settings must not create theme.toml");
@@ -74,7 +82,6 @@ private Q_SLOTS:
     void changingAControlWritesItsKey()
     {
         m_settings->present();
-        QTest::qWait(50);
 
         // Found by the key it writes. It defaults to true, so unchecking it is
         // a real change rather than a no-op the writer would skip.
@@ -84,7 +91,6 @@ private Q_SLOTS:
         QVERIFY(restore->isChecked());
 
         restore->setChecked(false);
-        QTest::qWait(50);
 
         const QString config = m_dir->filePath(QStringLiteral("config.toml"));
         QVERIFY2(QFile::exists(config), "changing a setting should write config.toml");
@@ -103,7 +109,6 @@ private Q_SLOTS:
                                    input::ActionCategory::General, [] {});
 
         m_settings->present();
-        QTest::qWait(50);
 
         auto *table = m_settings->findChild<QTreeWidget *>();
         QVERIFY(table != nullptr);
@@ -124,7 +129,6 @@ private Q_SLOTS:
     void theThemeListOffersTheBundledThemes()
     {
         m_settings->present();
-        QTest::qWait(50);
 
         auto *list = m_settings->findChild<QListWidget *>();
         QVERIFY(list != nullptr);

@@ -89,7 +89,7 @@ private Q_SLOTS:
         QVERIFY(QTest::qWaitForWindowExposed(m_panel.get()));
 
         m_panel->navigateTo(m_dir->path());
-        QTest::qWait(300);
+        QTRY_VERIFY_WITH_TIMEOUT(!m_panel->isLoading(), 5000);
     }
 
     void cleanupTestCase()

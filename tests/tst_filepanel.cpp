@@ -31,6 +31,8 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <algorithm>
+
 using namespace pf;
 using namespace pf::ui;
 
@@ -46,16 +48,12 @@ private:
         return m_root.path() + QLatin1Char('/') + relative;
     }
 
-    /// Navigates and waits for the scan to settle.
+    /// Navigates and waits for the scan to finish, so the listing is whole
+    /// and a remembered cursor has been applied.
     static void navigateAndSettle(FilePanel &panel, const QString &target)
     {
-        QSignalSpy pathChanged(&panel, &FilePanel::pathChanged);
         panel.navigateTo(target);
-        QTRY_VERIFY_WITH_TIMEOUT(panel.view()->model()->rowCount() > 0 || !pathChanged.isEmpty(),
-                                 5000);
-        // The row count settling is what says the scan delivered; give the
-        // queued batches a turn of the event loop to arrive.
-        QTest::qWait(150);
+        QTRY_VERIFY_WITH_TIMEOUT(!panel.isLoading(), 5000);
     }
 
 private Q_SLOTS:
@@ -534,7 +532,7 @@ void TestFilePanel::enteringADirectoryChangesPath()
     QCOMPARE(panel.cursorName(), QStringLiteral("alpha"));
 
     panel.activateCursorItem();
-    QTest::qWait(200);
+    QTRY_VERIFY_WITH_TIMEOUT(!panel.isLoading(), 5000);
 
     QCOMPARE(panel.path(), QDir::cleanPath(path(QStringLiteral("alpha"))));
     QCOMPARE(panel.view()->model()->rowCount(), 1);
@@ -550,7 +548,7 @@ void TestFilePanel::goingUpPutsTheCursorOnTheDirectoryJustLeft()
     navigateAndSettle(panel, path(QStringLiteral("alpha")));
 
     panel.goToParent();
-    QTest::qWait(200);
+    QTRY_VERIFY_WITH_TIMEOUT(!panel.isLoading(), 5000);
 
     QCOMPARE(panel.path(), QDir::cleanPath(m_root.path()));
     QCOMPARE(panel.cursorName(), QStringLiteral("alpha"));
@@ -565,11 +563,11 @@ void TestFilePanel::historyGoesBackAndForward()
     QCOMPARE(panel.path(), QDir::cleanPath(path(QStringLiteral("beta"))));
 
     QVERIFY(panel.goBack());
-    QTest::qWait(200);
+    QTRY_VERIFY_WITH_TIMEOUT(!panel.isLoading(), 5000);
     QCOMPARE(panel.path(), QDir::cleanPath(m_root.path()));
 
     QVERIFY(panel.goForward());
-    QTest::qWait(200);
+    QTRY_VERIFY_WITH_TIMEOUT(!panel.isLoading(), 5000);
     QCOMPARE(panel.path(), QDir::cleanPath(path(QStringLiteral("beta"))));
 }
 
@@ -626,8 +624,9 @@ void TestFilePanel::rendersARecognisableListing()
     navigateAndSettle(panel, m_root.path());
     panel.toggleShowHidden();
     panel.setCursorName(QStringLiteral("readme.md"));
-
-    QTest::qWait(100);
+    QTRY_VERIFY_WITH_TIMEOUT(!panel.isLoading(), 5000);
+    // Whatever those posted — layout, a repaint — is handled before the grab.
+    QCoreApplication::processEvents();
 
     const QPixmap shot = panel.grab();
     QVERIFY(!shot.isNull());
@@ -685,12 +684,17 @@ void TestFilePanel::renderWithTheme(const QString &themeName, const QString &out
     window.panelStrip()->addPanel(m_root.path());
     window.panelStrip()->addPanel(path(QStringLiteral("alpha")));
     window.panelStrip()->addPanel(QDir::homePath());
-    QTest::qWait(400);
+    const auto loading = [&window] {
+        const auto panels = window.panelStrip()->panels();
+        return std::ranges::any_of(panels,
+                                   [](const FilePanel *panel) { return panel->isLoading(); });
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(!loading(), 5000);
 
     window.panelStrip()->focusPanelAt(0);
     window.panelStrip()->focusedPanel()->setCursorName(QStringLiteral("readme.md"));
     window.showPendingKeys(QStringLiteral("g-"));
-    QTest::qWait(150);
+    QCoreApplication::processEvents();
 
     const QPixmap shot = window.grab();
     QVERIFY(!shot.isNull());
@@ -734,7 +738,7 @@ void TestFilePanel::rendersTheHelpModal()
 
     auto *help = new ui::HelpModal(registry, keymap, &window);
     help->showModal();
-    QTest::qWait(200);
+    QCoreApplication::processEvents();
 
     const QPixmap shot = window.grab();
     QVERIFY(!shot.isNull());

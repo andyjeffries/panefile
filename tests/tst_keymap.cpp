@@ -21,6 +21,7 @@
 #include <QSignalSpy>
 #include <QSpinBox>
 #include <QTest>
+#include <QTimer>
 
 using namespace pf;
 using namespace pf::input;
@@ -463,8 +464,11 @@ void TestKeymap::ambiguityResolvedByTheNextKey()
     QCOMPARE(m_fired, QStringList{"go_home"});
 
     // The shorter action must not fire afterwards when its timer would have
-    // expired — the ambiguity was already resolved.
-    QTest::qWait(50);
+    // expired — the ambiguity was already resolved, so the timer is not armed.
+    const auto *ambiguity = dispatcher.findChild<QTimer *>(QStringLiteral("ambiguityTimer"));
+    QVERIFY(ambiguity != nullptr);
+    QVERIFY(!ambiguity->isActive());
+    QVERIFY(!dispatcher.hasPending());
     QCOMPARE(m_fired, QStringList{"go_home"});
 }
 
@@ -500,8 +504,11 @@ void TestKeymap::aPausedSequenceAsksForItsHintAndWaits()
     QVERIFY(press(dispatcher, QStringLiteral("g")));
     QTRY_COMPARE_WITH_TIMEOUT(hint.size(), 1, 1000);
 
-    // Well past the sequence timeout, still waiting.
-    QTest::qWait(300);
+    // Still waiting, and no longer on a clock: the timeout that would end the
+    // sequence is not armed, so it cannot expire under someone reading.
+    const auto *expiry = dispatcher.findChild<QTimer *>(QStringLiteral("sequenceTimer"));
+    QVERIFY(expiry != nullptr);
+    QVERIFY(!expiry->isActive());
     QVERIFY(dispatcher.hasPending());
 
     QVERIFY(press(dispatcher, QStringLiteral("h")));

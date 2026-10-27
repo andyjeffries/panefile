@@ -4,7 +4,6 @@
 
 #include <QApplication>
 #include <QDir>
-#include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -59,9 +58,7 @@ private Q_SLOTS:
         m_panel = std::make_unique<FilePanel>();
         m_panel->resize(400, 400);
         m_panel->navigateTo(m_dir->path());
-
-        QSignalSpy scanned(m_panel.get(), &FilePanel::cursorChanged);
-        QTest::qWait(300);
+        QTRY_VERIFY_WITH_TIMEOUT(!m_panel->isLoading(), 5000);
     }
 
     void cleanupTestCase()

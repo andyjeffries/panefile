@@ -17,6 +17,8 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QThreadPool>
+#include <QTimer>
 
 using namespace pf;
 using namespace pf::ui;
@@ -238,7 +240,13 @@ private Q_SLOTS:
         loader.request(path, fileEntry(QStringLiteral("a.txt"), 5), &renderer);
         loader.cancel();
 
-        QTest::qWait(300);
+        // Nothing left to start the load later, nothing still running it, and
+        // nothing it posted left undelivered.
+        const auto *debounce = loader.findChild<QTimer *>(QStringLiteral("quickLookDebounce"));
+        QVERIFY(debounce != nullptr);
+        QVERIFY(!debounce->isActive());
+        QVERIFY(QuickLookLoader::pool()->waitForDone(5000));
+        QCoreApplication::processEvents();
         QCOMPARE(loaded.count(), 0);
     }
 

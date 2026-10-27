@@ -1073,6 +1073,11 @@ void FilePanel::setActive(bool active)
     update();
 }
 
+bool FilePanel::isLoading() const
+{
+    return m_model->isScanning();
+}
+
 bool FilePanel::isActive() const
 {
     return m_active;

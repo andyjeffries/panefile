@@ -159,8 +159,11 @@ WatchDelta coalesce(const QList<WatchEvent> &events)
     return delta;
 }
 
-WatchCoalescer::WatchCoalescer(QObject *parent) : QObject(parent)
+WatchCoalescer::WatchCoalescer(QObject *parent) : QObject(parent), m_timer(this)
 {
+    // Children, and named, so that a test can find the timer that would fire
+    // and check it is no longer armed, rather than waiting out its interval.
+    m_timer.setObjectName(QStringLiteral("watchDebounce"));
     m_timer.setSingleShot(true);
     m_timer.setInterval(kDefaultDebounceMs);
     connect(&m_timer, &QTimer::timeout, this, &WatchCoalescer::flush);

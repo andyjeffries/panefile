@@ -48,6 +48,10 @@ public:
     bool goForward();
 
     QString cursorName() const;
+
+    /// Whether the directory is still being read, so the listing, the count
+    /// and a cursor named before the scan are not final yet.
+    bool isLoading() const;
     void setCursorName(const QString &name);
 
     /// The cursor item's absolute path, empty when there is no cursor.

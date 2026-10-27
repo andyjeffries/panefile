@@ -21,6 +21,7 @@
 #include "ui/PanelView.h"
 
 #include <QClipboard>
+#include <QDeadlineTimer>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -29,6 +30,8 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+
+#include <functional>
 
 using namespace pf;
 
@@ -90,18 +93,15 @@ private Q_SLOTS:
         QCOMPARE(m_panel->sortKey(), SortKey::Name);
 
         bool sawMenu = false;
-        QTimer::singleShot(100, this, [&sawMenu] {
-            QWidget *popup = QApplication::activePopupWidget();
+        whenAPopupOpens([&sawMenu](QWidget *popup) {
             sawMenu = qobject_cast<QMenu *>(popup) != nullptr;
-            if (popup != nullptr) {
-                // Name is current, so one step down is Size.
-                QTest::keyClick(popup, Qt::Key_Down);
-                QTest::keyClick(popup, Qt::Key_Return);
-                // A menu the keys never reached would block exec() forever;
-                // close it so the test fails rather than hangs.
-                if (QApplication::activePopupWidget() == popup) {
-                    popup->close();
-                }
+            // Name is current, so one step down is Size.
+            QTest::keyClick(popup, Qt::Key_Down);
+            QTest::keyClick(popup, Qt::Key_Return);
+            // A menu the keys never reached would block exec() forever;
+            // close it so the test fails rather than hangs.
+            if (QApplication::activePopupWidget() == popup) {
+                popup->close();
             }
         });
         m_panel->view()->setFocus();
@@ -111,13 +111,11 @@ private Q_SLOTS:
         QCOMPARE(m_panel->sortKey(), SortKey::Size);
 
         bool escapeClosed = false;
-        QTimer::singleShot(100, this, [&escapeClosed] {
-            if (QWidget *popup = QApplication::activePopupWidget(); popup != nullptr) {
-                QTest::keyClick(popup, Qt::Key_Escape);
-                escapeClosed = QApplication::activePopupWidget() != popup;
-                if (!escapeClosed) {
-                    popup->close();
-                }
+        whenAPopupOpens([&escapeClosed](QWidget *popup) {
+            QTest::keyClick(popup, Qt::Key_Escape);
+            escapeClosed = QApplication::activePopupWidget() != popup;
+            if (!escapeClosed) {
+                popup->close();
             }
         });
         QTest::keyClick(m_panel->view(), Qt::Key_O, Qt::ControlModifier);
@@ -202,6 +200,22 @@ private Q_SLOTS:
     }
 
 private:
+    /// Runs `act` on the popup as soon as one is open. The menu runs a nested
+    /// event loop inside the key press that opens it, so this is checked from
+    /// zero-length timers, which only that loop will run. Gives up after five
+    /// seconds, leaving the caller's flag unset so the test fails.
+    void whenAPopupOpens(const std::function<void(QWidget *)> &act,
+                         QDeadlineTimer deadline = QDeadlineTimer(5000))
+    {
+        QTimer::singleShot(0, this, [this, act, deadline] {
+            if (QWidget *popup = QApplication::activePopupWidget(); popup != nullptr) {
+                act(popup);
+            } else if (!deadline.hasExpired()) {
+                whenAPopupOpens(act, deadline);
+            }
+        });
+    }
+
     QString recorded() const
     {
         QFile file(m_record);

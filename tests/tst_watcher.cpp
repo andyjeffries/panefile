@@ -18,9 +18,13 @@
 
 #include <QDir>
 #include <QFile>
+#include <QSet>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QTimer>
+
+#include <algorithm>
 
 using namespace pf::fs;
 using pf::platform::WatchEvent;
@@ -290,16 +294,34 @@ void TestWatcher::theTimerRestartsOnEachEvent()
     // An extraction produces events continuously for seconds. Reporting every
     // 150 ms through it would make the panel flicker through intermediate
     // states; the window is meant to close once the burst *stops*.
+    //
+    // A window far longer than the test, so a slow machine cannot close it
+    // between events: each event is added once the window has visibly run
+    // down, and must wind it back up to the full length.
+    constexpr int window = 60000;
     WatchCoalescer coalescer;
-    coalescer.setDebounceInterval(60);
+    coalescer.setDebounceInterval(window);
     QSignalSpy spy(&coalescer, &WatchCoalescer::delta);
+    auto *timer = coalescer.findChild<QTimer *>(QStringLiteral("watchDebounce"));
+    QVERIFY(timer != nullptr);
+    // A coarse timer rounds its deadline, so a restart inside the same rounding
+    // step would read back the same remaining time as no restart at all.
+    timer->setTimerType(Qt::PreciseTimer);
 
-    for (int i = 0; i < 5; ++i) {
+    coalescer.add(created(QStringLiteral("f0")));
+    for (int i = 1; i < 5; ++i) {
+        QTRY_VERIFY_WITH_TIMEOUT(timer->remainingTime() < window - 100, 2000);
+        const int before = timer->remainingTime();
         coalescer.add(created(QStringLiteral("f%1").arg(i)));
-        QTest::qWait(25); // shorter than the window, so it keeps restarting
+        QVERIFY2(timer->remainingTime() > before,
+                 qPrintable(QStringLiteral("%1 ms left before, %2 after")
+                                .arg(before)
+                                .arg(timer->remainingTime())));
     }
     QCOMPARE(spy.count(), 0);
 
+    // The burst is over; close the window now rather than in a minute.
+    coalescer.setDebounceInterval(0);
     QTRY_COMPARE_WITH_TIMEOUT(spy.count(), 1, 2000);
     QCOMPARE(spy.first().first().value<WatchDelta>().created.size(), 5);
 }
@@ -327,7 +349,10 @@ void TestWatcher::nothingIsEmittedWhenEverythingCancels()
     coalescer.add(created(QStringLiteral(".tmp")));
     coalescer.add(deleted(QStringLiteral(".tmp")));
 
-    QTest::qWait(120);
+    // The window closes and finds nothing left to say.
+    const auto *window = coalescer.findChild<QTimer *>(QStringLiteral("watchDebounce"));
+    QVERIFY(window != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(!window->isActive(), 2000);
     QCOMPARE(spy.count(), 0);
 }
 
@@ -344,7 +369,10 @@ void TestWatcher::resetDiscardsPendingEvents()
     coalescer.reset();
     QCOMPARE(coalescer.pendingCount(), 0);
 
-    QTest::qWait(120);
+    // Nothing left to close the window on: the debounce is not armed.
+    const auto *window = coalescer.findChild<QTimer *>(QStringLiteral("watchDebounce"));
+    QVERIFY(window != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(!window->isActive(), 2000);
     QCOMPARE(spy.count(), 0);
 }
 
@@ -558,14 +586,29 @@ void TestWatcher::deletionEchoDoesNotRescanOrRepaint()
     connect(&model, &pf::DirectoryModel::scanProgress, this,
             [&rescanned](int) { rescanned = true; });
 
+    // The model's own watcher — they are shared per path — connected after the
+    // model, so by the time this sees a delta the model has already acted on it.
+    QSignalSpy echoes(pf::fs::DirectoryWatcher::acquire(directory.path()).get(),
+                      &pf::fs::DirectoryWatcher::changed);
+    const auto echoed = [&echoes, &names] {
+        QSet<QString> deleted;
+        for (const QList<QVariant> &arguments : std::as_const(echoes)) {
+            for (const QString &name : arguments.first().value<WatchDelta>().deleted) {
+                deleted.insert(name);
+            }
+        }
+        return std::ranges::all_of(
+            names, [&deleted](const QString &name) { return deleted.contains(name); });
+    };
+
     for (const QString &name : names) {
         QVERIFY(QFile::remove(directory.path() + QLatin1Char('/') + name));
     }
     model.finishRemoval(names);
 
-    // Long enough for the debounce and for a rescan to have run, had one been
-    // started.
-    QTest::qWait(WatchCoalescer::kDefaultDebounceMs * 5);
+    // Every deletion has come back as an echo and been handled. A rescan it
+    // started would show as one in progress, or as the signals below.
+    QTRY_VERIFY_WITH_TIMEOUT(echoed(), 5000);
 
     QVERIFY(!model.isRescanning());
     QVERIFY(!rescanned);

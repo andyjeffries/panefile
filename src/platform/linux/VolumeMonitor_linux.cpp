@@ -95,6 +95,7 @@ public:
 
         if (!isAvailable()) {
             qCDebug(pfFs) << "no system bus; udisks2 unavailable";
+            Q_EMIT enumerated();
             return;
         }
 
@@ -183,9 +184,13 @@ private:
 
                     if (reply.isError()) {
                         qCDebug(pfFs) << "udisks2 enumeration failed" << reply.error().message();
-                        return;
+                    } else {
+                        rebuild(reply.value());
                     }
-                    rebuild(reply.value());
+                    if (!m_enumerated) {
+                        m_enumerated = true;
+                        Q_EMIT enumerated();
+                    }
                 });
     }
 
@@ -248,6 +253,7 @@ private:
 
     QList<Volume> m_volumes;
     bool m_started = false;
+    bool m_enumerated = false;
 
 private Q_SLOTS:
     /// Invoked by the two ObjectManager signals. A real slot rather than a

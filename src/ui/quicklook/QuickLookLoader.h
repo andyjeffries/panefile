@@ -7,6 +7,8 @@
 
 #include <memory>
 
+class QThreadPool;
+
 namespace pf::ui {
 
 /// Loads Quick Look content off the GUI thread (§7.6).
@@ -56,6 +58,9 @@ public:
     void clearCache();
 
     int cacheSize() const;
+
+    /// The pool previews load on, shared by every loader.
+    static QThreadPool *pool();
 
 Q_SIGNALS:
     void loaded(const pf::ui::QuickLookContent &content, pf::ui::QuickLookRenderer *renderer);

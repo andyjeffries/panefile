@@ -16,6 +16,7 @@
 #include "fs/jobs/DeleteJob.h"
 #include "fs/jobs/TransferJob.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QSignalSpy>
@@ -99,8 +100,8 @@ private Q_SLOTS:
             engine.submit(std::make_unique<DeleteJob>(DeleteJob::Mode::Permanent, paths));
         QVERIFY(finished.wait(5000));
 
-        // Let the queued deleteLater run, which is what frees the thread.
-        QTest::qWait(50);
+        // Run the queued deleteLater, which is what frees the thread.
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
 
         engine.forget(id);
 

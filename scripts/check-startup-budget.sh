@@ -56,7 +56,8 @@ regression_tolerance=1.15
 # twenty-four minutes before it was cancelled, which is how this got written.
 #
 # `timeout` is GNU coreutils and is absent on macOS, so the launch is backgrounded
-# and reaped by hand.
+# and a watchdog kills it if it overstays. The launch is reaped the moment it
+# exits, rather than polled for; the watchdog only matters to one that never does.
 launch_timeout_seconds=20
 
 measure_once() {
@@ -67,18 +68,26 @@ measure_once() {
         >"$output_file" 2>&1 &
     local pid=$!
 
-    local waited=0
-    while kill -0 "$pid" 2>/dev/null; do
-        if (( waited >= launch_timeout_seconds * 10 )); then
-            kill -9 "$pid" 2>/dev/null || true
-            wait "$pid" 2>/dev/null || true
-            rm -f "$output_file"
-            return 1
-        fi
-        sleep 0.1
-        ((waited++))
-    done
+    # The trap takes its sleep down with it, so a watchdog that is not needed
+    # leaves nothing behind.
+    (
+        trap 'kill "$sleeper" 2>/dev/null; exit 0' TERM
+        sleep "$launch_timeout_seconds" &
+        sleeper=$!
+        wait "$sleeper"
+        kill -9 "$pid" 2>/dev/null
+        touch "$output_file.timed-out"
+    ) &
+    local watchdog=$!
+
     wait "$pid" 2>/dev/null || true
+    kill "$watchdog" 2>/dev/null || true
+    wait "$watchdog" 2>/dev/null || true
+
+    if [[ -e "$output_file.timed-out" ]]; then
+        rm -f "$output_file" "$output_file.timed-out"
+        return 1
+    fi
 
     awk '/first-paint/ { print $3 }' "$output_file"
     rm -f "$output_file"
@@ -95,7 +104,9 @@ for ((i = 0; i < runs; ++i)); do
     if [[ -n "$sample" ]]; then
         samples+=("$sample")
     else
-        ((failures++))
+        # Not ((failures++)): that evaluates to 0 the first time, which set -e
+        # takes for a failure, and the script used to exit here in silence.
+        failures=$((failures + 1))
         # Give up early rather than spending twenty timeouts proving the same
         # point. Three in a row means the binary is not going to start.
         if (( failures >= 3 && ${#samples[@]} == 0 )); then

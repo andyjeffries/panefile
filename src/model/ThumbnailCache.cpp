@@ -441,4 +441,9 @@ int ThumbnailCache::pendingCount() const
     return static_cast<int>(m_pendingFlags.size());
 }
 
+QThreadPool *ThumbnailCache::pool()
+{
+    return thumbnailPool();
+}
+
 } // namespace pf

@@ -9,7 +9,22 @@
 
 #include <QTest>
 
+#include <chrono>
+
 using namespace pf;
+
+namespace {
+
+/// Returns once steady_clock — the trace's clock — has moved on, so a second
+/// mark cannot share the first one's timestamp. Nanoseconds, not a sleep.
+void letTheClockTick()
+{
+    const auto start = std::chrono::steady_clock::now();
+    while (std::chrono::steady_clock::now() == start) {
+    }
+}
+
+} // namespace
 
 class TestStartupTrace : public QObject
 {
@@ -36,7 +51,7 @@ void TestStartupTrace::markingRecordsMonotonicTimestamps()
 {
     StartupTrace::mark(StartupPhase::ProcessStart);
     StartupTrace::mark(StartupPhase::ArgvParsed);
-    QTest::qSleep(2);
+    letTheClockTick();
     StartupTrace::mark(StartupPhase::WindowConstructed);
 
     const qint64 argv = StartupTrace::nanosSinceStart(StartupPhase::ArgvParsed);
@@ -53,7 +68,7 @@ void TestStartupTrace::remarkingKeepsTheFirstTimestamp()
     StartupTrace::mark(StartupPhase::FirstPaint);
     const qint64 first = StartupTrace::nanosSinceStart(StartupPhase::FirstPaint);
 
-    QTest::qSleep(2);
+    letTheClockTick();
     StartupTrace::mark(StartupPhase::FirstPaint);
 
     QCOMPARE(StartupTrace::nanosSinceStart(StartupPhase::FirstPaint), first);

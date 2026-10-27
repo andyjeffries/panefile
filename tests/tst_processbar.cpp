@@ -5,21 +5,28 @@
 
 #include <QElapsedTimer>
 #include <QLabel>
+#include <QSemaphore>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
-#include <QThread>
+#include <QTimer>
+
+#include <memory>
 
 using namespace pf;
 
 namespace {
 
-/// A job that takes a while, so the appear delay can elapse while it runs.
+/// A job that is still running when the appear delay elapses: it holds until
+/// the test opens its gate, which it does once the bar has appeared, rather
+/// than sleeping for some multiple of the delay and hoping.
 class SlowJob : public fs::Job
 {
     Q_OBJECT
 
 public:
+    explicit SlowJob(std::shared_ptr<QSemaphore> gate) : m_gate(std::move(gate)) {}
+
     QString description() const override { return QStringLiteral("slow"); }
 
 protected:
@@ -31,11 +38,23 @@ protected:
     }
     void execute() override
     {
-        QThread::msleep(ui::ProcessBar::kAppearDelayMs * 3);
+        // Bounded, so a bar that never appears fails the test instead of
+        // leaving the job running for ever.
+        m_gate->tryAcquire(1, 5000);
         m_bytesDone = 100;
         m_filesDone = 1;
     }
+
+private:
+    std::shared_ptr<QSemaphore> m_gate;
 };
+
+/// Whether the bar could still appear: the delay that leads to it is armed.
+bool appearancePending(const ui::ProcessBar &bar)
+{
+    const auto *timer = bar.findChild<QTimer *>(QStringLiteral("processAppearTimer"));
+    return timer == nullptr || timer->isActive();
+}
 
 } // namespace
 
@@ -74,8 +93,9 @@ private Q_SLOTS:
         engine.submit(std::make_unique<fs::DeleteJob>(fs::DeleteJob::Mode::Permanent, paths));
         QVERIFY(finished.wait(5000));
 
-        // Well past the delay, so a bar that was going to appear would have.
-        QTest::qWait(ui::ProcessBar::kAppearDelayMs * 3);
+        // The delay is the only way the bar appears. Once it is no longer
+        // armed, a bar that was going to appear would have.
+        QTRY_VERIFY_WITH_TIMEOUT(!appearancePending(bar), 5000);
         QCOMPARE(appeared.count(), 0);
     }
 
@@ -138,7 +158,7 @@ private Q_SLOTS:
         QCOMPARE(engine.visibleCount(), 0);
 
         QVERIFY(finished.wait(5000));
-        QTest::qWait(ui::ProcessBar::kAppearDelayMs * 3);
+        QTRY_VERIFY_WITH_TIMEOUT(!appearancePending(bar), 5000);
         QCOMPARE(appeared.count(), 0);
     }
 
@@ -156,7 +176,9 @@ private Q_SLOTS:
         QSignalSpy appeared(&bar, &ui::ProcessBar::shouldAppear);
         QSignalSpy aggregate(&engine, &fs::JobEngine::aggregateProgress);
 
-        engine.submit(std::make_unique<SlowJob>());
+        const auto gate = std::make_shared<QSemaphore>();
+        connect(&bar, &ui::ProcessBar::shouldAppear, this, [gate] { gate->release(); });
+        engine.submit(std::make_unique<SlowJob>(gate));
         auto trashJob =
             std::make_unique<fs::DeleteJob>(fs::DeleteJob::Mode::Trash, QStringList{path});
         trashJob->setTrash(fs::Trash(dir.filePath(QStringLiteral("trash"))));

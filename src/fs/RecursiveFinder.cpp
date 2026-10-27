@@ -18,18 +18,6 @@
 namespace pf::fs {
 namespace {
 
-/// A dedicated pool with one thread. The walk is IO-bound and there is only
-/// ever one of them: a second would compete with the first for the same disk
-/// and deliver results no sooner.
-QThreadPool *finderPool()
-{
-    // Registered with WorkerPools so shutdown waits for it: a task still
-    // running when main() returns can reach a Qt global that static
-    // destruction has already torn down.
-    static QThreadPool *pool = WorkerPools::acquire("pf-finder", 1);
-    return pool;
-}
-
 /// Directories never worth walking, whatever .gitignore says.
 ///
 /// `.git` is the important one: it holds tens of thousands of files that no
@@ -238,6 +226,18 @@ private:
 
 } // namespace
 
+/// A dedicated pool with one thread. The walk is IO-bound and there is only
+/// ever one of them: a second would compete with the first for the same disk
+/// and deliver results no sooner.
+QThreadPool *RecursiveFinder::pool()
+{
+    // Registered with WorkerPools so shutdown waits for it: a task still
+    // running when main() returns can reach a Qt global that static
+    // destruction has already torn down.
+    static QThreadPool *instance = WorkerPools::acquire("pf-finder", 1);
+    return instance;
+}
+
 RecursiveFinder::RecursiveFinder(QObject *parent) : QObject(parent) {}
 
 RecursiveFinder::~RecursiveFinder()
@@ -317,8 +317,8 @@ void RecursiveFinder::search(const QString &root, const QString &query)
         },
         Qt::QueuedConnection);
 
-    finderPool()->start(new FindTask(m_channel, root, query, m_maxResults, m_respectGitignore,
-                                     m_fuzzy, m_includeHidden));
+    pool()->start(new FindTask(m_channel, root, query, m_maxResults, m_respectGitignore, m_fuzzy,
+                               m_includeHidden));
 }
 
 } // namespace pf::fs

@@ -250,8 +250,12 @@ private:
 
 } // namespace
 
-QuickLookLoader::QuickLookLoader(QObject *parent) : QObject(parent)
+QuickLookLoader::QuickLookLoader(QObject *parent)
+    : QObject(parent), m_debounce(this), m_spinnerDelay(this)
 {
+    // Children, and named, so that a test can find the timer that would fire
+    // and check it is no longer armed, rather than waiting out its interval.
+    m_debounce.setObjectName(QStringLiteral("quickLookDebounce"));
     m_debounce.setSingleShot(true);
     m_debounce.setInterval(kDefaultDebounceMs);
     connect(&m_debounce, &QTimer::timeout, this, &QuickLookLoader::start);
@@ -371,6 +375,11 @@ void QuickLookLoader::clearCache()
     // hundreds of megabytes, and holding them after Quick Look closes serves
     // nobody.
     m_cache.clear();
+}
+
+QThreadPool *QuickLookLoader::pool()
+{
+    return loaderPool();
 }
 
 int QuickLookLoader::cacheSize() const

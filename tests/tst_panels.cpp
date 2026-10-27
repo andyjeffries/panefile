@@ -62,7 +62,20 @@ private:
         m_dispatcher->handleKeyPress(&event);
     }
 
-    void settle() { QTest::qWait(150); }
+    /// Every panel has finished reading its directory, and what the finished
+    /// scans posted — cursor restores, relayouts — has been handled.
+    [[nodiscard]] bool settled() const
+    {
+        const bool loaded = QTest::qWaitFor(
+            [this] {
+                const auto panels = m_strip->panels();
+                return std::ranges::none_of(
+                    panels, [](const ui::FilePanel *panel) { return panel->isLoading(); });
+            },
+            5000);
+        QCoreApplication::processEvents();
+        return loaded;
+    }
 
 private Q_SLOTS:
 
@@ -175,7 +188,7 @@ void TestPanels::init()
     m_dispatcher->setActiveLayers({KeymapLayer::Normal, KeymapLayer::Global});
 
     m_strip->addPanel(m_root.path());
-    settle();
+    QVERIFY(settled());
 }
 
 void TestPanels::cleanup()
@@ -195,11 +208,11 @@ void TestPanels::startsWithOnePanel()
 void TestPanels::createsAndClosesPanels()
 {
     pressKey(Qt::Key_T, Qt::ControlModifier);
-    settle();
+    QVERIFY(settled());
     QCOMPARE(m_strip->count(), 2);
 
     pressKey(Qt::Key_Backslash, Qt::ControlModifier); // split
-    settle();
+    QVERIFY(settled());
     QCOMPARE(m_strip->count(), 3);
 
     pressKey(Qt::Key_W, Qt::ControlModifier);
@@ -225,7 +238,7 @@ void TestPanels::enforcesThePanelLimit()
     for (int i = 0; i < ui::PanelStrip::kMaxPanels + 3; ++i) {
         m_strip->addPanel(m_root.path());
     }
-    settle();
+    QVERIFY(settled());
 
     QCOMPARE(m_strip->count(), ui::PanelStrip::kMaxPanels);
     QVERIFY(limit.count() >= 1);
@@ -235,7 +248,7 @@ void TestPanels::cyclesFocusAndWraps()
 {
     m_strip->addPanel(path(QStringLiteral("alpha")));
     m_strip->addPanel(path(QStringLiteral("beta")));
-    settle();
+    QVERIFY(settled());
     QCOMPARE(m_strip->count(), 3);
 
     m_strip->focusPanelAt(0);
@@ -260,7 +273,7 @@ void TestPanels::closingFocusesTheNeighbourOnTheLeft()
     // §7.1: "Closing the focused panel moves focus to the panel on its left."
     m_strip->addPanel(path(QStringLiteral("alpha")));
     m_strip->addPanel(path(QStringLiteral("beta")));
-    settle();
+    QVERIFY(settled());
 
     m_strip->focusPanelAt(2);
     ui::FilePanel *left = m_strip->panelAt(1);
@@ -275,7 +288,7 @@ void TestPanels::closingTheLeftmostFocusesTheRight()
 {
     // "…or right if it was leftmost."
     m_strip->addPanel(path(QStringLiteral("alpha")));
-    settle();
+    QVERIFY(settled());
 
     m_strip->focusPanelAt(0);
     ui::FilePanel *right = m_strip->panelAt(1);
@@ -297,7 +310,7 @@ void TestPanels::splitCopiesViewSettingsButNotSelection()
     source->setReverseSort(true);
 
     ui::FilePanel *split = m_strip->splitFocusedPanel();
-    settle();
+    QVERIFY(settled());
 
     QVERIFY(split != nullptr);
     QCOMPARE(split->path(), source->path());
@@ -377,12 +390,12 @@ void TestPanels::navigatesWithArrows()
 
     // Enter enters the directory under the cursor.
     pressKey(Qt::Key_Return);
-    settle();
+    QVERIFY(settled());
     QCOMPARE(panel->path(), QDir::cleanPath(path(QStringLiteral("alpha"))));
 
     // Backspace goes back up, and the cursor lands on where we came from (§5.2).
     pressKey(Qt::Key_Backspace);
-    settle();
+    QVERIFY(settled());
     QCOMPARE(panel->path(), QDir::cleanPath(m_root.path()));
     QCOMPARE(panel->cursorName(), QStringLiteral("alpha"));
 }
@@ -399,7 +412,7 @@ void TestPanels::sequenceNavigatesHome()
                  QLatin1Char('-'));
 
     press(QStringLiteral("h"));
-    settle();
+    QVERIFY(settled());
 
     QVERIFY(!m_dispatcher->hasPending());
     QCOMPARE(panel->path(), QDir::cleanPath(QDir::homePath()));
@@ -412,7 +425,7 @@ void TestPanels::clickingAPanelMakesItTheActiveOne()
     // Delete after a click acted on the other panel's file.
     ui::FilePanel *first = m_strip->focusedPanel();
     ui::FilePanel *second = m_strip->addPanel(m_root.path());
-    settle();
+    QVERIFY(settled());
     m_strip->show();
     QVERIFY(QTest::qWaitForWindowActive(m_strip));
     QCOMPARE(m_strip->focusedPanel(), second);
@@ -431,7 +444,7 @@ void TestPanels::compactLayoutShowsOnlyTheFocusedPanel()
     // §7.1: below 400 px, show only the focused panel. Three columns in 400 px
     // are too narrow to read a filename in, which is worse than showing one.
     m_strip->addPanel(path(QStringLiteral("alpha")));
-    settle();
+    QVERIFY(settled());
     QCOMPARE(m_strip->count(), 2);
 
     m_strip->applyResponsiveLayout(360);
@@ -452,7 +465,7 @@ void TestPanels::panelsShareTheWidthEqually()
     m_strip->show();
     m_strip->addPanel(path(QStringLiteral("alpha")));
     m_strip->addPanel(path(QStringLiteral("beta")));
-    settle();
+    QVERIFY(settled());
 
     QCOMPARE(m_strip->count(), 3);
 

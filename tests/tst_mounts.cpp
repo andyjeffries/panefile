@@ -165,8 +165,9 @@ private Q_SLOTS:
             QSKIP("no volume service on this machine");
         }
 
+        QSignalSpy enumerated(monitor.get(), &VolumeMonitor::enumerated);
         monitor->start();
-        QTest::qWait(500);
+        QVERIFY(!enumerated.isEmpty() || enumerated.wait(5000));
 
         for (const Volume &volume : monitor->volumes()) {
             QVERIFY(!volume.id.isEmpty());

@@ -1,12 +1,16 @@
 #include "model/ThumbnailCache.h"
 
 #include <QCryptographicHash>
+#include <QDateTime>
 #include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QImageReader>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QThreadPool>
 
 using namespace pf;
 
@@ -116,9 +120,15 @@ private Q_SLOTS:
         QVERIFY(!thumbnails.lookup(path, ThumbnailCache::Size::Normal).isNull());
 
         // Rewriting the source moves its mtime on, which must invalidate the
-        // cached copy even though the file is still there.
-        QTest::qWait(1100);
+        // cached copy even though the file is still there. Thumb::MTime is in
+        // whole seconds, so the rewrite is dated two seconds on rather than
+        // waiting for the clock to get there.
+        const QDateTime before = QFileInfo(path).lastModified();
         writeImage(source, QStringLiteral("a.png"), 64, 64);
+        QFile rewritten(path);
+        QVERIFY(rewritten.open(QIODevice::ReadWrite));
+        QVERIFY(rewritten.setFileTime(before.addSecs(2), QFileDevice::FileModificationTime));
+        rewritten.close();
 
         QVERIFY(thumbnails.lookup(path, ThumbnailCache::Size::Normal).isNull());
     }
@@ -200,7 +210,10 @@ private Q_SLOTS:
         thumbnails.cancel(path);
 
         QCOMPARE(thumbnails.pendingCount(), 0);
-        QTest::qWait(400);
+        // Once the worker is done and what it posted has been delivered,
+        // anything the cancelled request was going to say has been said.
+        QVERIFY(ThumbnailCache::pool()->waitForDone(5000));
+        QCoreApplication::processEvents();
         QCOMPARE(ready.count(), 0);
     }
 };

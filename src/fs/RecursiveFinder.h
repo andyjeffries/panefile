@@ -7,6 +7,8 @@
 
 #include <memory>
 
+class QThreadPool;
+
 namespace pf::fs {
 
 /// One hit from the recursive finder.
@@ -67,6 +69,9 @@ public:
     void cancel();
 
     bool isRunning() const;
+
+    /// The pool every walk runs on: one thread, shared by every finder.
+    static QThreadPool *pool();
 
 Q_SIGNALS:
     /// A batch of hits, best-effort ordered within the batch. The receiver

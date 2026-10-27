@@ -74,6 +74,9 @@ ProcessBar::ProcessBar(fs::JobEngine *engine, QWidget *parent)
     m_jobs->hide();
     layout->addWidget(m_jobs);
 
+    // Named, so that a test can find the timer that would fire
+    // and check it is no longer armed, rather than waiting out its interval.
+    m_appearTimer->setObjectName(QStringLiteral("processAppearTimer"));
     m_appearTimer->setSingleShot(true);
     m_appearTimer->setInterval(kAppearDelayMs);
     connect(m_appearTimer, &QTimer::timeout, this, [this] {

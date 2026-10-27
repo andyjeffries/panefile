@@ -4,8 +4,10 @@
 
 #include "input/ActionRegistry.h"
 #include "app/FileOperations.h"
+#include "fs/DirectoryWatcher.h"
 #include "fs/JobEngine.h"
 #include "fs/UndoStack.h"
+#include "fs/WatchCoalescer.h"
 #include "ui/FilePanel.h"
 #include "ui/MainWindow.h"
 #include "ui/PanelStrip.h"
@@ -18,6 +20,8 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+
+#include <algorithm>
 
 #include <unistd.h>
 
@@ -64,6 +68,20 @@ private Q_SLOTS:
         panel()->setCursorName(QStringLiteral("b.txt"));
         QCOMPARE(countText(), QStringLiteral("4 items"));
 
+        // The panel's own watcher — watchers are shared per path — which will
+        // report the move to the trash back to it as a change.
+        const auto watcher = fs::DirectoryWatcher::acquire(m_dir->path());
+        QSignalSpy echoes(watcher.get(), &fs::DirectoryWatcher::changed);
+        const auto echoed = [&echoes] {
+            return std::ranges::any_of(echoes, [](const QList<QVariant> &arguments) {
+                const auto delta = arguments.first().value<fs::WatchDelta>();
+                return delta.needsFullRescan || delta.deleted.contains(QStringLiteral("b.txt")) ||
+                       std::ranges::any_of(delta.renamed, [](const auto &rename) {
+                           return rename.first == QStringLiteral("b.txt");
+                       });
+            });
+        };
+
         m_registry->invoke(QStringLiteral("delete_items"));
 
         // No event loop has run: the row is gone, the cursor has moved on, and
@@ -74,7 +92,13 @@ private Q_SLOTS:
 
         QSignalSpy finished(m_engine.get(), &fs::JobEngine::jobFinished);
         QTRY_VERIFY_WITH_TIMEOUT(finished.count() == 1, 5000);
-        QTest::qWait(400);
+
+        // And after the echo has come back and been handled — including any
+        // rescan it started — the row is still gone.
+        if (watcher->isActive()) {
+            QTRY_VERIFY_WITH_TIMEOUT(echoed(), 5000);
+        }
+        QTRY_VERIFY_WITH_TIMEOUT(!panel()->isLoading(), 5000);
 
         QCOMPARE(panel()->view()->model()->rowCount(), 3);
         QVERIFY(!QFile::exists(m_dir->filePath(QStringLiteral("b.txt"))));

@@ -7,6 +7,7 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QThreadPool>
 
 using namespace pf;
 using namespace pf::fs;
@@ -313,7 +314,10 @@ private Q_SLOTS:
         finder.cancel();
 
         QVERIFY(!finder.isRunning());
-        QTest::qWait(500);
+        // Once the walk has stopped and what it posted has been delivered,
+        // anything the cancelled search was going to say has been said.
+        QVERIFY(RecursiveFinder::pool()->waitForDone(5000));
+        QCoreApplication::processEvents();
         QCOMPARE(done.count(), 0);
     }
 };

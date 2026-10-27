@@ -90,6 +90,9 @@ public:
 
     int pendingCount() const;
 
+    /// The pool thumbnails are generated on, shared by every cache.
+    static QThreadPool *pool();
+
     /// The process-wide cache. Panels share one, because the disk cache is
     /// shared anyway and a per-panel memory tier would decode the same PNG
     /// several times over for a directory open in two panels.

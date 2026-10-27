@@ -144,7 +144,9 @@ private Q_SLOTS:
         const qsizetype before = panelCount();
         const QString path = focusedPanel()->path();
         QVERIFY(call(QStringLiteral("ShowItems"), {QStringLiteral("https://example.com/a.txt")}));
-        QTest::qWait(100);
+        // The call is handled before it is answered; this runs whatever the
+        // handling queued, had it opened something after all.
+        QCoreApplication::processEvents();
         QCOMPARE(panelCount(), before);
         QCOMPARE(focusedPanel()->path(), path);
     }

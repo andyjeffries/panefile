@@ -102,6 +102,7 @@ public:
         m_session = DASessionCreate(kCFAllocatorDefault);
         if (m_session == nullptr) {
             qCWarning(pfFs) << "could not create a DiskArbitration session";
+            Q_EMIT enumerated();
             return;
         }
 
@@ -118,7 +119,9 @@ public:
         DARegisterDiskDescriptionChangedCallback(
             m_session, nullptr, nullptr, &DiskArbitrationMonitor::onDescriptionChanged, this);
 
+        // Synchronous: the mount table is the enumeration, read here and now.
         refresh();
+        Q_EMIT enumerated();
     }
 
     QList<Volume> volumes() const override { return m_volumes; }

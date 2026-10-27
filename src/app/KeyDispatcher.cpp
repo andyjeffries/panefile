@@ -34,9 +34,16 @@ std::optional<Chord> withoutControl(const Chord &chord)
 } // namespace
 
 KeyDispatcher::KeyDispatcher(input::ActionRegistry *registry, Keymap *keymap, QObject *parent)
-    : QObject(parent), m_registry(registry), m_keymap(keymap)
+    : QObject(parent), m_registry(registry), m_keymap(keymap), m_sequenceTimer(this),
+      m_ambiguityTimer(this), m_hintTimer(this)
 {
     m_layers = {KeymapLayer::Normal, KeymapLayer::Global};
+
+    // Children, and named, so that a test can find the timer that would fire
+    // and check it is no longer armed, rather than waiting out its interval.
+    m_sequenceTimer.setObjectName(QStringLiteral("sequenceTimer"));
+    m_ambiguityTimer.setObjectName(QStringLiteral("ambiguityTimer"));
+    m_hintTimer.setObjectName(QStringLiteral("hintTimer"));
 
     m_sequenceTimer.setSingleShot(true);
     m_sequenceTimer.setInterval(kDefaultSequenceTimeoutMs);

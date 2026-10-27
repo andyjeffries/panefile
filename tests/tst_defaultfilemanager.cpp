@@ -1,12 +1,14 @@
 #include "input/ActionRegistry.h"
 #include "app/DefaultFileManagerOffer.h"
 #include "config/Config.h"
+#include "core/WorkerPools.h"
 #include "platform/DefaultFileManager.h"
 #include "platform/FileManagerService.h"
 #include "platform/linux/XdgMimeApps.h"
 #include "ui/DefaultFileManagerBar.h"
 #include "ui/MainWindow.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -683,8 +685,12 @@ private Q_SLOTS:
 
         ui::MainWindow window;
         DefaultFileManagerOffer offer(&window, nullptr);
+        const int pools = WorkerPools::registeredCount();
         offer.start(true, false, true);
-        QTest::qWait(50);
+        // Looking would mean a worker pool for the query: none was made, and
+        // nothing was left queued to build the bar later.
+        QCOMPARE(WorkerPools::registeredCount(), pools);
+        QCoreApplication::processEvents();
         QVERIFY(offer.bar() == nullptr);
     }
 

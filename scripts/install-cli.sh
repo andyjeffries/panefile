@@ -55,10 +55,25 @@ echo "installed $target -> $binary"
 # find Panefile and it can't be picked as the folder handler. The generated
 # entry runs bare `pf`, which resolves to the wrapper above as long as
 # $destination is on the session PATH.
+#
+# Both files are left alone if something is already there. `install` unlinks
+# the destination before writing, so a symlink from a dotfiles manager (stow)
+# would be silently swapped for a plain copy, and that manager then refuses to
+# run because its own target is in the way. Delete the old file to take a
+# newer entry or icon.
+install_data() {
+    local source=$1 target=$2
+    if [[ -e $target || -L $target ]]; then
+        echo "kept existing $target"
+        return
+    fi
+    install -Dm644 "$source" "$target"
+    echo "installed $target"
+}
+
 if [[ $OSTYPE != darwin* ]]; then
     data=${XDG_DATA_HOME:-$HOME/.local/share}
-    install -Dm644 "$root/build/$preset/data/panefile.desktop" "$data/applications/panefile.desktop"
-    install -Dm644 "$root/data/icons/panefile.svg" "$data/icons/hicolor/scalable/apps/panefile.svg"
+    install_data "$root/build/$preset/data/panefile.desktop" "$data/applications/panefile.desktop"
+    install_data "$root/data/icons/panefile.svg" "$data/icons/hicolor/scalable/apps/panefile.svg"
     update-desktop-database "$data/applications" 2>/dev/null || true
-    echo "installed $data/applications/panefile.desktop"
 fi

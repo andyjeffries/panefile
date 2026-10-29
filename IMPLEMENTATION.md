@@ -423,7 +423,7 @@ Reserve `Ctrl+G` as the "go" leader; the key after it is plain. Bundled defaults
 
 Originally derived from superfile's defaults, then reworked so that letters belong to type-to-select. All remappable. On macOS, `Ctrl` in these tables is `⌘`, as Qt maps it.
 
-**Policy.** No default binding starts with a key that types a character, with two deliberate exceptions: `.` (`toggle_dot_file`) and `Space` (`quick_look`). Every other default's first chord carries `Ctrl` or `Alt`, or is a key that types nothing — arrows, `Enter`, `Tab`, `Delete`, `Backspace`, F-keys and the like. This leaves printable keys free for **type-to-select**: typing in a panel moves the cursor to the first entry whose name starts with the typed text, compared case-insensitively and ignoring leading dots. Pressing the same letter repeatedly cycles through the entries starting with it. The typed text lasts `type_ahead_timeout_ms` (default 1000, in the `[keys]` table — §8.2) between keystrokes. While a name is being typed, `Space` and `.` extend it rather than running their bindings, `Backspace` deletes one character, and `Esc` abandons it. A user binding to a plain letter (§8.2) is honoured, at the cost of that letter no longer starting a typed name.
+**Policy.** No default binding starts with a key that types a character, with three deliberate exceptions: `.` (`toggle_dot_file`), `?` (`open_help_menu`, which also works mid-name) and `Space` (`quick_look`). Every other default's first chord carries `Ctrl` or `Alt`, or is a key that types nothing — arrows, `Enter`, `Tab`, `Delete`, `Backspace`, F-keys and the like. This leaves printable keys free for **type-to-select**: typing in a panel moves the cursor to the first entry whose name starts with the typed text, compared case-insensitively and ignoring leading dots. Pressing the same letter repeatedly cycles through the entries starting with it. The typed text lasts `type_ahead_timeout_ms` (default 1000, in the `[keys]` table — §8.2) between keystrokes. While a name is being typed, `Space` and `.` extend it rather than running their bindings, `Backspace` deletes one character, and `Esc` abandons it. A user binding to a plain letter (§8.2) is honoured, at the cost of that letter no longer starting a typed name.
 
 **General**
 
@@ -432,7 +432,7 @@ Originally derived from superfile's defaults, then reworked so that letters belo
 | `confirm` | `Enter` | Enter directory / open file |
 | `cancel` | `Esc` | Dismiss the modal, the preview, the filter or Selection mode; never quits |
 | `quit` | `Ctrl+Q` | |
-| `open_help_menu` | `F1`, `Ctrl+?` | Help modal listing all bindings |
+| `open_help_menu` | `F1`, `Ctrl+?`, `?` | Help modal listing all bindings |
 | `open_command_line` | `Ctrl+Shift+R` | Shell command in panel's cwd |
 | `open_panefile_prompt` | `Ctrl+K` | Command palette. A focused text field keeps `Ctrl+K` (delete to end of line) |
 | `open_fuzzy_find` | `Ctrl+F` | Recursive fuzzy finder modal |

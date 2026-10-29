@@ -564,6 +564,7 @@ void TestKeymap::defaultKeymapBindsTheDocumentedKeys()
         {KeymapLayer::Global, "Ctrl+C", "copy_items"},
         {KeymapLayer::Global, "Ctrl+V", "paste_items"},
         {KeymapLayer::Global, "Ctrl+?", "open_help_menu"},
+        {KeymapLayer::Normal, "?", "open_help_menu"},
         {KeymapLayer::Global, "Ctrl+/", "search_bar"},
         {KeymapLayer::Global, "Ctrl+O", "open_sort_options_menu"},
         {KeymapLayer::Global, "F4", "open_file_with_editor"},
@@ -615,13 +616,13 @@ void TestKeymap::defaultKeymapLeavesTextForTyping()
 
     // Typing a name in a panel moves the cursor to it, so no default may start
     // with a key that types a character. `.` (hidden files) is the one
-    // exception; Space is the other, and is a key-form chord, so it is not in
-    // this loop at all.
+    // exception, `?` (help) is another, and Space is the last, a key-form chord
+    // that is not in this loop at all.
     const QList<KeymapLayer> layers{KeymapLayer::Selection, KeymapLayer::Normal,
                                     KeymapLayer::Global};
     for (char16_t character = u'!'; character <= u'~'; ++character) {
         const QString text(QChar{character});
-        if (text == QLatin1String(".")) {
+        if (text == QLatin1String(".") || text == QLatin1String("?")) {
             continue;
         }
         const Binding binding{Chord{.modifiers = Qt::NoModifier, .key = 0, .text = text}};

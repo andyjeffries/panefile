@@ -44,6 +44,8 @@ constexpr DefaultBinding kDefaults[] = {
     // F1 is help everywhere; Ctrl+? is GTK's "keyboard shortcuts" window.
     {KeymapLayer::Global, "open_help_menu", "F1"},
     {KeymapLayer::Global, "open_help_menu", "Ctrl+?"},
+    // A bare `?` too: it is never part of a typed name, so it is always help.
+    {KeymapLayer::Normal, "open_help_menu", "?"},
     {KeymapLayer::Global, "open_command_line", "Ctrl+Shift+R"},
     // The command-palette chord, as in Slack, Linear and VS Code's quick open.
     // A focused text field keeps Ctrl+K for "delete to end of line" on Linux

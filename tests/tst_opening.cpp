@@ -19,6 +19,7 @@
 #include "ui/MainWindow.h"
 #include "ui/PanelStrip.h"
 #include "ui/PanelView.h"
+#include "ui/modals/HelpModal.h"
 
 #include <QClipboard>
 #include <QDeadlineTimer>
@@ -162,6 +163,26 @@ private Q_SLOTS:
         QCOMPARE(m_panel->showHidden(), !hidden);
         QTest::keyClick(view, Qt::Key_Period, Qt::NoModifier);
         QCOMPARE(m_panel->showHidden(), hidden);
+    }
+
+    // `?` opens the shortcut help even part-way through a typed name, rather
+    // than extending the name.
+    void questionMarkOpensHelpMidName()
+    {
+        ui::PanelView *view = m_panel->view();
+        view->setFocus();
+        QTest::keyClicks(view, QStringLiteral("my"));
+        QVERIFY(view->isTypingAhead());
+
+        QTest::keyClick(view, Qt::Key_Question, Qt::ShiftModifier);
+
+        auto *help = m_app->mainWindow()->findChild<ui::HelpModal *>();
+        QVERIFY(help != nullptr);
+        QTRY_VERIFY(help->isVisible());
+
+        help->dismiss();
+        QTest::keyClick(view, Qt::Key_Escape);
+        view->setFocus();
     }
 
     // Inside a text field, the text-editing chords edit the text. They used

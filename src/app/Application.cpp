@@ -1438,10 +1438,12 @@ bool Application::notify(QObject *receiver, QEvent *event)
         const bool unmodified =
             !(keyEvent->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier));
         const auto *panelView = qobject_cast<const ui::PanelView *>(focus);
+        // `?` is the exception: it opens the shortcut help even mid-name.
         const bool editsTypedName =
             panelView != nullptr && panelView->isTypingAhead() &&
             (keyEvent->key() == Qt::Key_Backspace || keyEvent->key() == Qt::Key_Escape ||
-             (!keyEvent->text().isEmpty() && keyEvent->text().front().isPrint()));
+             (!keyEvent->text().isEmpty() && keyEvent->text().front().isPrint() &&
+              keyEvent->text() != QLatin1String("?")));
         // A shortcut recorder is capturing: every key is its own, including the
         // ones that would otherwise open the palette or close the panel.
         const bool typing = (isTextInput(focus) && (unmodified || isTextEditingChord(keyEvent))) ||

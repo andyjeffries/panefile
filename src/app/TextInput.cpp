@@ -65,4 +65,9 @@ bool isTextEditingChord(const QKeyEvent *event)
         kEditingKeys, [event](QKeySequence::StandardKey key) { return event->matches(key); });
 }
 
+bool capturesKeys(const QWidget *widget)
+{
+    return widget != nullptr && widget->property("pfCapturesKeys").toBool();
+}
+
 } // namespace pf

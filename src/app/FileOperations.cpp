@@ -2,12 +2,15 @@
 #include "core/Format.h"
 
 #include "input/ActionRegistry.h"
+#include "app/FileKinds.h"
 #include "core/Logging.h"
 #include "fs/JobEngine.h"
 #include "fs/UndoStack.h"
 #include "fs/jobs/ArchiveJob.h"
 #include "fs/jobs/DeleteJob.h"
 #include "fs/jobs/ExtractJob.h"
+#include "fs/jobs/ImageJob.h"
+#include "fs/jobs/MediaJob.h"
 #include "fs/jobs/RenameJob.h"
 #include "fs/jobs/TransferJob.h"
 #include "ui/FilePanel.h"
@@ -26,6 +29,8 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QFileInfo>
+#include <QImageReader>
+#include <QImageWriter>
 #include <QMimeData>
 #include <QUrl>
 
@@ -762,6 +767,251 @@ void FileOperations::startDelete(const QStringList &paths, bool permanent)
                 });
 }
 
+QStringList FileOperations::targetPaths() const
+{
+    const ui::FilePanel *panel = m_strip->focusedPanel();
+    return panel != nullptr ? panel->selectedPaths() : QStringList{};
+}
+
+namespace {
+
+/// Whether Qt can write `format` here. Asked lazily and remembered: the answer
+/// is a plugin scan, and nothing needs it until the palette first opens.
+bool canWrite(const QByteArray &format)
+{
+    static const QList<QByteArray> formats = QImageWriter::supportedImageFormats();
+    return formats.contains(format);
+}
+
+/// "jpg" and "jpeg" are one format.
+QString canonicalExtension(const QString &suffix)
+{
+    const QString lower = suffix.toLower();
+    return lower == QLatin1String("jpeg") ? QStringLiteral("jpg") : lower;
+}
+
+} // namespace
+
+void FileOperations::startImageJob(fs::ImageJob::Op op)
+{
+    const QStringList paths = targetPaths();
+    if (paths.isEmpty()) {
+        return;
+    }
+
+    auto job = std::make_unique<fs::ImageJob>(op, paths);
+    const fs::ImageJob *raw = job.get();
+    const int jobId = m_engine->submit(std::move(job));
+
+    auto *connection = new QMetaObject::Connection;
+    *connection = connect(
+        m_engine, &fs::JobEngine::jobFinished, this,
+        [this, jobId, raw, op, connection](int id, const fs::JobResult &result) {
+            if (id != jobId) {
+                return;
+            }
+            disconnect(*connection);
+            delete connection;
+
+            const bool inPlace = !fs::ImageJob::isConversion(op);
+            if (inPlace && !raw->replacedItems().isEmpty()) {
+                m_undoStack->push(fs::UndoEntry{.kind = fs::UndoEntry::Kind::Replace,
+                                                .description = tr("Edit images"),
+                                                .movedPairs = {},
+                                                .trashedItems = {},
+                                                .replacedItems = raw->replacedItems()});
+            }
+            if (!result.errors.isEmpty()) {
+                Q_EMIT statusMessage(result.errors.first().reason);
+            } else if (result.cancelled) {
+                return;
+            } else if (inPlace) {
+                Q_EMIT statusMessage(tr("Changed %1 — %2 to undo")
+                                         .arg(counted(static_cast<int>(raw->replacedItems().size()),
+                                                      tr("image"), tr("images")),
+                                              undoShortcut()));
+            } else if (!raw->createdPaths().isEmpty()) {
+                Q_EMIT statusMessage(
+                    tr("Created %1")
+                        .arg(raw->createdPaths().size() == 1
+                                 ? QFileInfo(raw->createdPaths().first()).fileName()
+                                 : counted(static_cast<int>(raw->createdPaths().size()), tr("file"),
+                                           tr("files"))));
+            }
+        });
+}
+
+void FileOperations::startMediaJob(fs::MediaJob::Target target)
+{
+    const QStringList paths = targetPaths();
+    const QString ffmpeg = ffmpegPath();
+    if (paths.isEmpty() || ffmpeg.isEmpty()) {
+        return;
+    }
+
+    auto job = std::make_unique<fs::MediaJob>(target, paths, ffmpeg);
+    const fs::MediaJob *raw = job.get();
+    const int jobId = m_engine->submit(std::move(job));
+
+    auto *connection = new QMetaObject::Connection;
+    *connection =
+        connect(m_engine, &fs::JobEngine::jobFinished, this,
+                [this, jobId, raw, connection](int id, const fs::JobResult &result) {
+                    if (id != jobId) {
+                        return;
+                    }
+                    disconnect(*connection);
+                    delete connection;
+
+                    if (!result.errors.isEmpty()) {
+                        Q_EMIT statusMessage(result.errors.first().reason);
+                    } else if (!result.cancelled && !raw->createdPaths().isEmpty()) {
+                        // Conversions are not undoable, like copies (§7.13).
+                        Q_EMIT statusMessage(
+                            tr("Created %1")
+                                .arg(raw->createdPaths().size() == 1
+                                         ? QFileInfo(raw->createdPaths().first()).fileName()
+                                         : counted(static_cast<int>(raw->createdPaths().size()),
+                                                   tr("file"), tr("files"))));
+                    }
+                });
+}
+
+void FileOperations::registerFileTypeActions()
+{
+    using fs::ImageJob;
+    using fs::MediaJob;
+
+    const auto kindLabeller = [](FileKind kind) { return [kind] { return kindLabel(kind); }; };
+
+    // ----------------------------------------------------------------- images
+    struct Convert {
+        const char *id;
+        QString description;
+        ImageJob::Op op;
+    };
+    const QList<Convert> converts{
+        {.id = "convert_image_to_png",
+         .description = tr("Convert the selected images to PNG"),
+         .op = ImageJob::Op::ConvertPng},
+        {.id = "convert_image_to_jpeg",
+         .description = tr("Convert the selected images to JPEG"),
+         .op = ImageJob::Op::ConvertJpeg},
+        {.id = "convert_image_to_webp",
+         .description = tr("Convert the selected images to WebP"),
+         .op = ImageJob::Op::ConvertWebp},
+        {.id = "convert_image_to_avif",
+         .description = tr("Convert the selected images to AVIF"),
+         .op = ImageJob::Op::ConvertAvif},
+    };
+    for (const Convert &convert : converts) {
+        const ImageJob::Op op = convert.op;
+        m_registry->registerContextualAction(
+            QString::fromLatin1(convert.id), convert.description, ActionCategory::FileOperations,
+            [this, op] { startImageJob(op); },
+            [this, op] {
+                const QStringList paths = targetPaths();
+                if (!canWrite(ImageJob::formatFor(op)) || !allOfKind(paths, FileKind::Image)) {
+                    return false;
+                }
+                // Offered unless every file is already in the target format.
+                const QString target = ImageJob::extensionFor(op);
+                return std::ranges::any_of(paths, [&target](const QString &path) {
+                    return canonicalExtension(QFileInfo(path).suffix()) != target;
+                });
+            },
+            kindLabeller(FileKind::Image));
+    }
+
+    struct Edit {
+        const char *id;
+        QString description;
+        ImageJob::Op op;
+    };
+    const QList<Edit> edits{
+        {.id = "rotate_image_left",
+         .description = tr("Rotate the selected images left"),
+         .op = ImageJob::Op::RotateLeft},
+        {.id = "rotate_image_right",
+         .description = tr("Rotate the selected images right"),
+         .op = ImageJob::Op::RotateRight},
+        {.id = "flip_image_horizontally",
+         .description = tr("Flip the selected images horizontally"),
+         .op = ImageJob::Op::FlipHorizontal},
+        {.id = "flip_image_vertically",
+         .description = tr("Flip the selected images vertically"),
+         .op = ImageJob::Op::FlipVertical},
+    };
+    for (const Edit &edit : edits) {
+        const ImageJob::Op op = edit.op;
+        m_registry->registerContextualAction(
+            QString::fromLatin1(edit.id), edit.description, ActionCategory::FileOperations,
+            [this, op] { startImageJob(op); },
+            [this] {
+                const QStringList paths = targetPaths();
+                if (!allOfKind(paths, FileKind::Image)) {
+                    return false;
+                }
+                // In place, so only formats Qt can write back.
+                return std::ranges::all_of(paths, [](const QString &path) {
+                    return canWrite(QImageReader::imageFormat(path));
+                });
+            },
+            kindLabeller(FileKind::Image));
+    }
+
+    // ------------------------------------------------------- video and audio
+    struct Media {
+        const char *id;
+        QString description;
+        MediaJob::Target target;
+        FileKind kind;
+    };
+    const QList<Media> media{
+        {.id = "convert_video_to_mp4",
+         .description = tr("Convert the selected videos to MP4"),
+         .target = MediaJob::Target::VideoMp4,
+         .kind = FileKind::Video},
+        {.id = "convert_video_to_webm",
+         .description = tr("Convert the selected videos to WebM"),
+         .target = MediaJob::Target::VideoWebm,
+         .kind = FileKind::Video},
+        {.id = "convert_video_to_gif",
+         .description = tr("Convert the selected videos to GIF"),
+         .target = MediaJob::Target::VideoGif,
+         .kind = FileKind::Video},
+        {.id = "extract_audio_to_mp3",
+         .description = tr("Extract the audio of the selected videos to MP3"),
+         .target = MediaJob::Target::VideoAudioMp3,
+         .kind = FileKind::Video},
+        {.id = "convert_audio_to_mp3",
+         .description = tr("Convert the selected audio to MP3"),
+         .target = MediaJob::Target::AudioMp3,
+         .kind = FileKind::Audio},
+        {.id = "convert_audio_to_flac",
+         .description = tr("Convert the selected audio to FLAC"),
+         .target = MediaJob::Target::AudioFlac,
+         .kind = FileKind::Audio},
+        {.id = "convert_audio_to_wav",
+         .description = tr("Convert the selected audio to WAV"),
+         .target = MediaJob::Target::AudioWav,
+         .kind = FileKind::Audio},
+        {.id = "convert_audio_to_ogg",
+         .description = tr("Convert the selected audio to Ogg"),
+         .target = MediaJob::Target::AudioOgg,
+         .kind = FileKind::Audio},
+    };
+    for (const Media &entry : media) {
+        const MediaJob::Target target = entry.target;
+        const FileKind kind = entry.kind;
+        m_registry->registerContextualAction(
+            QString::fromLatin1(entry.id), entry.description, ActionCategory::FileOperations,
+            [this, target] { startMediaJob(target); },
+            [this, kind] { return !ffmpegPath().isEmpty() && allOfKind(targetPaths(), kind); },
+            kindLabeller(kind));
+    }
+}
+
 void FileOperations::undoLast()
 {
     QString error;
@@ -802,8 +1052,17 @@ void FileOperations::registerActions()
     // unreachable from the running application.
     reg("compress_file", tr("Compress the selection into an archive"),
         [this] { compressSelection(); });
-    reg("extract_file", tr("Extract the archive under the cursor"),
-        [this] { extractCursorItem(); });
+    m_registry->registerContextualAction(
+        QStringLiteral("extract_file"), tr("Extract the archive under the cursor"),
+        ActionCategory::FileOperations, [this] { extractCursorItem(); },
+        [this] {
+            const ui::FilePanel *panel = m_strip->focusedPanel();
+            return panel != nullptr && !panel->cursorPath().isEmpty() &&
+                   kindOf(panel->cursorPath()) == FileKind::Archive;
+        },
+        [] { return kindLabel(FileKind::Archive); });
+
+    registerFileTypeActions();
 
     reg("file_panel_item_create", tr("Create a file, or a directory with a trailing “/”"),
         [this] { createItem(); });

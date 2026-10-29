@@ -313,12 +313,13 @@ Regions:
 
 | Region | Widget | Toggle | Notes |
 | --- | --- | --- | --- |
-| Sidebar | `Sidebar` | `Ctrl+G s` focuses, `Ctrl+S` toggles visibility | Home, XDG user dirs, pinned dirs, mounted volumes |
+| Sidebar | `Sidebar` | `Ctrl+G s` focuses, `Ctrl+S` toggles visibility | Your own sections of folders and files, arranged by dragging and saved to `sidebar.ini`; the Wastebasket and mounted volumes below them |
 | Panel strip | `PanelStrip` | always visible | `QSplitter(Qt::Horizontal)` of `FilePanel`s |
 | Quick Look | `QuickLook` | `Space` | Floating overlay by default; dockable — see §7.6 |
 | Footer | `Footer` | `Ctrl+J` | Metadata for cursor item; permissions, owner, size, mtime, MIME |
 | Process bar | `ProcessBar` | auto-shows when jobs active; `Ctrl+G j` focuses | Aggregate progress, expandable to per-job list |
-| Prompt | `Prompt` | `Ctrl+Shift+R` shell, `Ctrl+Shift+P` internal | Single-line, overlays the footer |
+| Prompt | `Prompt` | `Ctrl+Shift+R` shell | Single-line, overlays the footer |
+| Command palette | `CommandPaletteModal` | `Ctrl+K` (`⌘K` on macOS; changeable in Settings → Keys) | Fuzzy search over actions for the selection, every other action, and sidebar places |
 
 Panel widths are equal by default and user-draggable via the splitter. `Ctrl+=` resets to equal.
 
@@ -364,7 +365,7 @@ Modals are frameless child widgets centred over the main window with a dimmed ba
 | --- | --- | --- |
 | `Normal` | default | Panel bindings active; typing a name moves the cursor to it (§6.3) |
 | `Selection` | `Ctrl+Shift+V` | Movement extends the selection; a badge shows in the panel header |
-| `Typing` | `Ctrl+/`, `Ctrl+Shift+R`, `Ctrl+Shift+P`, or any input modal | All single-key bindings suspended; only `confirm_typing`/`cancel_typing` and editing keys apply |
+| `Typing` | `Ctrl+/`, `Ctrl+Shift+R`, or any input modal | All single-key bindings suspended; only `confirm_typing`/`cancel_typing` and editing keys apply |
 
 Mode is **per panel**, except `Typing` which is global while an input has focus.
 
@@ -433,7 +434,7 @@ Originally derived from superfile's defaults, then reworked so that letters belo
 | `quit` | `Ctrl+Q` | |
 | `open_help_menu` | `F1`, `Ctrl+?` | Help modal listing all bindings |
 | `open_command_line` | `Ctrl+Shift+R` | Shell command in panel's cwd |
-| `open_panefile_prompt` | `Ctrl+Shift+P` | Internal command prompt (action ids) |
+| `open_panefile_prompt` | `Ctrl+K` | Command palette. A focused text field keeps `Ctrl+K` (delete to end of line) |
 | `open_fuzzy_find` | `Ctrl+F` | Recursive fuzzy finder modal |
 | `open_settings` | `Ctrl+,` | |
 | `toggle_theme_dark_light` | — | No default; menu and command prompt only |
@@ -480,6 +481,8 @@ Originally derived from superfile's defaults, then reworked so that letters belo
 | `select_all` | `Ctrl+A` | Select every visible entry |
 | `select_up` / `select_down` | `Shift+Up` / `Shift+Down` in either mode; `Up` / `Down` in Selection mode | Extend the selection. In Normal mode, a plain arrow (or typing a name) afterwards clears it |
 | `pinned_directory` | `Ctrl+Shift+D` | Pin/unpin to sidebar |
+| `sidebar_move_entry_up` / `sidebar_move_entry_down` | `Alt+Up` / `Alt+Down` | Move the focused sidebar entry; at a section's edge it crosses into the neighbouring section |
+| `sidebar_new_section` | | Add a section (also in the application menu) |
 
 **File operations**
 
@@ -491,6 +494,12 @@ Originally derived from superfile's defaults, then reworked so that letters belo
 | `copy_items` / `cut_items` | `Ctrl+C` / `Ctrl+X` | |
 | `paste_items` | `Ctrl+V` | |
 | `undo` | `Ctrl+Z` | §7.13 |
+| `convert_image_to_png` / `_jpeg` / `_webp` / `_avif` | | Convert the selected images beside the originals. Only formats Qt can write |
+| `rotate_image_left` / `_right`, `flip_image_horizontally` / `_vertically` | | Edit the selected images in place; the original goes to the trash first (Replace undo) |
+| `convert_video_to_mp4` / `_webm` / `_gif`, `extract_audio_to_mp3` | | Through `ffmpeg`, when installed. Not undoable |
+| `convert_audio_to_mp3` / `_flac` / `_wav` / `_ogg` | | Through `ffmpeg`, when installed. Not undoable |
+
+The image and media actions, `extract_file`, `open_with_default_app` and `open_file_with_editor` are *contextual*: the command palette lists them first, under the kind of file selected. None has a default key; bind them in `hotkeys.toml`.
 | `delete_items` | `Delete` | To trash. Not `Ctrl+D`, which is `page_down` |
 | `permanently_delete_items` | `Shift+Delete` | Confirms twice |
 | `copy_path` | `Ctrl+P` | Absolute path(s) to clipboard |
@@ -720,7 +729,7 @@ Note: on Wayland, a drag must originate from a genuine pointer press-and-move �
 
 ### 7.13 Undo
 
-Maintain a bounded stack (50 entries) of undoable operations: move, rename, bulk rename, trash. `Ctrl+Z` undoes the last. Copy and permanent delete are **not** undoable and must be labelled as such in the confirmation. Undo of a trash operation restores from trash by `.trashinfo` path.
+Maintain a bounded stack (50 entries) of undoable operations: move, rename, bulk rename, trash. `Ctrl+Z` undoes the last. Copy and permanent delete are **not** undoable and must be labelled as such in the confirmation. Undo of a trash operation restores from trash by `.trashinfo` path. In-place image edits (rotate, flip) push a *Replace* entry: the original was trashed before the edit was written, and undo trashes the edited file and restores the original. Image and media conversions create new files and, like copies, are not undoable.
 
 ---
 
@@ -735,7 +744,7 @@ XDG paths, all under `$XDG_CONFIG_HOME/panefile/` (default `~/.config/panefile/`
 | `theme.toml` | Active theme name, or inline overrides |
 | `themes/*.toml` | User themes (bundled ones live in `$PREFIX/share/panefile/themes/`) |
 
-State (pinned dirs, session, window geometry) goes to `$XDG_DATA_HOME/panefile/`, **not** the config dir. Never write to a user's config file.
+State goes to `$XDG_DATA_HOME/panefile/`, **not** the config dir. Never write to a user's config file. `session.ini` holds panels and window geometry; `sidebar.ini` holds the sidebar's sections and entries and is written whenever they change, whether or not `restore_session` is on. A first run after upgrading builds `sidebar.ini` from the pins and removed places the old `session.ini` held.
 
 ### 8.1 `config.toml`
 

@@ -35,6 +35,29 @@ void ActionRegistry::registerAction(const QString &id, const QString &descriptio
                           .isEnabled = std::move(isEnabled)});
 }
 
+void ActionRegistry::registerContextualAction(const QString &id, const QString &description,
+                                              ActionCategory category,
+                                              std::function<void()> handler,
+                                              std::function<bool()> isEnabled,
+                                              std::function<QString()> contextLabel)
+{
+    registerAction(Action{.id = id,
+                          .description = description,
+                          .category = category,
+                          .handler = std::move(handler),
+                          .isEnabled = std::move(isEnabled),
+                          .contextual = true,
+                          .contextLabel = std::move(contextLabel)});
+}
+
+void ActionRegistry::markContextual(const QString &id, std::function<QString()> contextLabel)
+{
+    if (const auto found = m_actions.find(id); found != m_actions.end()) {
+        found->contextual = true;
+        found->contextLabel = std::move(contextLabel);
+    }
+}
+
 bool ActionRegistry::invoke(const QString &id)
 {
     const auto found = m_actions.constFind(id);

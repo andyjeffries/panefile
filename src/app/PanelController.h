@@ -43,6 +43,10 @@ public:
     /// resolved: in the focused panel, or in a new one (§10.2).
     void openPath(const QString &path, bool inNewPanel);
 
+    /// Shows `path` in its folder in the focused panel, cursor on it — or opens
+    /// the folder when there is no panel.
+    void revealPath(const QString &path);
+
 Q_SIGNALS:
     void statusMessage(const QString &message);
 

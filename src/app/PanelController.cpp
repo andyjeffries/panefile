@@ -49,6 +49,25 @@ void PanelController::openPath(const QString &path, bool inNewPanel)
     m_strip->focusedPanel()->navigateTo(path);
 }
 
+void PanelController::revealPath(const QString &path)
+{
+    if (m_strip == nullptr) {
+        return;
+    }
+
+    const QFileInfo info(path);
+    if (m_strip->focusedPanel() == nullptr) {
+        openPath(info.absolutePath(), false);
+        return;
+    }
+
+    // §7.8's result behaviour: the folder, with the cursor on the item, so the
+    // next keystroke acts on it.
+    ui::FilePanel *panel = m_strip->focusedPanel();
+    panel->navigateTo(info.absolutePath());
+    panel->setCursorName(info.fileName());
+}
+
 void PanelController::showSortMenu(ui::FilePanel *panel)
 {
     // A menu rather than a modal: there are five choices and a checkmark says
@@ -197,6 +216,13 @@ void PanelController::registerActions()
         }));
 
     // -------------------------------------------------------- handing off
+    // Both of these act on the cursor item, so they are offered first in the
+    // command palette — and only when there is one.
+    const auto hasCursorItem = [this] {
+        const ui::FilePanel *panel = m_strip->focusedPanel();
+        return panel != nullptr && !panel->cursorPath().isEmpty();
+    };
+
     reg("open_with_default_app", tr("Open with the default application"), ActionCategory::General,
         onPanel([this](ui::FilePanel *panel) {
             const QString path = panel->cursorPath();
@@ -206,7 +232,9 @@ void PanelController::registerActions()
             if (!platform::Launcher::openWithDefaultApplication(path)) {
                 Q_EMIT statusMessage(tr("Could not open %1").arg(QFileInfo(path).fileName()));
             }
-        }));
+        }),
+        hasCursorItem);
+    m_registry->markContextual(QStringLiteral("open_with_default_app"));
 
     reg("open_terminal_here", tr("Open a terminal in this directory"), ActionCategory::General,
         onPanel([this](ui::FilePanel *panel) {
@@ -224,7 +252,9 @@ void PanelController::registerActions()
             if (!platform::Launcher::openInEditor(path)) {
                 Q_EMIT statusMessage(tr("Could not open an editor — set $EDITOR"));
             }
-        }));
+        }),
+        hasCursorItem);
+    m_registry->markContextual(QStringLiteral("open_file_with_editor"));
 
     reg("open_current_directory_with_editor", tr("Open this directory in $EDITOR"),
         ActionCategory::General, onPanel([this](ui::FilePanel *panel) {
@@ -292,6 +322,22 @@ void PanelController::registerActions()
             Q_EMIT statusMessage(pinned ? tr("Pinned %1").arg(panel->path())
                                         : tr("Unpinned %1").arg(panel->path()));
         }));
+
+    // Enabled only with the sidebar focused: a disabled action invoked from a
+    // key is a silent no-op, so Alt+Up and Alt+Down stay free for panels.
+    const auto sidebarCanMove = [this] {
+        return m_sidebar != nullptr && m_sidebar->canMoveCurrentEntry();
+    };
+    reg(
+        "sidebar_move_entry_up", tr("Move the sidebar entry up"), ActionCategory::Panels,
+        [this] { m_sidebar->moveCurrentEntry(-1); }, sidebarCanMove);
+    reg(
+        "sidebar_move_entry_down", tr("Move the sidebar entry down"), ActionCategory::Panels,
+        [this] { m_sidebar->moveCurrentEntry(1); }, sidebarCanMove);
+    reg(
+        "sidebar_new_section", tr("Add a section to the sidebar"), ActionCategory::Panels,
+        [this] { Q_EMIT m_sidebar->newSectionRequested(QString()); },
+        [this] { return m_sidebar != nullptr; });
 
     // -------------------------------------------------------------------- misc
     reg("copy_present_working_directory", tr("Copy this panel's path to the clipboard"),

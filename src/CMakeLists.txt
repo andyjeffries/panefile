@@ -135,9 +135,11 @@ pf_layer_library(pf_fs
         fs/jobs/ArchiveJob.cpp
         fs/jobs/DeleteJob.cpp
         fs/jobs/ExtractJob.cpp
+        fs/jobs/ImageJob.cpp
+        fs/jobs/MediaJob.cpp
         fs/jobs/RenameJob.cpp
         fs/jobs/TransferJob.cpp
-    PUBLIC_DEPENDS Qt6::Core pf_core pf_platform)
+    PUBLIC_DEPENDS Qt6::Core Qt6::Gui pf_core pf_platform)
 
 if(PF_HAVE_LIBARCHIVE)
     # Headers only, deliberately. §3.4: "Optional heavy dependencies … must not
@@ -209,6 +211,7 @@ pf_layer_library(pf_ui
         ui/PanelView.cpp
         ui/ProcessBar.cpp
         ui/Sidebar.cpp
+        ui/SidebarLayout.cpp
         ui/SymbolicWidgets.cpp
         ui/ThemePalette.cpp
         ui/modals/CompressModal.cpp
@@ -227,6 +230,7 @@ pf_layer_library(pf_ui
         ui/quicklook/renderers/PdfRenderer.cpp
         ui/quicklook/renderers/PluginBackedRenderer.cpp
         ui/quicklook/renderers/TextRenderer.cpp
+        ui/modals/CommandPaletteModal.cpp
         ui/modals/FindModal.cpp
         ui/modals/InputModal.cpp
         ui/modals/HelpModal.cpp
@@ -246,6 +250,7 @@ pf_layer_library(pf_app
         app/Application.cpp
         app/CommandLine.cpp
         app/DefaultFileManagerOffer.cpp
+        app/FileKinds.cpp
         app/InstanceMessage.cpp
         app/FileOperations.cpp
         app/KeyDispatcher.cpp

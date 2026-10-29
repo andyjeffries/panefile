@@ -33,6 +33,8 @@ class Keymap;
 namespace pf::ui {
 class FilePanel;
 class HelpModal;
+class CommandPaletteModal;
+class ConfirmModal;
 class InputModal;
 class SettingsWindow;
 class MainWindow;
@@ -161,13 +163,16 @@ private:
     void focusProcessBar();
 
     /// open_command_line and open_panefile_prompt: a shell command in the panel's directory, and a
-    /// Panefile action by id.
+    /// searchable palette of actions and places.
     void promptForShellCommand();
     void promptForAction();
 
     ui::SettingsWindow *settingsWindow();
     ui::InputModal *shellPromptModal();
-    ui::InputModal *actionPromptModal();
+    ui::CommandPaletteModal *commandPalette();
+    /// The key text for an action, for menus and the palette; empty when unbound.
+    QString bindingTextFor(const QString &actionId) const;
+    ui::InputModal *sectionPromptModal();
 
     /// Makes SIGTERM and SIGINT quit cleanly, so the session survives a logout.
     ///
@@ -203,7 +208,13 @@ private:
     ui::ProcessBar *m_processBar = nullptr;
     ui::SettingsWindow *m_settingsWindow = nullptr;
     ui::InputModal *m_shellPrompt = nullptr;
-    ui::InputModal *m_actionPrompt = nullptr;
+    ui::CommandPaletteModal *m_palette = nullptr;
+    ui::InputModal *m_sectionPrompt = nullptr;
+    ui::ConfirmModal *m_sectionConfirm = nullptr;
+    /// What the section prompt is for: a rename of this section id, or a new
+    /// section that takes this entry; neither means a plain new section.
+    QString m_sectionPromptRename;
+    QString m_sectionPromptMovePath;
 
     /// §3.4: modals are constructed on first invocation, then cached. The help
     /// modal builds a tree of every action, which is not work to do at startup

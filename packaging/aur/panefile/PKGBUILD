@@ -25,6 +25,8 @@ depends=(
   'qt6-multimedia'
   'ffmpegthumbnailer'
   'udisks2'
+  'qt6-imageformats'
+  'ffmpeg'
 )
 makedepends=('cmake' 'ninja' 'gcc')
 
@@ -36,6 +38,8 @@ optdepends=(
   'qt6-multimedia: audio and video playback in Quick Look'
   'ffmpegthumbnailer: video thumbnails in the file list'
   'udisks2: mounting and unmounting removable media from the sidebar'
+  'qt6-imageformats: WebP and AVIF output when converting images'
+  'ffmpeg: converting video and audio from the command palette'
 )
 
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")

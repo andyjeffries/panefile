@@ -117,8 +117,15 @@ The sections are `[normal]`, `[selection]`, `[global]` and `[typing]`. Listing
 an action in one replaces that action's bindings in that section only; an empty
 list unbinds it there.
 
-State — pinned directories, session, window geometry — is written to
-`~/.local/share/panefile/`.
+State — the session (`session.ini`), the sidebar's sections and entries
+(`sidebar.ini`), window geometry — is written to `~/.local/share/panefile/`.
+
+The sidebar is yours to arrange: drag any file or folder in, drag entries to
+reorder them, drag a heading to move or remove a whole section. `Ctrl+K`
+(`⌘K` on macOS) opens the command palette: search every action, with the ones
+that fit the selected files first (convert images, rotate, convert video and
+audio with `ffmpeg`), and jump to sidebar places. The palette's shortcut can be
+changed under Settings → Keys.
 
 ### Keys
 

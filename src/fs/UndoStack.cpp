@@ -80,6 +80,21 @@ bool UndoStack::undo(QString *error)
         }
         break;
 
+    case UndoEntry::Kind::Replace:
+        // The edited file goes to the trash, not the bin: undoing an edit must
+        // not destroy the edit, and the original takes its place from there.
+        for (const auto &[path, original] : entry.replacedItems) {
+            QString itemError;
+            if (QFileInfo::exists(path) && m_trash.moveToTrash(path, &itemError).isEmpty()) {
+                failures.append(QStringLiteral("%1: %2").arg(path, itemError));
+                continue;
+            }
+            if (m_trash.restore(original, &itemError).isEmpty()) {
+                failures.append(QStringLiteral("%1: %2").arg(path, itemError));
+            }
+        }
+        break;
+
     case UndoEntry::Kind::Move:
     case UndoEntry::Kind::Rename:
     case UndoEntry::Kind::BulkRename:

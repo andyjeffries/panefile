@@ -306,7 +306,6 @@ private Q_SLOTS:
         session.windowMaximised = true;
         session.focusedPanel = 1;
         session.quickLookDock = QStringLiteral("right");
-        session.pinnedPaths = {QStringLiteral("/home/andy/work")};
         session.panels = {
             SessionPanel{.path = QStringLiteral("/home/andy"),
                          .cursorName = QStringLiteral("notes.md"),
@@ -321,7 +320,6 @@ private Q_SLOTS:
         QCOMPARE(restored.windowMaximised, session.windowMaximised);
         QCOMPARE(restored.focusedPanel, session.focusedPanel);
         QCOMPARE(restored.quickLookDock, session.quickLookDock);
-        QCOMPARE(restored.pinnedPaths, session.pinnedPaths);
         QCOMPARE(restored.panels, session.panels);
     }
 
@@ -350,12 +348,10 @@ private Q_SLOTS:
                           SessionPanel{.path = QStringLiteral("/nonexistent/volume")},
                           SessionPanel{.path = QDir::tempPath()}};
         session.focusedPanel = 2;
-        session.pinnedPaths = {dir.path(), QStringLiteral("/also/gone")};
 
         const Session pruned = session.pruned();
 
         QCOMPARE(pruned.panels.size(), 2);
-        QCOMPARE(pruned.pinnedPaths.size(), 1);
         // The focused index referred to the list before pruning, so it is
         // clamped rather than trusted.
         QCOMPARE(pruned.focusedPanel, 1);

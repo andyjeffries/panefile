@@ -270,6 +270,34 @@ private Q_SLOTS:
                  qPrintable(read(target)));
     }
 
+    void formatsStringArrays()
+    {
+        QCOMPARE(TomlWriter::stringArray({}), QStringLiteral("[]"));
+        QCOMPARE(TomlWriter::stringArray({QStringLiteral("Ctrl+K")}),
+                 QStringLiteral("[\"Ctrl+K\"]"));
+        QCOMPARE(TomlWriter::stringArray({QStringLiteral("a\"b"), QStringLiteral("c\\d")}),
+                 QStringLiteral("[\"a\\\"b\", \"c\\\\d\"]"));
+    }
+
+    void writesAnArrayIntoAnExistingTableAndANewFile()
+    {
+        QVERIFY(write(m_path, QStringLiteral("[global]\nquit = [\"Ctrl+Q\"]\n")));
+        QVERIFY(TomlWriter::setValue(m_path, QStringLiteral("global"),
+                                     QStringLiteral("open_panefile_prompt"),
+                                     TomlWriter::stringArray({QStringLiteral("Alt+P")}))
+                    .ok);
+        const QString text = read(m_path);
+        QVERIFY2(text.contains(QStringLiteral("quit = [\"Ctrl+Q\"]")), qPrintable(text));
+        QVERIFY2(text.contains(QStringLiteral("open_panefile_prompt = [\"Alt+P\"]")),
+                 qPrintable(text));
+
+        const QString fresh = m_dir->filePath(QStringLiteral("hotkeys.toml"));
+        QVERIFY(TomlWriter::setValue(fresh, QStringLiteral("global"), QStringLiteral("x"),
+                                     TomlWriter::stringArray({QStringLiteral("Ctrl+X")}))
+                    .ok);
+        QCOMPARE(read(fresh), QStringLiteral("[global]\nx = [\"Ctrl+X\"]\n"));
+    }
+
 private:
     std::unique_ptr<QTemporaryDir> m_dir;
     QString m_path;

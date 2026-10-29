@@ -1,6 +1,7 @@
 #pragma once
 
 #include "platform/VolumeMonitor.h"
+#include "ui/SidebarLayout.h"
 
 #include <QList>
 #include <QSet>
@@ -16,7 +17,7 @@ class QTimer;
 
 namespace pf::ui {
 
-/// Home, XDG user directories, pinned directories and mounted volumes (§5.1).
+/// The user's sections of places, the wastebasket and mounted volumes (§5.1).
 ///
 /// §3.4 requires this to be constructed empty and populated on idle: resolving
 /// XDG user directories reads a config file, and enumerating mounts is worse.
@@ -33,24 +34,48 @@ public:
     /// refresh rather than duplicate.
     void populate();
 
-    /// §6.3's `pinned_directory` (`P`): pins or unpins, returning what it did
-    /// so the caller can report it.
+    /// The user's arrangement. setLayout() never emits layoutChanged(); every
+    /// mutation below does.
+    void setLayout(const SidebarLayout &layout);
+    const SidebarLayout &sidebarLayout() const { return m_layout; }
+
+    /// §6.3's `pinned_directory` (`P`): adds the path to the "Pinned" section
+    /// (created at the end if missing) or removes it from wherever it is,
+    /// returning what it did so the caller can report it.
     bool togglePin(const QString &path);
     bool isPinned(const QString &path) const;
 
-    QStringList pinnedPaths() const;
-    void setPinnedPaths(const QStringList &paths);
-
-    /// Built-in places — Home, the XDG folders, the wastebasket — the user has
-    /// removed from the sidebar, by path. Pinned folders are not in this list;
-    /// removing one unpins it.
-    QStringList hiddenPlaces() const;
-    void setHiddenPlaces(const QStringList &paths);
-
-    /// Removes the place a row stands for: unpins a pinned folder, hides a
-    /// built-in one. Devices cannot be removed; they come and go by
-    /// themselves. Returns false when there was nothing to remove.
+    /// Removes the entry a path stands for; the wastebasket is hidden instead.
+    /// Devices cannot be removed; they come and go by themselves. Returns false
+    /// when there was nothing to remove.
     bool removePlace(const QString &path);
+
+    /// Removes a section and its entries (the files are untouched). Looked up by
+    /// id, so a stale confirmation does nothing.
+    void removeSection(const QString &id);
+    void addSection(const QString &title);
+    /// A new section at the end holding the entry for `path` (moved from where
+    /// it was).
+    void addSectionWith(const QString &title, const QString &path);
+    void renameSection(const QString &id, const QString &title);
+
+    /// Alt+Up / Alt+Down: moves the current entry within its section, or into
+    /// the neighbouring one at an edge.
+    void moveCurrentEntry(int delta);
+    /// True while the sidebar has focus on an entry that can be moved.
+    bool canMoveCurrentEntry() const;
+
+    /// Re-adds missing built-ins (to the first section, or a new "Favourites")
+    /// and shows the wastebasket again.
+    void restoreDefaultPlaces();
+    bool hasMissingDefaults() const;
+
+    /// What a drag out of the sidebar carries. Public so tests can build the
+    /// same payload the sidebar does.
+    static QByteArray entryPayload(const QString &sectionId, int index, const QString &path);
+    static QByteArray sectionPayload(const QString &sectionId);
+    static QByteArray trashPayload();
+    static QLatin1String placeMimeType();
 
     /// The path under the sidebar's own cursor, or empty.
     QString currentPath() const;
@@ -96,22 +121,31 @@ Q_SIGNALS:
     /// Built by the application, which owns the actions it lists.
     void menuRequested(const QPoint &globalPosition);
 
-    void pinnedPathsChanged();
+    /// The arrangement changed; the application saves it.
+    void layoutChanged();
 
-    /// A built-in place was hidden, or the hidden ones were restored.
-    void hiddenPlacesChanged();
+    /// A file entry was chosen: show it in its folder rather than open it.
+    void revealRequested(const QString &path);
+
+    /// A non-empty section was dragged out or removed from the menu; the
+    /// application confirms, then calls removeSection(id).
+    void sectionRemovalRequested(const QString &id, const QString &title, int count);
+    /// `moveEntryPath`, when set, is moved into the new section.
+    void newSectionRequested(const QString &moveEntryPath);
+    void renameSectionRequested(const QString &id, const QString &currentTitle);
 
     void statusMessage(const QString &message);
 
 private:
-    void addHeading(const QString &title);
+    void addHeading(const QString &title, const QString &sectionId = {});
     /// A hairline between groups of places, inset like the rows.
     void addDivider();
     /// Adds a place unless it is hidden or does not exist. `removable` is false
     /// only for rows the user cannot take out (none, today, but devices go
     /// through addDevices()).
-    QListWidgetItem *addPlace(const QString &title, const QString &path, const QString &iconName,
-                              bool pinned = false);
+    QListWidgetItem *addPlace(const QString &title, const QString &path, const QString &iconName);
+    void addPlaceholder(const QString &sectionId);
+    static QString iconNameForEntry(const QString &path);
     void addDevices();
 
     /// The palette roles the list's style reads directly; see refreshTheme().
@@ -144,11 +178,30 @@ private:
     void startPlaceDrag(QListWidgetItem *item);
     void setDropHighlight(bool on);
 
+    /// Where a drop at `position` would land, and where to draw the line.
+    struct DropTarget {
+        enum Kind { None, Entry, Section } kind = None;
+        int section = -1; ///< Index into the layout; -1 with Entry: no sections yet.
+        int index = 0;    ///< Gap index: the item goes before the one now at it.
+        int lineY = 0;    ///< Viewport y of the indicator.
+    };
+    DropTarget dropTargetAt(const QPoint &position, bool draggingSection) const;
+    void showDropLine(int y);
+    void hideDropLine();
+
+    /// Applies a change: repopulate, notify, and keep the cursor on `keepPath`.
+    void commitLayout(const QString &keepPath = {});
+    void moveEntryByPath(const QString &path, int delta);
+    void moveSectionBy(const QString &id, int delta);
+    /// Removes a section now if it is empty, else asks the application to
+    /// confirm.
+    void requestSectionRemoval(const QString &id);
+
     void showContextMenu(const QPoint &position);
 
     QListWidget *m_list = nullptr;
-    QStringList m_pinned;
-    QStringList m_hidden;
+    SidebarLayout m_layout = SidebarLayout::defaults();
+    QWidget *m_dropLine = nullptr;
 
     /// "3 · 1.2 GB", or empty for an empty wastebasket.
     QString m_trashSummary;

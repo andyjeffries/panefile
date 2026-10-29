@@ -14,6 +14,7 @@ class QWidget;
 namespace pf::input {
 class ActionRegistry;
 class Keymap;
+struct Chord;
 } // namespace pf::input
 
 namespace pf::ui {
@@ -88,6 +89,14 @@ private:
                      const QString &description);
     void writeTheme(const QString &table, const QString &key, const QString &value,
                     const QString &description);
+
+    /// The Keys tab's palette row: a chord was recorded. Checks for another
+    /// action on the same chord, then saves or asks.
+    void recordPaletteShortcut(const input::Chord &chord);
+    void savePaletteShortcut(const input::Chord &chord, bool replaceConflicts);
+    void resetPaletteShortcut();
+    static QString paletteBindingText(const input::Keymap &keymap);
+    static QString hotkeysPath();
 
     static QString configPath();
     static QString themePath();

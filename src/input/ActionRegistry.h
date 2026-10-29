@@ -28,6 +28,15 @@ struct Action {
     /// panel, pasting with an empty clipboard. The help modal still lists it;
     /// invoking it is a no-op with a footer message rather than nothing at all.
     std::function<bool()> isEnabled;
+
+    /// A file action that depends on what is selected — "convert to WebP" —
+    /// rather than on the application's state. The command palette lists the
+    /// enabled ones first, under the kind of file they apply to.
+    bool contextual = false;
+
+    /// What the selection is, for the palette's heading: "Image", "Video".
+    /// Optional; only read when `contextual`.
+    std::function<QString()> contextLabel;
 };
 
 /// id → callable, and the only dispatch path in the application (§6.2).
@@ -50,6 +59,15 @@ public:
 
     void registerAction(const QString &id, const QString &description, ActionCategory category,
                         std::function<void()> handler, std::function<bool()> isEnabled = {});
+
+    /// Registers a selection-dependent action; see Action::contextual.
+    void registerContextualAction(const QString &id, const QString &description,
+                                  ActionCategory category, std::function<void()> handler,
+                                  std::function<bool()> isEnabled,
+                                  std::function<QString()> contextLabel = {});
+
+    /// Marks an already registered action as contextual.
+    void markContextual(const QString &id, std::function<QString()> contextLabel = {});
 
     /// Runs an action. Returns false when the id is unknown or the action is
     /// currently disabled; the caller decides whether that deserves a message.

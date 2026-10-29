@@ -29,6 +29,9 @@ class Panefile < Formula
   depends_on "libarchive"
   depends_on "poppler-qt6"
   depends_on "qt"
+  # Video and audio conversion from the command palette (§7.14). Large, so
+  # recommended rather than required: without it those actions do not appear.
+  depends_on "ffmpeg" => :recommended
   depends_on :macos
 
   def install

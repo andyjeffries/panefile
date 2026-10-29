@@ -40,6 +40,8 @@
 #include "ui/ProcessBar.h"
 #include "ui/Sidebar.h"
 #include "ui/ThemePalette.h"
+#include "ui/modals/CommandPaletteModal.h"
+#include "ui/modals/ConfirmModal.h"
 #include "ui/modals/HelpModal.h"
 #include "ui/modals/InputModal.h"
 #include "ui/modals/SettingsWindow.h"
@@ -348,7 +350,7 @@ void Application::registerGlobalActions()
                                ActionCategory::General, [this] { settingsWindow()->present(); });
 
     m_registry->registerAction(QStringLiteral("open_panefile_prompt"),
-                               tr("Run a Panefile action by name"), ActionCategory::General,
+                               tr("Open the command palette"), ActionCategory::General,
                                [this] { promptForAction(); });
 
     // Opening a place from the sidebar goes through the controller, so it obeys
@@ -364,10 +366,41 @@ void Application::registerGlobalActions()
 
     // Written when they change rather than only at quit, so a crash or a kill
     // does not lose a sidebar the user has just arranged.
-    connect(m_mainWindow->sidebar(), &ui::Sidebar::pinnedPathsChanged, this,
-            [this] { saveSession(); });
-    connect(m_mainWindow->sidebar(), &ui::Sidebar::hiddenPlacesChanged, this,
-            [this] { saveSession(); });
+    //
+    // To its own file, whatever the session setting: the arrangement is the
+    // user's sidebar, not part of the last session's panels.
+    connect(m_mainWindow->sidebar(), &ui::Sidebar::layoutChanged, this,
+            [this] { m_mainWindow->sidebar()->sidebarLayout().save(); });
+
+    connect(m_mainWindow->sidebar(), &ui::Sidebar::revealRequested, this,
+            [this](const QString &path) { m_panelController->revealPath(path); });
+
+    connect(m_mainWindow->sidebar(), &ui::Sidebar::sectionRemovalRequested, this,
+            [this](const QString &id, const QString &title, int count) {
+                if (m_sectionConfirm == nullptr) {
+                    m_sectionConfirm = new ui::ConfirmModal(m_mainWindow.get());
+                }
+                m_sectionConfirm->ask(
+                    tr("Remove the section “%1” and its %n item(s)?", nullptr, count).arg(title),
+                    tr("The files themselves are not touched."), tr("Remove"),
+                    [this, id] { m_mainWindow->sidebar()->removeSection(id); });
+            });
+
+    connect(m_mainWindow->sidebar(), &ui::Sidebar::newSectionRequested, this,
+            [this](const QString &moveEntryPath) {
+                ui::InputModal *modal = sectionPromptModal();
+                m_sectionPromptRename.clear();
+                m_sectionPromptMovePath = moveEntryPath;
+                modal->ask(tr("New section"), tr("A name for the section"));
+            });
+    connect(m_mainWindow->sidebar(), &ui::Sidebar::renameSectionRequested, this,
+            [this](const QString &id, const QString &title) {
+                ui::InputModal *modal = sectionPromptModal();
+                m_sectionPromptRename = id;
+                m_sectionPromptMovePath.clear();
+                modal->ask(tr("Rename section"), tr("A new name for the section"), title, 0,
+                           static_cast<int>(title.size()));
+            });
 }
 
 void Application::showApplicationMenu(const QPoint &globalPosition)
@@ -391,6 +424,7 @@ void Application::showApplicationMenu(const QPoint &globalPosition)
          {.actionId = "open_fuzzy_find", .label = tr("Find…")}},
         {{.actionId = "toggle_dot_file", .label = tr("Show Hidden Files")},
          {.actionId = "toggle_sidebar", .label = tr("Sidebar")},
+         {.actionId = "sidebar_new_section", .label = tr("New Sidebar Section…")},
          {.actionId = "toggle_footer", .label = tr("Status Bar")},
          {.actionId = "toggle_theme_dark_light", .label = tr("Light or Dark")}},
         {{.actionId = "open_settings", .label = tr("Settings…")},
@@ -398,18 +432,7 @@ void Application::showApplicationMenu(const QPoint &globalPosition)
         {{.actionId = "quit", .label = tr("Quit")}},
     };
 
-    // The key shown is the first global binding, else the first Normal one:
-    // the one that works wherever the focus is, when there is one.
-    const auto keyFor = [this](const QString &actionId) {
-        for (const input::KeymapLayer layer :
-             {input::KeymapLayer::Global, input::KeymapLayer::Normal}) {
-            const QList<input::Binding> bindings = m_keymap->bindingsFor(layer, actionId);
-            if (!bindings.isEmpty()) {
-                return input::bindingToString(bindings.first());
-            }
-        }
-        return QString();
-    };
+    const auto keyFor = [this](const QString &actionId) { return bindingTextFor(actionId); };
 
     QMenu menu(m_mainWindow.get());
     for (qsizetype group = 0; group < groups.size(); ++group) {
@@ -736,16 +759,10 @@ void Application::restoreSessionOrOpenInitialPanel(const CommandLineOptions &opt
     // the last session happened to be showing.
     const bool hasPathArguments = !options.paths.isEmpty();
 
-    // The sidebar's pinned and removed places, always — they are the user's
-    // sidebar, not part of the last session's panels. They used to be read
-    // only when the session itself was restored, so starting with a path, or
-    // with restore off, showed no pins — and quitting then saved that empty
-    // list over the real one.
-    {
-        const Session saved = Session::load().pruned();
-        m_mainWindow->sidebar()->setPinnedPaths(saved.pinnedPaths);
-        m_mainWindow->sidebar()->setHiddenPlaces(saved.hiddenPlaces);
-    }
+    // The sidebar's arrangement, always — it is the user's sidebar, not part of
+    // the last session's panels. The first run after upgrading builds it from
+    // the pins and removed places the session file used to hold.
+    m_mainWindow->sidebar()->setLayout(ui::SidebarLayout::load());
 
     if (m_settings.general.restoreSession && !hasPathArguments) {
         // §3.4: "Session restore of panels 2..N — panel 1 is enough to start
@@ -902,23 +919,22 @@ ui::InputModal *Application::shellPromptModal()
     return m_shellPrompt;
 }
 
-ui::InputModal *Application::actionPromptModal()
+ui::InputModal *Application::sectionPromptModal()
 {
-    if (m_actionPrompt == nullptr) {
-        m_actionPrompt = new ui::InputModal(m_mainWindow.get());
-        connect(m_actionPrompt, &ui::InputModal::submitted, this, [this](const QString &id) {
-            const QString wanted = id.trimmed();
-            if (wanted.isEmpty()) {
-                return;
+    if (m_sectionPrompt == nullptr) {
+        m_sectionPrompt = new ui::InputModal(m_mainWindow.get());
+        connect(m_sectionPrompt, &ui::InputModal::submitted, this, [this](const QString &title) {
+            ui::Sidebar *sidebar = m_mainWindow->sidebar();
+            if (!m_sectionPromptRename.isEmpty()) {
+                sidebar->renameSection(m_sectionPromptRename, title);
+            } else if (!m_sectionPromptMovePath.isEmpty()) {
+                sidebar->addSectionWith(title, m_sectionPromptMovePath);
+            } else {
+                sidebar->addSection(title);
             }
-            if (!m_registry->ids().contains(wanted)) {
-                m_mainWindow->showStatusMessage(tr("No such action: %1").arg(wanted));
-                return;
-            }
-            m_registry->invoke(wanted);
         });
     }
-    return m_actionPrompt;
+    return m_sectionPrompt;
 }
 
 void Application::toggleLightDark()
@@ -997,10 +1013,114 @@ void Application::promptForShellCommand()
     modal->ask(tr("Run a command"), tr("Runs in %1").arg(QDir(directory).dirName()));
 }
 
+QString Application::bindingTextFor(const QString &actionId) const
+{
+    // The first global binding, else the first Normal one: the one that works
+    // wherever the focus is, when there is one.
+    for (const input::KeymapLayer layer :
+         {input::KeymapLayer::Global, input::KeymapLayer::Normal}) {
+        const QList<input::Binding> bindings = m_keymap->bindingsFor(layer, actionId);
+        if (!bindings.isEmpty()) {
+            return input::bindingToString(bindings.first());
+        }
+    }
+    return {};
+}
+
+ui::CommandPaletteModal *Application::commandPalette()
+{
+    if (m_palette == nullptr) {
+        // §3.4: on first use. Nothing in it is needed to draw a panel.
+        m_palette = new ui::CommandPaletteModal(m_mainWindow.get());
+        connect(m_palette, &ui::CommandPaletteModal::actionChosen, this, [this](const QString &id) {
+            if (!m_registry->contains(id)) {
+                m_mainWindow->showStatusMessage(tr("No such action: %1").arg(id));
+                return;
+            }
+            if (!m_registry->invoke(id)) {
+                m_mainWindow->showStatusMessage(tr("%1 is not available right now").arg(id));
+            }
+        });
+        connect(m_palette, &ui::CommandPaletteModal::placeChosen, this,
+                [this](const QString &path) {
+                    if (QFileInfo(path).isDir()) {
+                        m_panelController->openPath(path, false);
+                    } else {
+                        m_panelController->revealPath(path);
+                    }
+                });
+    }
+    return m_palette;
+}
+
 void Application::promptForAction()
 {
-    ui::InputModal *modal = actionPromptModal();
-    modal->ask(tr("Run an action"), tr("An action id, such as “bulk_rename”"));
+    using ui::PaletteItem;
+    QList<PaletteItem> items;
+
+    // Plumbing that only makes sense inside a modal, or that a palette cannot
+    // usefully run: bound only in the Modal layer, or movement.
+    const auto isPlumbing = [this](const input::Action &action) {
+        if (action.category == input::ActionCategory::Movement ||
+            action.id == QLatin1String("open_panefile_prompt")) {
+            return true;
+        }
+        const bool inModal = !m_keymap->bindingsFor(input::KeymapLayer::Modal, action.id).isEmpty();
+        const bool elsewhere =
+            !m_keymap->bindingsFor(input::KeymapLayer::Global, action.id).isEmpty() ||
+            !m_keymap->bindingsFor(input::KeymapLayer::Normal, action.id).isEmpty() ||
+            !m_keymap->bindingsFor(input::KeymapLayer::Selection, action.id).isEmpty();
+        return inModal && !elsewhere;
+    };
+
+    QString contextLabel;
+    for (const QString &id : m_registry->ids()) {
+        const input::Action *action = m_registry->find(id);
+        if (action == nullptr || isPlumbing(*action) || !m_registry->isEnabled(id)) {
+            continue;
+        }
+        PaletteItem item{.id = id,
+                         .title = action->description,
+                         .detail = {},
+                         .keys = bindingTextFor(id),
+                         .group = 1,
+                         .path = {}};
+        if (action->contextual) {
+            item.group = 0;
+            item.detail = action->contextLabel ? action->contextLabel() : QString();
+            if (contextLabel.isEmpty()) {
+                contextLabel = item.detail;
+            }
+        } else {
+            item.detail = input::ActionRegistry::categoryTitle(action->category);
+        }
+        items.append(item);
+    }
+
+    const QString home = QDir::homePath();
+    for (const ui::SidebarSection &section : m_mainWindow->sidebar()->sidebarLayout().sections) {
+        for (const ui::SidebarEntry &entry : section.entries) {
+            const QString path = entry.resolvedPath();
+            if (path.isEmpty() || !QFileInfo::exists(path)) {
+                continue;
+            }
+            QString shown = QDir::toNativeSeparators(path);
+            if (path == home || path.startsWith(home + QLatin1Char('/'))) {
+                shown = QStringLiteral("~") + path.mid(home.size());
+            }
+            const QString name = path == home ? tr("Home") : QFileInfo(path).fileName();
+            items.append(PaletteItem{
+                .id = {}, .title = name, .detail = shown, .keys = {}, .group = 2, .path = path});
+        }
+    }
+
+    QString header;
+    if (!contextLabel.isEmpty()) {
+        const ui::FilePanel *panel = m_mainWindow->panelStrip()->focusedPanel();
+        const QString name = panel != nullptr ? panel->cursorName() : QString();
+        header = name.isEmpty() ? contextLabel : contextLabel + QStringLiteral(" · ") + name;
+    }
+    commandPalette()->open(items, header);
 }
 
 void Application::saveSession() const
@@ -1020,8 +1140,6 @@ void Application::saveSession() const
     session.windowGeometry = m_mainWindow->geometry();
     session.windowMaximised = m_mainWindow->isMaximized();
     session.focusedPanel = m_mainWindow->panelStrip()->focusedIndex();
-    session.pinnedPaths = m_mainWindow->sidebar()->pinnedPaths();
-    session.hiddenPlaces = m_mainWindow->sidebar()->hiddenPlaces();
 
     for (const ui::FilePanel *panel : m_mainWindow->panelStrip()->panels()) {
         session.panels.append(SessionPanel{.path = panel->path(),
@@ -1324,8 +1442,10 @@ bool Application::notify(QObject *receiver, QEvent *event)
             panelView != nullptr && panelView->isTypingAhead() &&
             (keyEvent->key() == Qt::Key_Backspace || keyEvent->key() == Qt::Key_Escape ||
              (!keyEvent->text().isEmpty() && keyEvent->text().front().isPrint()));
+        // A shortcut recorder is capturing: every key is its own, including the
+        // ones that would otherwise open the palette or close the panel.
         const bool typing = (isTextInput(focus) && (unmodified || isTextEditingChord(keyEvent))) ||
-                            (unmodified && editsTypedName);
+                            (unmodified && editsTypedName) || capturesKeys(focus);
 
         // §7.6's per-renderer keys — Alt with `+`/`-`/`0`, `[`/`]`, `w`, `p` —
         // are offered to the renderer before the dispatcher. Movement keys are

@@ -10,6 +10,8 @@
 #include <QFile>
 #include <QLabel>
 #include <QListWidget>
+#include <QPushButton>
+#include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTreeWidget>
@@ -140,6 +142,136 @@ private Q_SLOTS:
         }
         QVERIFY2(names.contains(QStringLiteral("nord")), qPrintable(names.join(u',')));
         QVERIFY2(names.contains(QStringLiteral("macos-dark")), qPrintable(names.join(u',')));
+    }
+
+    // ======================================== the command palette's shortcut
+
+    /// Clicks the recorder and presses a chord into it.
+    QPushButton *recordChord(Qt::Key key, Qt::KeyboardModifiers modifiers)
+    {
+        m_registry->registerAction(QStringLiteral("open_panefile_prompt"),
+                                   QStringLiteral("Open the command palette"),
+                                   input::ActionCategory::General, [] {});
+        m_registry->registerAction(QStringLiteral("open_fuzzy_find"), QStringLiteral("Find"),
+                                   input::ActionCategory::General, [] {});
+        m_settings->present();
+        auto *recorder =
+            m_settings->findChild<QPushButton *>(QStringLiteral("settingsKeyRecorder"));
+        if (recorder != nullptr) {
+            recorder->click();
+            QTest::keyClick(recorder, key, modifiers);
+        }
+        return recorder;
+    }
+
+    QString hotkeys() const
+    {
+        QFile file(m_dir->filePath(QStringLiteral("hotkeys.toml")));
+        return file.open(QIODevice::ReadOnly | QIODevice::Text) ? QString::fromUtf8(file.readAll())
+                                                                : QString();
+    }
+
+    void theRecorderShowsTheCurrentShortcut()
+    {
+        m_settings->present();
+        auto *recorder =
+            m_settings->findChild<QPushButton *>(QStringLiteral("settingsKeyRecorder"));
+        QVERIFY(recorder != nullptr);
+        QCOMPARE(recorder->text(), QStringLiteral("Ctrl+K"));
+    }
+
+    void recordingAChordWritesItToHotkeysToml()
+    {
+        QSignalSpy changed(m_settings, &ui::SettingsWindow::settingsChanged);
+        QVERIFY(recordChord(Qt::Key_P, Qt::AltModifier) != nullptr);
+
+        const QString text = hotkeys();
+        QVERIFY2(text.contains(QStringLiteral("[global]")), qPrintable(text));
+        QVERIFY2(text.contains(QStringLiteral("open_panefile_prompt = [\"Alt+P\"]")),
+                 qPrintable(text));
+        QVERIFY(!changed.isEmpty());
+        QVERIFY(changed.last().first().toString().contains(QStringLiteral("Alt+P")));
+    }
+
+    void resetRemovesTheOverride()
+    {
+        recordChord(Qt::Key_P, Qt::AltModifier);
+        QVERIFY(hotkeys().contains(QStringLiteral("Alt+P")));
+
+        auto *reset = m_settings->findChild<QPushButton *>(QStringLiteral("settingsKeyReset"));
+        QVERIFY(reset != nullptr);
+        reset->click();
+        QVERIFY2(!hotkeys().contains(QStringLiteral("open_panefile_prompt")),
+                 qPrintable(hotkeys()));
+        auto *recorder =
+            m_settings->findChild<QPushButton *>(QStringLiteral("settingsKeyRecorder"));
+        QCOMPARE(recorder->text(), QStringLiteral("Ctrl+K"));
+    }
+
+    /// A bare letter would hijack typing, so it is refused and nothing is
+    /// written.
+    void aBareLetterIsRejected()
+    {
+        auto *recorder = recordChord(Qt::Key_P, Qt::NoModifier);
+        QVERIFY(recorder != nullptr);
+        QVERIFY(hotkeys().isEmpty());
+        auto *problem = m_settings->findChild<QLabel *>(QStringLiteral("modalProblem"));
+        QVERIFY(problem != nullptr);
+        QVERIFY(!problem->isHidden());
+    }
+
+    void escapeCancelsRecording()
+    {
+        auto *recorder = recordChord(Qt::Key_Escape, Qt::NoModifier);
+        QVERIFY(recorder != nullptr);
+        QVERIFY(hotkeys().isEmpty());
+        QCOMPARE(recorder->text(), QStringLiteral("Ctrl+K"));
+    }
+
+    /// While recording, the key presses are marked as the recorder's own so the
+    /// application's dispatcher leaves them alone.
+    void recordingMarksTheRecorderAsCapturing()
+    {
+        m_settings->present();
+        auto *recorder =
+            m_settings->findChild<QPushButton *>(QStringLiteral("settingsKeyRecorder"));
+        QVERIFY(recorder != nullptr);
+        QVERIFY(!recorder->property("pfCapturesKeys").toBool());
+        recorder->click();
+        QVERIFY(recorder->property("pfCapturesKeys").toBool());
+        QTest::keyClick(recorder, Qt::Key_Escape);
+        QVERIFY(!recorder->property("pfCapturesKeys").toBool());
+    }
+
+    /// A chord another action holds asks first, and Replace takes it from that
+    /// action too.
+    void aChordHeldElsewhereAsksBeforeReplacing()
+    {
+        // Ctrl+F is open_fuzzy_find by default.
+        QVERIFY(recordChord(Qt::Key_F, Qt::ControlModifier) != nullptr);
+        QVERIFY2(hotkeys().isEmpty(), "nothing is written until the conflict is resolved");
+
+        auto *bar = m_settings->findChild<QWidget *>(QStringLiteral("settingsKeyConflict"));
+        QVERIFY(bar != nullptr);
+        QVERIFY(!bar->isHidden());
+        auto *text = m_settings->findChild<QLabel *>(QStringLiteral("settingsKeyConflictText"));
+        QVERIFY2(text->text().contains(QStringLiteral("open_fuzzy_find")),
+                 qPrintable(text->text()));
+
+        m_settings->findChild<QPushButton *>(QStringLiteral("settingsKeyConflictReplace"))->click();
+        const QString written = hotkeys();
+        QVERIFY2(written.contains(QStringLiteral("open_panefile_prompt = [\"Ctrl+F\"]")),
+                 qPrintable(written));
+        QVERIFY2(written.contains(QStringLiteral("open_fuzzy_find = []")), qPrintable(written));
+    }
+
+    void cancellingAConflictWritesNothing()
+    {
+        QVERIFY(recordChord(Qt::Key_F, Qt::ControlModifier) != nullptr);
+        m_settings->findChild<QPushButton *>(QStringLiteral("settingsKeyConflictCancel"))->click();
+        QVERIFY(hotkeys().isEmpty());
+        QVERIFY(
+            m_settings->findChild<QWidget *>(QStringLiteral("settingsKeyConflict"))->isHidden());
     }
 
 private:

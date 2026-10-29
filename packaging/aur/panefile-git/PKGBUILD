@@ -31,6 +31,8 @@ depends=(
   'qt6-multimedia'        # §7.6 audio and video previews
   'ffmpegthumbnailer'     # §7.7 video thumbnails
   'udisks2'               # §7.11 removable media
+  'qt6-imageformats'      # §7.14 WebP and AVIF image conversion
+  'ffmpeg'                # §7.14 video and audio conversion
 )
 makedepends=('git' 'cmake' 'ninja' 'gcc')
 provides=("$_pkgname=$pkgver")

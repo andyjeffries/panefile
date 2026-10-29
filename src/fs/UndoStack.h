@@ -15,6 +15,7 @@ struct UndoEntry {
         Rename,
         BulkRename,
         Trash,
+        Replace,
     };
 
     Kind kind = Kind::Move;
@@ -25,12 +26,16 @@ struct UndoEntry {
 
     /// For Trash: the items, which carry where they came from.
     QList<TrashedItem> trashedItems;
+
+    /// For Replace (an image rotated in place): each edited path with the
+    /// original that was trashed to make way for it.
+    QList<QPair<QString, TrashedItem>> replacedItems;
 };
 
 /// A bounded stack of undoable operations (§7.13).
 ///
 /// "Maintain a bounded stack (50 entries) of undoable operations: move, rename,
-/// bulk rename, trash. Ctrl+Z undoes the last. Copy and permanent delete are
+/// bulk rename, trash, in-place replace. Ctrl+Z undoes the last. Copy and permanent delete are
 /// **not** undoable and must be labelled as such in the confirmation."
 ///
 /// That last sentence is the reason this class refuses entries rather than

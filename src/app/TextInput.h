@@ -20,4 +20,9 @@ bool isTextInput(const QWidget *widget);
 /// chords mean what they mean in every text field, so they belong to it.
 bool isTextEditingChord(const QKeyEvent *event);
 
+/// Whether a widget is recording a shortcut: its dynamic property
+/// `pfCapturesKeys` is true. The dispatcher and Quick Look must not see its key
+/// presses, or pressing Ctrl+K to record it would open the palette instead.
+bool capturesKeys(const QWidget *widget);
+
 } // namespace pf

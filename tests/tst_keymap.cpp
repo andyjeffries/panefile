@@ -77,6 +77,27 @@ private Q_SLOTS:
     /// mistaken move and losing track of where the files went did nothing.
     /// That mattered most for drag and drop, where a drag within a filesystem
     /// moves by default.
+    /// Ctrl+K opens the command palette, and nothing else holds it.
+    void theCommandPaletteIsOnCtrlK()
+    {
+        Keymap keymap;
+        installDefaultKeymap(keymap);
+
+        const auto binding = parseBinding(QStringLiteral("Ctrl+K"));
+        QVERIFY(binding.has_value());
+        QCOMPARE(keymap.lookup(KeymapLayer::Global, *binding).actionId,
+                 QStringLiteral("open_panefile_prompt"));
+        for (const KeymapLayer layer : {KeymapLayer::Normal, KeymapLayer::Selection}) {
+            QVERIFY(keymap.lookup(layer, *binding).actionId.isEmpty() ||
+                    keymap.lookup(layer, *binding).actionId ==
+                        QStringLiteral("open_panefile_prompt"));
+        }
+
+        const auto old = parseBinding(QStringLiteral("Ctrl+Shift+P"));
+        QVERIFY(old.has_value());
+        QVERIFY(keymap.lookup(KeymapLayer::Global, *old).actionId.isEmpty());
+    }
+
     void undoIsBound()
     {
         Keymap keymap;

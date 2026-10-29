@@ -45,8 +45,10 @@ constexpr DefaultBinding kDefaults[] = {
     {KeymapLayer::Global, "open_help_menu", "F1"},
     {KeymapLayer::Global, "open_help_menu", "Ctrl+?"},
     {KeymapLayer::Global, "open_command_line", "Ctrl+Shift+R"},
-    // The command-palette chord, which VS Code's palette also opens with `>`.
-    {KeymapLayer::Global, "open_panefile_prompt", "Ctrl+Shift+P"},
+    // The command-palette chord, as in Slack, Linear and VS Code's quick open.
+    // A focused text field keeps Ctrl+K for "delete to end of line" on Linux
+    // (see isTextEditingChord); ⌘K on macOS, where nothing claims it.
+    {KeymapLayer::Global, "open_panefile_prompt", "Ctrl+K"},
     {KeymapLayer::Global, "open_fuzzy_find", "Ctrl+F"},
 
     // The default-file-manager bar's answers. Not plain `y` and `n`, which
@@ -128,6 +130,8 @@ constexpr DefaultBinding kDefaults[] = {
     {KeymapLayer::Global, "select_down", "Shift+Down"},
     // A browser's bookmark chord, shifted because Ctrl+D pages down.
     {KeymapLayer::Global, "pinned_directory", "Ctrl+Shift+D"},
+    {KeymapLayer::Global, "sidebar_move_entry_up", "Alt+Up"},
+    {KeymapLayer::Global, "sidebar_move_entry_down", "Alt+Down"},
 
     // File operations
     {KeymapLayer::Global, "file_panel_item_create", "Ctrl+N"},

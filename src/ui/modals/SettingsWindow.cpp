@@ -2,6 +2,7 @@
 
 #include "input/ActionRegistry.h"
 #include "input/Chord.h"
+#include "input/DefaultKeymap.h"
 #include "input/Keymap.h"
 #include "config/Config.h"
 #include "config/Theme.h"
@@ -19,6 +20,8 @@
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QKeyEvent>
+#include <QKeySequence>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -30,6 +33,8 @@
 #include <QThreadPool>
 #include <QTreeWidget>
 #include <QVBoxLayout>
+
+#include <optional>
 
 namespace pf::ui {
 namespace {
@@ -97,6 +102,129 @@ QWidget *formPage(QFormLayout **formOut)
     return page;
 }
 
+/// A button that records a shortcut: click it, press the chord.
+///
+/// While recording it carries the `pfCapturesKeys` property, which tells the
+/// application's key handling to leave its key presses alone — without that,
+/// pressing Ctrl+K to record it would open the palette it is recording.
+class KeyRecorder : public QPushButton
+{
+    Q_OBJECT
+
+public:
+    explicit KeyRecorder(QWidget *parent = nullptr) : QPushButton(parent)
+    {
+        setObjectName(QStringLiteral("settingsKeyRecorder"));
+        setCheckable(false);
+        connect(this, &QPushButton::clicked, this, [this] { startRecording(); });
+    }
+
+    bool isRecording() const { return m_recording; }
+
+    void setShownBinding(const QString &text)
+    {
+        m_shown = text;
+        if (!m_recording) {
+            setText(m_shown.isEmpty() ? tr("Not set") : m_shown);
+        }
+    }
+
+Q_SIGNALS:
+    void chordRecorded(const pf::input::Chord &chord);
+    /// A bare key with no modifier was pressed; recording continues.
+    void rejected(const QString &reason);
+
+protected:
+    void keyPressEvent(QKeyEvent *event) override
+    {
+        if (!m_recording) {
+            QPushButton::keyPressEvent(event);
+            return;
+        }
+        if (event->key() == Qt::Key_Escape) {
+            stopRecording();
+            event->accept();
+            return;
+        }
+        const auto chord =
+            input::chordFromKeyEvent(event->key(), event->modifiers(), event->text());
+        event->accept();
+        if (!chord) {
+            return; // a modifier on its own
+        }
+        // A bare printable key would hijack typing everywhere. Named keys such
+        // as F-keys are fine alone.
+        if (chord->isTextForm() || (chord->modifiers == Qt::NoModifier &&
+                                    !event->text().isEmpty() && event->text().front().isPrint())) {
+            Q_EMIT rejected(tr("Use a modifier, e.g. Ctrl"));
+            return;
+        }
+        stopRecording();
+        Q_EMIT chordRecorded(*chord);
+    }
+
+    void focusOutEvent(QFocusEvent *event) override
+    {
+        stopRecording();
+        QPushButton::focusOutEvent(event);
+    }
+
+private:
+    void startRecording()
+    {
+        m_recording = true;
+        setProperty("pfCapturesKeys", true);
+        setText(tr("Press a shortcut…"));
+        setFocus();
+    }
+
+    void stopRecording()
+    {
+        if (!m_recording) {
+            return;
+        }
+        m_recording = false;
+        setProperty("pfCapturesKeys", false);
+        setText(m_shown.isEmpty() ? tr("Not set") : m_shown);
+    }
+
+    bool m_recording = false;
+    QString m_shown;
+};
+
+/// A chord as hotkeys.toml spells it: portable, so it parses on every
+/// platform (Ctrl is ⌘ on macOS).
+QString portableChord(const input::Chord &chord)
+{
+    if (chord.isTextForm()) {
+        return chord.text;
+    }
+    return QKeySequence(QKeyCombination(chord.modifiers, static_cast<Qt::Key>(chord.key)))
+        .toString(QKeySequence::PortableText);
+}
+
+QString portableBinding(const input::Binding &binding)
+{
+    QStringList parts;
+    for (const input::Chord &chord : binding) {
+        parts << portableChord(chord);
+    }
+    return parts.join(QLatin1Char(' '));
+}
+
+constexpr auto kPaletteAction = "open_panefile_prompt";
+
+struct LayerTable {
+    input::KeymapLayer layer;
+    const char *table;
+};
+/// The layers a global shortcut can collide in, and their hotkeys.toml tables.
+constexpr LayerTable kConflictLayers[] = {
+    {.layer = input::KeymapLayer::Global, .table = "global"},
+    {.layer = input::KeymapLayer::Normal, .table = "normal"},
+    {.layer = input::KeymapLayer::Selection, .table = "selection"},
+};
+
 } // namespace
 
 /// Every control, in one place, so loadValues and the writers can reach them
@@ -134,6 +262,13 @@ struct SettingsWindow::Controls {
     // Keys
     QTreeWidget *keys = nullptr;
     QLineEdit *keyFilter = nullptr;
+    KeyRecorder *paletteRecorder = nullptr;
+    QLabel *paletteProblem = nullptr;
+    QWidget *conflictBar = nullptr;
+    QLabel *conflictText = nullptr;
+
+    /// A recorded chord waiting for "Replace" because another action has it.
+    std::optional<input::Chord> pendingChord;
 };
 
 SettingsWindow::SettingsWindow(input::ActionRegistry *registry, input::Keymap *keymap,
@@ -480,6 +615,70 @@ QWidget *SettingsWindow::buildKeysTab()
     outer->setContentsMargins(28, 20, 28, 20);
     outer->setSpacing(12);
 
+    // The one binding that can be changed here: the command palette's.
+    auto *paletteRow = new QHBoxLayout;
+    auto *paletteLabels = new QVBoxLayout;
+    paletteLabels->setSpacing(2);
+    auto *paletteTitle = new QLabel(tr("Command palette"));
+    paletteTitle->setObjectName(QStringLiteral("settingsKeyPaletteTitle"));
+    auto *paletteHint = new QLabel(tr("Opens from anywhere except a text field, where Ctrl+K keeps "
+                                      "deleting to the end of the line."));
+    paletteHint->setObjectName(QStringLiteral("settingsNote"));
+    paletteHint->setWordWrap(true);
+    paletteLabels->addWidget(paletteTitle);
+    paletteLabels->addWidget(paletteHint);
+    paletteRow->addLayout(paletteLabels, 1);
+
+    m_controls->paletteRecorder = new KeyRecorder;
+    m_controls->paletteRecorder->setMinimumWidth(170);
+    paletteRow->addWidget(m_controls->paletteRecorder);
+    auto *reset = new QPushButton(tr("Reset"));
+    reset->setObjectName(QStringLiteral("settingsKeyReset"));
+    reset->setFlat(true);
+    paletteRow->addWidget(reset);
+    outer->addLayout(paletteRow);
+
+    m_controls->paletteProblem = new QLabel;
+    m_controls->paletteProblem->setObjectName(QStringLiteral("modalProblem"));
+    m_controls->paletteProblem->hide();
+    outer->addWidget(m_controls->paletteProblem);
+
+    m_controls->conflictBar = new QWidget;
+    m_controls->conflictBar->setObjectName(QStringLiteral("settingsKeyConflict"));
+    auto *conflictLayout = new QHBoxLayout(m_controls->conflictBar);
+    conflictLayout->setContentsMargins(0, 0, 0, 0);
+    m_controls->conflictText = new QLabel;
+    m_controls->conflictText->setObjectName(QStringLiteral("settingsKeyConflictText"));
+    m_controls->conflictText->setTextFormat(Qt::PlainText);
+    m_controls->conflictText->setWordWrap(true);
+    conflictLayout->addWidget(m_controls->conflictText, 1);
+    auto *cancel = new QPushButton(tr("Cancel"));
+    cancel->setObjectName(QStringLiteral("settingsKeyConflictCancel"));
+    auto *replace = new QPushButton(tr("Replace"));
+    replace->setObjectName(QStringLiteral("settingsKeyConflictReplace"));
+    conflictLayout->addWidget(cancel);
+    conflictLayout->addWidget(replace);
+    m_controls->conflictBar->hide();
+    outer->addWidget(m_controls->conflictBar);
+
+    connect(m_controls->paletteRecorder, &KeyRecorder::chordRecorded, this,
+            [this](const input::Chord &chord) { recordPaletteShortcut(chord); });
+    connect(m_controls->paletteRecorder, &KeyRecorder::rejected, this,
+            [this](const QString &reason) {
+                m_controls->paletteProblem->setText(reason);
+                m_controls->paletteProblem->show();
+            });
+    connect(replace, &QPushButton::clicked, this, [this] {
+        if (m_controls->pendingChord) {
+            savePaletteShortcut(*m_controls->pendingChord, true);
+        }
+    });
+    connect(cancel, &QPushButton::clicked, this, [this] {
+        m_controls->pendingChord.reset();
+        m_controls->conflictBar->hide();
+    });
+    connect(reset, &QPushButton::clicked, this, [this] { resetPaletteShortcut(); });
+
     m_controls->keyFilter = new QLineEdit;
     m_controls->keyFilter->setPlaceholderText(tr("Search actions"));
     m_controls->keyFilter->setClearButtonEnabled(true);
@@ -506,11 +705,7 @@ QWidget *SettingsWindow::buildKeysTab()
         }
     });
 
-    // Read-only for now, deliberately. The whole table, searchable, is most of
-    // the value; a chord recorder that has to capture keys without the
-    // dispatcher acting on them, and detect that a chord is already bound
-    // elsewhere, is where the risk is.
-    auto *note = new QLabel(tr("Edit hotkeys.toml to change these."));
+    auto *note = new QLabel(tr("Edit hotkeys.toml to change the others."));
     note->setObjectName(QStringLiteral("settingsNote"));
     outer->addWidget(note);
 
@@ -630,10 +825,130 @@ void SettingsWindow::loadValues()
         item->setText(2, action != nullptr ? action->description : QString());
     }
     m_controls->keys->sortItems(0, Qt::AscendingOrder);
+    m_controls->paletteRecorder->setShownBinding(paletteBindingText(*m_keymap));
+    m_controls->paletteProblem->hide();
+    m_controls->conflictBar->hide();
+    m_controls->pendingChord.reset();
     m_controls->keys->resizeColumnToContents(0);
     m_controls->keys->resizeColumnToContents(1);
 
     m_loading = false;
+}
+
+QString SettingsWindow::hotkeysPath()
+{
+    return platform::configDir() + QStringLiteral("/hotkeys.toml");
+}
+
+QString SettingsWindow::paletteBindingText(const input::Keymap &keymap)
+{
+    QStringList texts;
+    for (const input::Binding &binding :
+         keymap.bindingsFor(input::KeymapLayer::Global, QLatin1String(kPaletteAction))) {
+        texts << input::bindingToString(binding);
+    }
+    return texts.join(QStringLiteral("   "));
+}
+
+void SettingsWindow::recordPaletteShortcut(const input::Chord &chord)
+{
+    m_controls->paletteProblem->hide();
+    m_controls->conflictBar->hide();
+    m_controls->pendingChord.reset();
+
+    // Another action on the same chord, in a layer that is live alongside the
+    // global one. Binding it here would make one of the two unreachable.
+    const input::Binding wanted{chord};
+    for (const LayerTable &entry : kConflictLayers) {
+        for (const QString &id : m_registry->ids()) {
+            if (id == QLatin1String(kPaletteAction)) {
+                continue;
+            }
+            const QList<input::Binding> bindings = m_keymap->bindingsFor(entry.layer, id);
+            if (bindings.contains(wanted)) {
+                m_controls->pendingChord = chord;
+                m_controls->conflictText->setText(
+                    tr("%1 is used by %2 — replace it? That action would have no shortcut.")
+                        .arg(input::chordToString(chord), id));
+                m_controls->conflictBar->show();
+                return;
+            }
+        }
+        // Actions the registry does not know (a hotkeys.toml typo) still hold
+        // the chord, so the keymap is consulted for them through the ids it
+        // reports as well; the registry covers every real action.
+    }
+
+    savePaletteShortcut(chord, false);
+}
+
+void SettingsWindow::savePaletteShortcut(const input::Chord &chord, bool replaceConflicts)
+{
+    m_controls->conflictBar->hide();
+    m_controls->pendingChord.reset();
+
+    const input::Binding wanted{chord};
+    if (replaceConflicts) {
+        // Whoever held the chord keeps their other bindings; mentioning an
+        // action in hotkeys.toml replaces all of them, so the rest are written
+        // back — an empty list when this was the only one.
+        for (const LayerTable &entry : kConflictLayers) {
+            for (const QString &id : m_registry->ids()) {
+                if (id == QLatin1String(kPaletteAction)) {
+                    continue;
+                }
+                const QList<input::Binding> bindings = m_keymap->bindingsFor(entry.layer, id);
+                if (!bindings.contains(wanted)) {
+                    continue;
+                }
+                QStringList remaining;
+                for (const input::Binding &binding : bindings) {
+                    if (binding != wanted) {
+                        remaining << portableBinding(binding);
+                    }
+                }
+                const auto result =
+                    config::TomlWriter::setValue(hotkeysPath(), QLatin1String(entry.table), id,
+                                                 config::TomlWriter::stringArray(remaining));
+                if (!result.ok) {
+                    Q_EMIT settingsChanged(tr("Could not save: %1").arg(result.error));
+                    return;
+                }
+            }
+        }
+    }
+
+    const auto result = config::TomlWriter::setValue(
+        hotkeysPath(), QStringLiteral("global"), QLatin1String(kPaletteAction),
+        config::TomlWriter::stringArray({portableChord(chord)}));
+    if (!result.ok) {
+        Q_EMIT settingsChanged(tr("Could not save: %1").arg(result.error));
+        return;
+    }
+    m_controls->paletteRecorder->setShownBinding(input::chordToString(chord));
+    Q_EMIT settingsChanged(
+        tr("Command palette shortcut set to %1").arg(input::chordToString(chord)));
+}
+
+void SettingsWindow::resetPaletteShortcut()
+{
+    m_controls->conflictBar->hide();
+    m_controls->paletteProblem->hide();
+    m_controls->pendingChord.reset();
+
+    const auto result = config::TomlWriter::removeValue(hotkeysPath(), QStringLiteral("global"),
+                                                        QLatin1String(kPaletteAction));
+    if (!result.ok) {
+        Q_EMIT settingsChanged(tr("Could not save: %1").arg(result.error));
+        return;
+    }
+
+    // The keymap is rebuilt when the watcher sees the file change; show the
+    // default now rather than the stale binding until then.
+    input::Keymap defaults;
+    input::installDefaultKeymap(defaults);
+    m_controls->paletteRecorder->setShownBinding(paletteBindingText(defaults));
+    Q_EMIT settingsChanged(tr("Command palette shortcut reset"));
 }
 
 void SettingsWindow::writeConfig(const QString &table, const QString &key, const QString &value,
@@ -663,3 +978,5 @@ void SettingsWindow::writeTheme(const QString &table, const QString &key, const 
 }
 
 } // namespace pf::ui
+
+#include "SettingsWindow.moc"

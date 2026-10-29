@@ -3,6 +3,9 @@
 #include "config/Config.h"
 #include "fs/RenamePlan.h"
 
+#include "fs/jobs/ImageJob.h"
+#include "fs/jobs/MediaJob.h"
+
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -111,6 +114,13 @@ private:
 
     ui::ConflictModal *conflictModal();
     ui::ConfirmModal *confirmModal();
+
+    /// The files the image and media actions act on: the selection, else the
+    /// cursor item.
+    QStringList targetPaths() const;
+    void startImageJob(fs::ImageJob::Op op);
+    void startMediaJob(fs::MediaJob::Target target);
+    void registerFileTypeActions();
 
     /// The delete itself, once any confirmation has been given.
     void startDelete(const QStringList &paths, bool permanent);

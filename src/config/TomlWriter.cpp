@@ -161,6 +161,16 @@ QString TomlWriter::quote(const QString &text)
     return QLatin1Char('"') + escaped + QLatin1Char('"');
 }
 
+QString TomlWriter::stringArray(const QStringList &items)
+{
+    QStringList quoted;
+    quoted.reserve(items.size());
+    for (const QString &item : items) {
+        quoted << quote(item);
+    }
+    return QLatin1Char('[') + quoted.join(QLatin1String(", ")) + QLatin1Char(']');
+}
+
 QString TomlWriter::boolean(bool value)
 {
     return value ? QStringLiteral("true") : QStringLiteral("false");

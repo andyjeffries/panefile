@@ -57,6 +57,8 @@ public:
     static QString quote(const QString &text);
     static QString boolean(bool value);
     static QString number(long long value);
+    /// `["a", "b"]`, each element quoted and escaped; `[]` when empty.
+    static QString stringArray(const QStringList &items);
 };
 
 } // namespace pf::config

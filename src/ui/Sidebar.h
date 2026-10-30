@@ -28,6 +28,9 @@ class Sidebar : public QWidget
     Q_OBJECT
 
 public:
+    /// The glyph name for a place at `path` (home, downloads, a plain folder…).
+    static QString iconNameForEntry(const QString &path);
+
     explicit Sidebar(QWidget *parent = nullptr);
 
     /// Fills in the standard places. Safe to call more than once; later calls
@@ -145,7 +148,6 @@ private:
     /// through addDevices()).
     QListWidgetItem *addPlace(const QString &title, const QString &path, const QString &iconName);
     void addPlaceholder(const QString &sectionId);
-    static QString iconNameForEntry(const QString &path);
     void addDevices();
 
     /// The palette roles the list's style reads directly; see refreshTheme().

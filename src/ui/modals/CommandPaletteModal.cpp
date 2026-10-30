@@ -1,14 +1,15 @@
 #include "ui/modals/CommandPaletteModal.h"
 
+#include "model/SymbolicIcon.h"
 #include "ui/Keycaps.h"
 #include "ui/ThemePalette.h"
 
 #include <QApplication>
 #include <QHBoxLayout>
 #include <QKeyEvent>
-#include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QStyledItemDelegate>
 #include <QVBoxLayout>
@@ -18,13 +19,16 @@
 namespace pf::ui {
 namespace {
 
-constexpr int kRowRole = Qt::UserRole;       ///< Index into the visible rows, or -1 for a heading.
+constexpr int kRowRole = Qt::UserRole;       ///< Index into the visible rows.
 constexpr int kSpansRole = Qt::UserRole + 1; ///< Flat [start, length, …] of the title's match.
 constexpr int kDetailRole = Qt::UserRole + 2;
 constexpr int kKeysRole = Qt::UserRole + 3;
-constexpr int kHeadingRole = Qt::UserRole + 4;
+constexpr int kIconRole = Qt::UserRole + 4;
+constexpr int kGroupRole = Qt::UserRole + 5;
 
 constexpr int kPad = 10;
+constexpr int kIconSize = 16;
+constexpr int kGap = 8;
 
 class PaletteDelegate : public QStyledItemDelegate
 {
@@ -33,9 +37,8 @@ public:
 
     QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override
     {
-        const int height = index.data(kHeadingRole).toBool() ? option.fontMetrics.height() + 14
-                                                             : option.fontMetrics.height() + 14;
-        return {0, height};
+        Q_UNUSED(index)
+        return {0, option.fontMetrics.height() + 12};
     }
 
     void paint(QPainter *painter, const QStyleOptionViewItem &option,
@@ -43,73 +46,78 @@ public:
     {
         const ThemePalette &palette = currentPalette();
         painter->save();
-
-        if (index.data(kHeadingRole).toBool()) {
-            QFont font = option.font;
-            font.setBold(true);
-            font.setCapitalization(QFont::AllUppercase);
-            if (font.pixelSize() > 0) {
-                font.setPixelSize(std::max(1, font.pixelSize() - 2));
-            }
-            painter->setFont(font);
-            painter->setPen(palette.overlay);
-            painter->drawText(option.rect.adjusted(kPad, 4, -kPad, 0),
-                              Qt::AlignLeft | Qt::AlignBottom,
-                              index.data(Qt::DisplayRole).toString());
-            painter->restore();
-            return;
-        }
+        painter->setRenderHint(QPainter::Antialiasing);
 
         if ((option.state & QStyle::State_Selected) != 0) {
-            painter->setRenderHint(QPainter::Antialiasing);
+            // Neutral, not the accent: the reference's highlight is a quiet grey.
             painter->setPen(Qt::NoPen);
-            painter->setBrush(palette.selectionBackground);
-            painter->drawRoundedRect(QRectF(option.rect).adjusted(2, 1, -2, -1), 6, 6);
+            painter->setBrush(
+                config::mixColours(palette.surface, palette.text, palette.isLight() ? 0.07 : 0.10));
+            painter->drawRoundedRect(QRectF(option.rect).adjusted(0, 1, 0, -1),
+                                     palette.borderRadius, palette.borderRadius);
         }
+
+        const int group = index.data(kGroupRole).toInt();
+        int left = option.rect.left() + kPad;
+        const QString icon = index.data(kIconRole).toString();
+        if (!icon.isEmpty()) {
+            const QColor tint = group == 2 ? palette.directory : palette.subtext;
+            const QPixmap pixmap = SymbolicIcon::pixmap(icon, tint, kIconSize,
+                                                        painter->device()->devicePixelRatioF());
+            painter->drawPixmap(QPoint(left, option.rect.center().y() - kIconSize / 2 + 1),
+                                pixmap);
+        }
+        left += kIconSize + kGap;
 
         int right = option.rect.right() - kPad;
         const QString keys = index.data(kKeysRole).toString();
         if (!keys.isEmpty()) {
             const qreal width = keycaps::width(keys, option.font);
+            painter->setOpacity(0.55);
             keycaps::paint(painter, QPointF(right - width, option.rect.center().y()), keys,
                            option.font);
+            painter->setOpacity(1.0);
             right -= static_cast<int>(width) + kPad;
         }
 
         const QFontMetrics metrics(option.font);
         const QString detail = index.data(kDetailRole).toString();
-        QString title = index.data(Qt::DisplayRole).toString();
+        const QString fullTitle = index.data(Qt::DisplayRole).toString();
+        QString title = fullTitle;
         const QList<QVariant> spans = index.data(kSpansRole).toList();
 
-        const int detailWidth = detail.isEmpty() ? 0 : metrics.horizontalAdvance(detail);
-        const int titleRoom = right - option.rect.left() - 2 * kPad -
-                              (detailWidth > 0 ? std::min(detailWidth, right / 3) + kPad : 0);
-        if (metrics.horizontalAdvance(title) > titleRoom) {
+        // The title has priority up to two thirds of the row; the detail takes
+        // what is left, right after it.
+        const int room = std::max(0, right - left);
+        const int detailWidth = detail.isEmpty() ? 0 : metrics.horizontalAdvance(detail) + kGap;
+        const int titleWidth = metrics.horizontalAdvance(title);
+        int titleRoom = room;
+        if (detailWidth > 0) {
+            titleRoom = std::min(titleWidth, std::max(room - detailWidth, room * 65 / 100));
+        }
+        if (titleWidth > titleRoom) {
             // Match spans index the full title; an elided one is drawn plain.
             title = metrics.elidedText(title, Qt::ElideRight, titleRoom);
         }
 
-        const QRect textRect(option.rect.left() + kPad, option.rect.top(), titleRoom,
-                             option.rect.height());
+        const int baseline = option.rect.center().y() + metrics.ascent() / 2 -
+                             metrics.descent() / 2 + 1;
         painter->setFont(option.font);
         painter->setPen(palette.text);
-        if (spans.isEmpty() || title != index.data(Qt::DisplayRole).toString()) {
-            painter->drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, title);
+        if (spans.isEmpty() || title != fullTitle) {
+            painter->drawText(QPoint(left, baseline), title);
         } else {
-            // Matched runs in bold and the accent, the rest as is.
+            // Matched runs in bold, the rest as is; same colour, no accent.
             QFont bold = option.font;
             bold.setBold(true);
-            int x = textRect.left();
+            int x = left;
             int at = 0;
             const auto draw = [&](const QString &piece, bool matched) {
                 if (piece.isEmpty()) {
                     return;
                 }
                 painter->setFont(matched ? bold : option.font);
-                painter->setPen(matched ? palette.accent : palette.text);
-                painter->drawText(
-                    QPoint(x, textRect.center().y() + metrics.ascent() / 2 - metrics.descent() / 2),
-                    piece);
+                painter->drawText(QPoint(x, baseline), piece);
                 x += QFontMetrics(painter->font()).horizontalAdvance(piece);
             };
             for (qsizetype i = 0; i + 1 < spans.size(); i += 2) {
@@ -122,52 +130,120 @@ public:
             draw(title.mid(at), false);
         }
 
-        if (detailWidth > 0) {
-            painter->setFont(option.font);
-            painter->setPen(palette.overlay);
-            const QRect detailRect(option.rect.left() + kPad, option.rect.top(),
-                                   right - option.rect.left() - kPad, option.rect.height());
-            painter->drawText(detailRect, Qt::AlignRight | Qt::AlignVCenter,
-                              metrics.elidedText(detail, Qt::ElideMiddle, right / 3));
+        if (!detail.isEmpty()) {
+            const int detailLeft = left + metrics.horizontalAdvance(title) + kGap;
+            const int detailRoom = right - detailLeft;
+            if (detailRoom > 12) {
+                painter->setFont(option.font);
+                painter->setPen(palette.overlay);
+                const Qt::TextElideMode mode = group == 2 ? Qt::ElideMiddle : Qt::ElideRight;
+                painter->drawText(QPoint(detailLeft, baseline),
+                                  metrics.elidedText(detail, mode, detailRoom));
+            }
         }
         painter->restore();
     }
 };
 
+/// A keycap and what it does, for the footer.
+class KeyHint : public QWidget
+{
+public:
+    KeyHint(const QString &keys, const QString &label, QWidget *parent)
+        : QWidget(parent), m_keys(keys), m_label(label)
+    {
+        setAttribute(Qt::WA_NoSystemBackground, true);
+    }
+
+    QSize sizeHint() const override
+    {
+        const QFont font = labelFont();
+        return {static_cast<int>(keycaps::width(m_keys, font)) + kGap +
+                    QFontMetrics(font).horizontalAdvance(m_label),
+                static_cast<int>(keycaps::kHeight)};
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        const QFont font = labelFont();
+        const qreal used = keycaps::paint(&painter, QPointF(0, height() / 2.0), m_keys, font);
+        painter.setFont(font);
+        painter.setPen(currentPalette().overlay);
+        painter.drawText(QRectF(used + kGap, 0, width() - used - kGap, height()),
+                         Qt::AlignLeft | Qt::AlignVCenter, m_label);
+    }
+
+private:
+    QFont labelFont() const
+    {
+        QFont font = this->font();
+        font.setPixelSize(std::max(1, currentPalette().fontSize - 1));
+        return font;
+    }
+
+    QString m_keys;
+    QString m_label;
+};
+
 } // namespace
 
 CommandPaletteModal::CommandPaletteModal(QWidget *parent)
-    : Modal(parent), m_query(new QLineEdit), m_list(new QListWidget), m_footer(new QLabel),
-      m_count(new QLabel)
+    : Modal(parent), m_query(new QLineEdit), m_list(new QListWidget)
 {
-    setSizePercent(55, 70);
+    setSizePercent(42, 50);
+    setMaximumContentSize({640, 460});
+    // Scopes the stylesheet's palette rules to this card alone.
+    contentWidget()->setProperty("commandPalette", true);
 
     auto *layout = new QVBoxLayout(contentWidget());
-    layout->setContentsMargins(16, 16, 16, 12);
-    layout->setSpacing(10);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
 
-    m_query->setObjectName(QStringLiteral("findQuery"));
+    auto *search = new QWidget;
+    search->setObjectName(QStringLiteral("paletteSearch"));
+    search->setAttribute(Qt::WA_StyledBackground, true);
+    auto *searchLayout = new QHBoxLayout(search);
+    searchLayout->setContentsMargins(14, 12, 14, 12);
+    m_query->setObjectName(QStringLiteral("paletteQuery"));
     m_query->setPlaceholderText(tr("Search actions and places"));
-    layout->addWidget(m_query);
+    searchLayout->addWidget(m_query);
+    layout->addWidget(search);
 
-    m_list->setObjectName(QStringLiteral("findResults"));
+    auto *listHolder = new QWidget;
+    listHolder->setObjectName(QStringLiteral("paletteListHolder"));
+    auto *listLayout = new QVBoxLayout(listHolder);
+    listLayout->setContentsMargins(6, 6, 6, 6);
+    m_list->setObjectName(QStringLiteral("paletteResults"));
     m_list->setItemDelegate(new PaletteDelegate(m_list));
     m_list->setFrameShape(QFrame::NoFrame);
     m_list->setFocusPolicy(Qt::NoFocus);
     m_list->setSelectionMode(QAbstractItemView::SingleSelection);
     m_list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    layout->addWidget(m_list, 1);
+    m_list->setMouseTracking(true);
+    m_list->viewport()->setAutoFillBackground(false);
+    listLayout->addWidget(m_list);
+    layout->addWidget(listHolder, 1);
 
-    auto *footer = new QHBoxLayout;
-    m_footer->setObjectName(QStringLiteral("findStatus"));
-    m_footer->setText(tr("↵ runs · ↑↓ moves · Esc closes"));
-    m_count->setObjectName(QStringLiteral("findStatus"));
-    footer->addWidget(m_footer, 1);
-    footer->addWidget(m_count);
-    layout->addLayout(footer);
+    auto *footer = new QWidget;
+    footer->setObjectName(QStringLiteral("paletteFooter"));
+    footer->setAttribute(Qt::WA_StyledBackground, true);
+    auto *footerLayout = new QHBoxLayout(footer);
+    footerLayout->setContentsMargins(12, 8, 12, 8);
+    footerLayout->setSpacing(14);
+    footerLayout->addWidget(new KeyHint(QStringLiteral("Enter"), tr("Run"), footer));
+    footerLayout->addStretch(1);
+    footerLayout->addWidget(new KeyHint(QStringLiteral("↑ ↓"), tr("Move"), footer));
+    footerLayout->addWidget(new KeyHint(QStringLiteral("Esc"), tr("Close"), footer));
+    layout->addWidget(footer);
 
     connect(m_query, &QLineEdit::textChanged, this, [this] { refresh(); });
     connect(m_list, &QListWidget::itemActivated, this, [this] { accept(); });
+    connect(m_list, &QListWidget::itemEntered, this,
+            [this](QListWidgetItem *item) { m_list->setCurrentItem(item); });
+    connect(m_list, &QListWidget::itemClicked, this, [this] { accept(); });
 }
 
 QWidget *CommandPaletteModal::initialFocusWidget()
@@ -223,11 +299,18 @@ QList<PaletteRow> CommandPaletteModal::rank(const QList<PaletteItem> &items, con
     return rows;
 }
 
-void CommandPaletteModal::open(QList<PaletteItem> items, const QString &contextHeader)
+void CommandPaletteModal::open(QList<PaletteItem> items)
 {
     m_items = std::move(items);
-    m_contextHeader = contextHeader;
     m_query->clear();
+    // Tinted here rather than in the stylesheet, which cannot recolour a glyph.
+    if (m_searchAction != nullptr) {
+        m_query->removeAction(m_searchAction);
+        delete m_searchAction;
+    }
+    m_searchAction = m_query->addAction(
+        SymbolicIcon::icon(QStringLiteral("magnifying-glass"), currentPalette().overlay),
+        QLineEdit::LeadingPosition);
     refresh();
     showModal();
     m_query->setFocus(Qt::ShortcutFocusReason);
@@ -252,31 +335,14 @@ void CommandPaletteModal::refresh()
     m_rows = rank(m_items, m_query->text());
     m_list->clear();
 
-    const bool grouped = m_query->text().trimmed().isEmpty();
-    int lastGroup = -1;
     for (int i = 0; i < m_rows.size(); ++i) {
         const PaletteRow &row = m_rows.at(i);
-        if (grouped && row.item.group != lastGroup) {
-            lastGroup = row.item.group;
-            QString heading;
-            if (lastGroup == 0) {
-                heading = m_contextHeader;
-            } else if (lastGroup == 1) {
-                heading = tr("Actions");
-            } else {
-                heading = tr("Places");
-            }
-            if (!heading.isEmpty()) {
-                auto *item = new QListWidgetItem(heading, m_list);
-                item->setData(kHeadingRole, true);
-                item->setData(kRowRole, -1);
-                item->setFlags(Qt::NoItemFlags);
-            }
-        }
         auto *item = new QListWidgetItem(row.item.title, m_list);
         item->setData(kRowRole, i);
         item->setData(kDetailRole, row.item.detail);
         item->setData(kKeysRole, row.item.keys);
+        item->setData(kIconRole, row.item.icon);
+        item->setData(kGroupRole, row.item.group);
         QList<QVariant> spans;
         for (const MatchSpan &span : row.spans) {
             spans << span.start << span.length;
@@ -284,33 +350,28 @@ void CommandPaletteModal::refresh()
         item->setData(kSpansRole, spans);
     }
 
-    for (int i = 0; i < m_list->count(); ++i) {
-        if (m_list->item(i)->data(kRowRole).toInt() >= 0) {
-            m_list->setCurrentRow(i);
-            break;
-        }
+    if (m_list->count() > 0) {
+        m_list->setCurrentRow(0);
     }
-    m_count->setText(tr("%n command(s)", nullptr, static_cast<int>(m_rows.size())));
 }
 
 void CommandPaletteModal::moveSelection(int delta)
 {
-    int row = m_list->currentRow();
-    const int step = delta < 0 ? -1 : 1;
-    for (int remaining = std::abs(delta); remaining > 0; --remaining) {
-        int next = row + step;
-        while (next >= 0 && next < m_list->count() &&
-               m_list->item(next)->data(kRowRole).toInt() < 0) {
-            next += step;
-        }
-        if (next < 0 || next >= m_list->count()) {
-            break;
-        }
-        row = next;
+    if (m_list->count() == 0) {
+        return;
     }
-    if (row >= 0) {
-        m_list->setCurrentRow(row);
+    m_list->setCurrentRow(std::clamp(m_list->currentRow() + delta, 0, m_list->count() - 1));
+}
+
+void CommandPaletteModal::mousePressEvent(QMouseEvent *event)
+{
+    // A click on the backdrop closes the palette; one on the card is the card's.
+    if (!contentWidget()->geometry().contains(event->position().toPoint())) {
+        dismiss();
+        event->accept();
+        return;
     }
+    QWidget::mousePressEvent(event);
 }
 
 void CommandPaletteModal::keyPressEvent(QKeyEvent *event)

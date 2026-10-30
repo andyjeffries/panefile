@@ -187,6 +187,10 @@ Q_SIGNALS:
     void modeChanged();
     void fileActivated(const QString &absolutePath);
 
+    /// A right-click (or the Menu key) on a file row. The cursor is on it, and
+    /// the selection is its own if it was already part of one.
+    void contextMenuRequested();
+
     /// Transient message for the footer — "nothing to go back to", and similar.
     void statusMessage(const QString &message);
 

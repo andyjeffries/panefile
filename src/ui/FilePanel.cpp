@@ -192,6 +192,16 @@ FilePanel::FilePanel(QWidget *parent)
         }
     });
     connect(m_view, &PanelView::clickCompleted, this, &FilePanel::handleClickRelease);
+    // Like a plain click: inside the selection it is kept, anywhere else starts over.
+    connect(m_view, &PanelView::contextMenuRequested, this, [this](const QString &name) {
+        if (!m_selection.contains(name)) {
+            clearSelection();
+        }
+        // The view already put the cursor on the row; just stop a stale
+        // pending restore from moving it later.
+        m_pendingCursorName.clear();
+        Q_EMIT contextMenuRequested();
+    });
     connect(m_view, &PanelView::dragPathsRequested, this,
             [this](QStringList *paths) { *paths = selectedPaths(); });
     connect(m_view, &PanelView::currentDirectoryRequested, this,

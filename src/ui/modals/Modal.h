@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QSize>
 #include <QWidget>
 
 namespace pf::ui {
@@ -33,6 +34,10 @@ public:
     /// Fraction of the parent's size the content panel occupies, clamped to the
     /// content's own size hint.
     void setSizePercent(int widthPercent, int heightPercent);
+
+    /// Caps the card's size however large the parent is, so a percentage that
+    /// suits a small window does not make a huge card on a wide one.
+    void setMaximumContentSize(const QSize &size);
 
     /// Sizes the card's height to its content rather than to a percentage, for
     /// a short question that would otherwise sit at the top of a tall, mostly
@@ -68,6 +73,7 @@ private:
     int m_widthPercent = 60;
     int m_heightPercent = 70;
     bool m_heightFitsContent = false;
+    QSize m_maximumContentSize{QWIDGETSIZE_MAX, QWIDGETSIZE_MAX};
 };
 
 } // namespace pf::ui

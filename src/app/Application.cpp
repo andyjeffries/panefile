@@ -27,6 +27,7 @@
 #include "fs/JobEngine.h"
 #include "fs/UndoStack.h"
 #include "model/FilterSortProxy.h"
+#include "model/SymbolicIcon.h"
 #include "model/ThumbnailCache.h"
 #include "platform/FileManagerService.h"
 #include "platform/Launcher.h"
@@ -209,7 +210,7 @@ void Application::updateActiveLayers()
             : QList<input::KeymapLayer>{input::KeymapLayer::Normal, input::KeymapLayer::Global});
 }
 
-void Application::configurePanel(ui::FilePanel *panel) const
+void Application::configurePanel(ui::FilePanel *panel)
 {
     if (panel == nullptr) {
         return;
@@ -237,6 +238,10 @@ void Application::configurePanel(ui::FilePanel *panel) const
                 tr("Could not open %1").arg(QFileInfo(path).fileName()));
         }
     });
+
+    // Right-clicking a file opens the palette, whose first rows are that file's actions.
+    connect(panel, &ui::FilePanel::contextMenuRequested, this,
+            [this, panel] { openPaletteFromPanel(panel); });
 
     // The name being typed shows where a half-typed chord does.
     connect(panel->view(), &ui::PanelView::typeAheadChanged, m_mainWindow.get(),
@@ -813,6 +818,65 @@ void Application::restoreSessionOrOpenInitialPanel(const CommandLineOptions &opt
 
 namespace {
 
+/// The glyph a palette row wears: one for the action itself where there is a
+/// good one, else one for its category.
+QString paletteGlyph(const QString &id, input::ActionCategory category)
+{
+    struct Entry {
+        const char *id;
+        const char *glyph;
+    };
+    static constexpr std::array<Entry, 20> exact{{
+        {"rotate_image_left", "arrow-uturn-left"},
+        {"rotate_image_right", "arrow-uturn-right"},
+        {"flip_image_horizontally", "arrows-right-left"},
+        {"flip_image_vertically", "arrows-up-down"},
+        {"compress_file", "archive-box"},
+        {"extract_file", "archive-box"},
+        {"copy_items", "document-duplicate"},
+        {"copy_path", "document-duplicate"},
+        {"cut_items", "scissors"},
+        {"paste_items", "clipboard-document"},
+        {"delete_items", "trash"},
+        {"permanently_delete_items", "trash"},
+        {"file_panel_item_rename", "pencil-square"},
+        {"bulk_rename", "pencil-square"},
+        {"open_with_default_app", "arrow-top-right-on-square"},
+        {"open_file_with_editor", "code-bracket"},
+        {"open_fuzzy_find", "magnifying-glass"},
+        {"open_settings", "cog-6-tooth"},
+        {"convert_", "arrow-path"},
+        {"extract_audio_", "arrow-path"},
+    }};
+    QString glyph;
+    for (const Entry &entry : exact) {
+        const QLatin1String key(entry.id);
+        const bool prefix = key.endsWith(QLatin1Char('_'));
+        if (prefix ? id.startsWith(key) : id == key) {
+            glyph = QLatin1String(entry.glyph);
+            break;
+        }
+    }
+    if (glyph.isEmpty() || !SymbolicIcon::exists(glyph)) {
+        switch (category) {
+        case input::ActionCategory::General:
+            return QStringLiteral("bolt");
+        case input::ActionCategory::Panels:
+            return QStringLiteral("view-columns");
+        case input::ActionCategory::Selection:
+            return QStringLiteral("check-circle");
+        case input::ActionCategory::FileOperations:
+            return QStringLiteral("document-text");
+        case input::ActionCategory::View:
+            return QStringLiteral("eye");
+        case input::ActionCategory::Movement:
+            return QStringLiteral("chevron-right");
+        }
+    }
+    return glyph;
+}
+
+
 /// The write end of the self-pipe, read by the notifier below.
 ///
 /// A file-scope int rather than a member, because a signal handler has no
@@ -1073,7 +1137,6 @@ void Application::promptForAction()
         return inModal && !elsewhere;
     };
 
-    QString contextLabel;
     for (const QString &id : m_registry->ids()) {
         const input::Action *action = m_registry->find(id);
         if (action == nullptr || isPlumbing(*action) || !m_registry->isEnabled(id)) {
@@ -1084,13 +1147,11 @@ void Application::promptForAction()
                          .detail = {},
                          .keys = bindingTextFor(id),
                          .group = 1,
-                         .path = {}};
+                         .path = {},
+                         .icon = paletteGlyph(id, action->category)};
         if (action->contextual) {
             item.group = 0;
             item.detail = action->contextLabel ? action->contextLabel() : QString();
-            if (contextLabel.isEmpty()) {
-                contextLabel = item.detail;
-            }
         } else {
             item.detail = input::ActionRegistry::categoryTitle(action->category);
         }
@@ -1110,17 +1171,24 @@ void Application::promptForAction()
             }
             const QString name = path == home ? tr("Home") : QFileInfo(path).fileName();
             items.append(PaletteItem{
-                .id = {}, .title = name, .detail = shown, .keys = {}, .group = 2, .path = path});
+                .id = {},
+                .title = name,
+                .detail = shown,
+                .keys = {},
+                .group = 2,
+                .path = path,
+                .icon = ui::Sidebar::iconNameForEntry(path)});
         }
     }
 
-    QString header;
-    if (!contextLabel.isEmpty()) {
-        const ui::FilePanel *panel = m_mainWindow->panelStrip()->focusedPanel();
-        const QString name = panel != nullptr ? panel->cursorName() : QString();
-        header = name.isEmpty() ? contextLabel : contextLabel + QStringLiteral(" · ") + name;
-    }
-    commandPalette()->open(items, header);
+    commandPalette()->open(items);
+}
+
+void Application::openPaletteFromPanel(ui::FilePanel *panel)
+{
+    // Focus first, so the contextual actions and their targets are this panel's.
+    m_mainWindow->panelStrip()->setFocusedPanel(panel);
+    promptForAction();
 }
 
 void Application::saveSession() const

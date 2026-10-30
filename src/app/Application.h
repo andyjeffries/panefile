@@ -112,7 +112,7 @@ private:
     void registerGlobalActions();
 
     /// Applies `[panels]` and `[thumbnails]` to a newly created panel.
-    void configurePanel(ui::FilePanel *panel) const;
+    void configurePanel(ui::FilePanel *panel);
 
     /// Puts the dispatcher on the layers §6.2's precedence rules call for.
     ///
@@ -166,6 +166,9 @@ private:
     /// searchable palette of actions and places.
     void promptForShellCommand();
     void promptForAction();
+
+    /// A right-click on a file: the clicked panel takes focus, then the palette opens.
+    void openPaletteFromPanel(ui::FilePanel *panel);
 
     ui::SettingsWindow *settingsWindow();
     ui::InputModal *shellPromptModal();

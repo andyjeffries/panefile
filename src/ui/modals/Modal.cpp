@@ -41,6 +41,12 @@ void Modal::setSizePercent(int widthPercent, int heightPercent)
     reposition();
 }
 
+void Modal::setMaximumContentSize(const QSize &size)
+{
+    m_maximumContentSize = size;
+    reposition();
+}
+
 void Modal::setHeightFitsContent(bool fits)
 {
     m_heightFitsContent = fits;
@@ -97,10 +103,12 @@ void Modal::reposition()
     constexpr int kMinimumWidth = 360;
     constexpr int kMinimumHeight = 240;
 
-    const int width = std::clamp(available.width() * m_widthPercent / 100,
-                                 std::min(kMinimumWidth, available.width()), available.width());
-    int height = std::clamp(available.height() * m_heightPercent / 100,
-                            std::min(kMinimumHeight, available.height()), available.height());
+    const int width = std::clamp(
+        std::min(available.width() * m_widthPercent / 100, m_maximumContentSize.width()),
+        std::min(kMinimumWidth, available.width()), available.width());
+    int height = std::clamp(
+        std::min(available.height() * m_heightPercent / 100, m_maximumContentSize.height()),
+        std::min(kMinimumHeight, available.height()), available.height());
     if (m_heightFitsContent && m_content->layout() != nullptr) {
         height = std::min(m_content->layout()->heightForWidth(width) > 0
                               ? m_content->layout()->heightForWidth(width)

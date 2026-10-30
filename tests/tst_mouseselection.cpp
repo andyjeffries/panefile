@@ -2,6 +2,9 @@
 #include "ui/PanelView.h"
 
 #include <QApplication>
+#include <QContextMenuEvent>
+#include <QScrollBar>
+#include <QSignalSpy>
 #include <QDir>
 #include <QFileInfo>
 #include <QTemporaryDir>
@@ -57,6 +60,55 @@ private Q_SLOTS:
         m_panel->moveCursor(-1);
         m_panel->extendSelectionTo(m_panel->cursorName());
         QCOMPARE(selectedNames(), QStringList{QStringLiteral("b.txt")});
+    }
+
+    void rightClickMovesTheCursorAndAsksForThePalette()
+    {
+        QSignalSpy spy(m_panel.get(), &ui::FilePanel::contextMenuRequested);
+        rightClick(QStringLiteral("b.txt"));
+        QCOMPARE(m_panel->cursorName(), QStringLiteral("b.txt"));
+        QCOMPARE(m_panel->selectionCount(), 0);
+        QCOMPARE(spy.size(), 1);
+    }
+
+    void rightClickInsideASelectionKeepsIt()
+    {
+        m_panel->toggleSelectionAt(QStringLiteral("a.txt"));
+        m_panel->toggleSelectionAt(QStringLiteral("b.txt"));
+        QSignalSpy spy(m_panel.get(), &ui::FilePanel::contextMenuRequested);
+        rightClick(QStringLiteral("b.txt"));
+        QCOMPARE(m_panel->selectionCount(), 2);
+        QCOMPARE(spy.size(), 1);
+    }
+
+    void rightClickDoesNotScrollTheList()
+    {
+        m_panel->resize(400, 90);
+        m_panel->show();
+        QScrollBar *bar = m_panel->view()->verticalScrollBar();
+        QTRY_VERIFY(bar->maximum() > 0);
+        bar->setValue(0);
+        const QString edge = m_panel->view()->indexAt(
+            QPoint(5, m_panel->view()->viewport()->height() - 2))
+            .data(Qt::DisplayRole).toString();
+        QVERIFY(!edge.isEmpty());
+        rightClick(edge);
+        QCOMPARE(bar->value(), 0);
+    }
+
+    void rightClickOnEmptySpaceDoesNothing()
+    {
+        QSignalSpy spy(m_panel.get(), &ui::FilePanel::contextMenuRequested);
+        m_panel->resize(400, 600);
+        m_panel->show();
+        QWidget *viewport = m_panel->view()->viewport();
+        const QModelIndex last = m_panel->view()->model()->index(4, 0);
+        QTRY_VERIFY(viewport->height() > m_panel->view()->visualRect(last).bottom() + 10);
+        const QPoint at(5, m_panel->view()->visualRect(last).bottom() + 6);
+        QVERIFY(!m_panel->view()->indexAt(at).isValid());
+        QContextMenuEvent event(QContextMenuEvent::Mouse, at, viewport->mapToGlobal(at));
+        QApplication::sendEvent(viewport, &event);
+        QCOMPARE(spy.size(), 0);
     }
 
     void initTestCase()
@@ -225,6 +277,22 @@ private Q_SLOTS:
     }
 
 private:
+    void rightClick(const QString &name)
+    {
+        ui::PanelView *view = m_panel->view();
+        for (int row = 0; row < view->model()->rowCount(); ++row) {
+            const QModelIndex index = view->model()->index(row, 0);
+            if (index.data(Qt::DisplayRole).toString() == name) {
+                const QPoint at = view->visualRect(index).center();
+                QContextMenuEvent event(QContextMenuEvent::Mouse, at,
+                                        view->viewport()->mapToGlobal(at));
+                QApplication::sendEvent(view->viewport(), &event);
+                return;
+            }
+        }
+        QFAIL("no such row");
+    }
+
     /// The selection as names, in the panel's own order — selectedPaths() falls
     /// back to the cursor when nothing is selected, so every caller here checks
     /// selectionCount() first or expects a non-empty selection.

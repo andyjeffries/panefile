@@ -122,6 +122,11 @@ Q_SIGNALS:
     /// selection it could not safely clear on the way down.
     void clickCompleted(const QString &name, Qt::KeyboardModifiers modifiers);
 
+    /// A right-click on a row, or the Menu key with a cursor row. The cursor
+    /// is on `name`. Never emitted for empty space, where there is nothing to
+    /// act on.
+    void contextMenuRequested(const QString &name);
+
     /// A row was double-clicked with the left button; the cursor is on it.
     ///
     /// Its own signal rather than QAbstractItemView::activated, which Qt only
@@ -165,6 +170,7 @@ protected:
     void resizeEvent(QResizeEvent *event) override;
     void paintEvent(QPaintEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
+    void contextMenuEvent(QContextMenuEvent *event) override;
     void focusOutEvent(QFocusEvent *event) override;
     void currentChanged(const QModelIndex &current, const QModelIndex &previous) override;
 

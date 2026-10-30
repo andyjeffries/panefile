@@ -8,6 +8,7 @@
 #include "ui/ThemePalette.h"
 
 #include <QApplication>
+#include <QContextMenuEvent>
 #include <QDir>
 #include <QDrag>
 #include <QDragEnterEvent>
@@ -140,6 +141,21 @@ void PanelView::keyboardSearch(const QString &search)
     setCurrentIndex(model()->index(row, 0, rootIndex()));
     m_typeAheadMoving = false;
     Q_EMIT cursorMovedByTyping();
+}
+
+void PanelView::contextMenuEvent(QContextMenuEvent *event)
+{
+    // A pointer asks about the row under it; the Menu key, about the cursor row.
+    const QModelIndex index = event->reason() == QContextMenuEvent::Mouse
+                                  ? indexAt(event->pos())
+                                  : currentIndex();
+    if (!index.isValid()) {
+        event->ignore();
+        return;
+    }
+    setCurrentIndex(index);
+    event->accept();
+    Q_EMIT contextMenuRequested(index.data(DirectoryModel::NameRole).toString());
 }
 
 void PanelView::keyPressEvent(QKeyEvent *event)

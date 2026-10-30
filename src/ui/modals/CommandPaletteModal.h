@@ -3,7 +3,7 @@
 #include "core/FuzzyMatcher.h"
 #include "ui/modals/Modal.h"
 
-class QLabel;
+class QAction;
 class QLineEdit;
 class QListWidget;
 
@@ -23,6 +23,8 @@ struct PaletteItem {
     int group = 1;
     /// A place's absolute path.
     QString path;
+    /// A SymbolicIcon glyph name, drawn before the title.
+    QString icon;
 };
 
 /// A ranked row: the item and where the query matched its title.
@@ -45,9 +47,8 @@ class CommandPaletteModal : public Modal
 public:
     explicit CommandPaletteModal(QWidget *parent);
 
-    /// Shows the palette over `items`. `contextHeader` labels the first group,
-    /// e.g. "Image · mockup-final.png".
-    void open(QList<PaletteItem> items, const QString &contextHeader = {});
+    /// Shows the palette over `items`.
+    void open(QList<PaletteItem> items);
 
     /// The rows `query` leaves, best first within each group. An empty query
     /// keeps everything in its given order. Pure, so the ordering is testable
@@ -66,6 +67,7 @@ Q_SIGNALS:
 protected:
     void accept() override;
     void keyPressEvent(QKeyEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
     QWidget *initialFocusWidget() override;
 
 private:
@@ -74,12 +76,10 @@ private:
 
     QLineEdit *m_query = nullptr;
     QListWidget *m_list = nullptr;
-    QLabel *m_footer = nullptr;
-    QLabel *m_count = nullptr;
+    QAction *m_searchAction = nullptr;
 
     QList<PaletteItem> m_items;
     QList<PaletteRow> m_rows;
-    QString m_contextHeader;
 };
 
 } // namespace pf::ui

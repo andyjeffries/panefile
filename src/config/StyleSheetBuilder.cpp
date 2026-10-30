@@ -748,6 +748,43 @@ QWidget#modalContent QLineEdit:focus {
     background-color: %{surface};
 }
 
+/* The command palette: one card, a borderless search row and list, hairlines
+   between the parts. Scoped by property so no other modal changes. */
+QWidget#modalContent[commandPalette="true"] QWidget#paletteSearch {
+    background-color: transparent;
+    border-bottom: 1px solid %{header_rule};
+}
+
+QWidget#modalContent[commandPalette="true"] QLineEdit#paletteQuery,
+QWidget#modalContent[commandPalette="true"] QLineEdit#paletteQuery:focus {
+    background-color: transparent;
+    border: none;
+    padding: 2px 4px;
+    font-size: %{title_font_size}px;
+}
+
+QWidget#modalContent[commandPalette="true"] QWidget#paletteListHolder {
+    background-color: transparent;
+}
+
+QWidget#modalContent[commandPalette="true"] QListWidget#paletteResults {
+    background-color: transparent;
+    border: none;
+}
+
+QWidget#modalContent[commandPalette="true"] QListWidget#paletteResults::item,
+QWidget#modalContent[commandPalette="true"] QListWidget#paletteResults::item:selected,
+QWidget#modalContent[commandPalette="true"] QListWidget#paletteResults::item:hover {
+    background-color: transparent;
+    border: none;
+    padding: 0;
+}
+
+QWidget#modalContent[commandPalette="true"] QWidget#paletteFooter {
+    background-color: transparent;
+    border-top: 1px solid %{header_rule};
+}
+
 /* The keyboard reference is the card's whole content, so it needs no box of
    its own inside the box it is already in. */
 QWidget#modalContent QTreeWidget#helpTable {

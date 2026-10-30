@@ -1,6 +1,7 @@
 #include "ui/modals/CommandPaletteModal.h"
 
 #include <QLineEdit>
+#include <QListWidget>
 #include <QSignalSpy>
 #include <QTest>
 
@@ -16,25 +17,29 @@ QList<PaletteItem> sample()
          .detail = "General",
          .keys = "Ctrl+F",
          .group = 1,
-         .path = {}},
+         .path = {},
+         .icon = {}},
         {.id = "convert_image_to_webp",
          .title = "Convert the selected images to WebP",
          .detail = "Image",
          .keys = {},
          .group = 0,
-         .path = {}},
+         .path = {},
+         .icon = {}},
         {.id = "copy_path",
          .title = "Copy the cursor item's absolute path",
          .detail = "File operations",
          .keys = "Ctrl+P",
          .group = 1,
-         .path = {}},
+         .path = {},
+         .icon = {}},
         {.id = {},
          .title = "Downloads",
          .detail = "~/Downloads",
          .keys = {},
          .group = 2,
-         .path = "/home/x/Downloads"},
+         .path = "/home/x/Downloads",
+         .icon = {}},
     };
 }
 
@@ -107,29 +112,73 @@ private Q_SLOTS:
         QSignalSpy action(&palette, &CommandPaletteModal::actionChosen);
         QSignalSpy place(&palette, &CommandPaletteModal::placeChosen);
 
-        palette.open(sample(), QStringLiteral("Image"));
+        palette.open(sample());
         QTest::keyClick(&palette, Qt::Key_Return);
         QCOMPARE(action.size(), 1);
         QCOMPARE(action.first().first().toString(), QStringLiteral("convert_image_to_webp"));
 
-        palette.open(sample(), QString());
+        palette.open(sample());
         palette.setQuery(QStringLiteral("down"));
         QTest::keyClick(&palette, Qt::Key_Return);
         QCOMPARE(place.size(), 1);
         QCOMPARE(place.first().first().toString(), QStringLiteral("/home/x/Downloads"));
     }
 
-    void downMovesPastTheHeadings()
+    void downMovesToTheNextRow()
     {
         QWidget parent;
         parent.resize(800, 600);
         parent.show();
         CommandPaletteModal palette(&parent);
         QSignalSpy action(&palette, &CommandPaletteModal::actionChosen);
-        palette.open(sample(), QStringLiteral("Image"));
-        QTest::keyClick(&palette, Qt::Key_Down); // over the "Actions" heading to the next row
+        palette.open(sample());
+        // No heading rows: the list holds exactly the visible items.
+        QCOMPARE(palette.findChild<QListWidget *>()->count(),
+                 static_cast<int>(palette.visibleItems().size()));
+        QTest::keyClick(&palette, Qt::Key_Down);
         QTest::keyClick(&palette, Qt::Key_Return);
         QCOMPARE(action.first().first().toString(), QStringLiteral("open_fuzzy_find"));
+    }
+
+    void aClickRunsTheRow()
+    {
+        QWidget parent;
+        parent.resize(800, 600);
+        parent.show();
+        CommandPaletteModal palette(&parent);
+        QSignalSpy action(&palette, &CommandPaletteModal::actionChosen);
+        palette.open(sample());
+        QListWidget *list = palette.findChild<QListWidget *>();
+        QTest::mouseClick(list->viewport(), Qt::LeftButton, Qt::NoModifier,
+                          list->visualItemRect(list->item(1)).center());
+        QCOMPARE(action.size(), 1);
+        QCOMPARE(action.first().first().toString(), QStringLiteral("open_fuzzy_find"));
+        QVERIFY(!palette.isVisible());
+    }
+
+    void clickingOutsideTheCardDismisses()
+    {
+        QWidget parent;
+        parent.resize(800, 600);
+        parent.show();
+        CommandPaletteModal palette(&parent);
+        QSignalSpy action(&palette, &CommandPaletteModal::actionChosen);
+        palette.open(sample());
+        QVERIFY(palette.isVisible());
+        QTest::mouseClick(&palette, Qt::LeftButton, Qt::NoModifier, QPoint(5, 5));
+        QCOMPARE(action.size(), 0);
+        QVERIFY(!palette.isVisible());
+    }
+
+    void theCardIsCapped()
+    {
+        QWidget parent;
+        parent.resize(2400, 1600);
+        parent.show();
+        CommandPaletteModal palette(&parent);
+        palette.open(sample());
+        QVERIFY(palette.contentWidget()->width() <= 640);
+        QVERIFY(palette.contentWidget()->height() <= 460);
     }
 
     /// Nothing matches but the text is an exact action id: it still runs, as the
@@ -141,7 +190,7 @@ private Q_SLOTS:
         parent.show();
         CommandPaletteModal palette(&parent);
         QSignalSpy action(&palette, &CommandPaletteModal::actionChosen);
-        palette.open(QList<PaletteItem>{}, QString());
+        palette.open(QList<PaletteItem>{});
         palette.setQuery(QStringLiteral("bulk_rename"));
         QTest::keyClick(&palette, Qt::Key_Return);
         QCOMPARE(action.size(), 1);
@@ -155,7 +204,7 @@ private Q_SLOTS:
         parent.show();
         CommandPaletteModal palette(&parent);
         QSignalSpy action(&palette, &CommandPaletteModal::actionChosen);
-        palette.open(sample(), QString());
+        palette.open(sample());
         QTest::keyClick(&palette, Qt::Key_Escape);
         QCOMPARE(action.size(), 0);
     }

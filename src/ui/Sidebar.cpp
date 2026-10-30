@@ -4,6 +4,7 @@
 #include "core/Logging.h"
 #include "core/WorkerPools.h"
 #include "fs/Trash.h"
+#include "model/StandardFolders.h"
 #include "model/SymbolicIcon.h"
 #include "platform/Paths.h"
 #include "ui/SymbolicWidgets.h"
@@ -387,26 +388,12 @@ void Sidebar::applyItemTheme(QListWidgetItem *item)
 QString Sidebar::iconNameForPath(const QString &path)
 {
     const QString cleaned = QDir::cleanPath(path);
-    if (cleaned == QDir::cleanPath(QDir::homePath())) {
-        return QStringLiteral("home");
-    }
-
-    struct Match {
-        QStandardPaths::StandardLocation location;
-        const char *icon;
-    };
-    static constexpr Match kMatches[]{
-        {.location = QStandardPaths::DesktopLocation, .icon = "computer-desktop"},
-        {.location = QStandardPaths::DownloadLocation, .icon = "arrow-down-tray"},
-        {.location = QStandardPaths::DocumentsLocation, .icon = "document-text"},
-        {.location = QStandardPaths::PicturesLocation, .icon = "photo"},
-        {.location = QStandardPaths::MusicLocation, .icon = "musical-note"},
-        {.location = QStandardPaths::MoviesLocation, .icon = "film"},
-    };
-    for (const Match &match : kMatches) {
-        if (cleaned == QDir::cleanPath(QStandardPaths::writableLocation(match.location))) {
-            return QString::fromLatin1(match.icon);
-        }
+    // The same table the folder icons use, so the two cannot disagree about
+    // which folder is which. Public and Templates have no outline glyph, and
+    // stay plain folders here.
+    const QString hero = StandardFolders::heroNameFor(cleaned);
+    if (!hero.isEmpty() && SymbolicIcon::exists(hero)) {
+        return hero;
     }
     return QStringLiteral("folder");
 }

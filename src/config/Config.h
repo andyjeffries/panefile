@@ -44,6 +44,7 @@ struct Settings {
         int maxCount = 10;
         bool directoriesFirst = true;
         QString defaultSort = QStringLiteral("name");
+        QString defaultView = QStringLiteral("list");
         bool showHidden = false;
     } panels;
 

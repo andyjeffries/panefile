@@ -64,6 +64,9 @@ struct Theme {
     /// and every sibling application beside it looking finer-grained.
     int fontSize = 13;
     int rowHeight = 30;
+
+    /// Icon view: the side of the icon or thumbnail in a tile.
+    int iconSize = 64;
     int borderRadius = 6;
     int panelPadding = 10;
 

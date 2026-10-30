@@ -31,6 +31,7 @@ set(PF_PLATFORM_SOURCES
     platform/MountTable.cpp
     platform/Paths.cpp
     platform/PluginHost.cpp
+    platform/Thumbnailers.cpp
     platform/WatchBackend.cpp
     # AUTOMOC only scans a header when a source of the same basename is in the
     # target. VolumeMonitor's implementations are per platform and named
@@ -44,6 +45,7 @@ if(PF_PLATFORM_LINUX)
         platform/linux/FileOps_linux.cpp
         platform/linux/Launcher_linux.cpp
         platform/linux/MountTable_linux.cpp
+        platform/linux/Thumbnailers_linux.cpp
         platform/linux/Paths_linux.cpp
         platform/linux/VolumeMonitor_linux.cpp
         platform/linux/WatchBackend_linux.cpp
@@ -54,6 +56,7 @@ elseif(PF_PLATFORM_DARWIN)
         platform/darwin/FileOps_darwin.cpp
         platform/darwin/Launcher_darwin.cpp
         platform/darwin/MountTable_darwin.cpp
+        platform/darwin/Thumbnailers_darwin.cpp
         platform/darwin/Paths_darwin.cpp
         platform/darwin/VolumeMonitor_darwin.cpp
         platform/darwin/WatchBackend_darwin.cpp)
@@ -160,7 +163,10 @@ pf_layer_library(pf_model
     SOURCES
         model/DirectoryModel.cpp
         model/FilterSortProxy.cpp
+        model/FolderIconRenderer.cpp
+        model/FolderIconStore.cpp
         model/IconProvider.cpp
+        model/StandardFolders.cpp
         model/SymbolicIcon.cpp
         model/ThumbnailCache.cpp
         model/TintedIcon.cpp
@@ -181,6 +187,7 @@ pf_layer_library(pf_model
 # picks up an added icon without a manual re-run of CMake.
 file(GLOB PF_FILE_ICONS CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/data/icons/files/*.svg")
 file(GLOB PF_SYMBOLIC_ICONS CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/data/icons/symbolic/*.svg")
+file(GLOB PF_EMBLEM_ICONS CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/data/icons/emblems/*.svg")
 
 qt_add_resources(pf_model "file_icons"
     PREFIX "/icons/files"
@@ -191,6 +198,14 @@ qt_add_resources(pf_model "symbolic_icons"
     PREFIX "/icons/symbolic"
     BASE "${PROJECT_SOURCE_DIR}/data/icons/symbolic"
     FILES ${PF_SYMBOLIC_ICONS})
+
+# The nine standard-folder emblems (Heroicons v2 solid), compiled in because the
+# home folder's icon is painted in the first frame. The full set of ~300 is
+# loaded from the data directory when the folder icon picker opens.
+qt_add_resources(pf_model "emblem_icons"
+    PREFIX "/icons/emblems"
+    BASE "${PROJECT_SOURCE_DIR}/data/icons/emblems"
+    FILES ${PF_EMBLEM_ICONS})
 
 # ---------------------------------------------------------------------------
 # ui — widgets, delegates, painting.
@@ -204,6 +219,7 @@ pf_layer_library(pf_ui
         ui/FileItemDelegate.cpp
         ui/FilePanel.cpp
         ui/FolderSortMemory.cpp
+        ui/FolderViewMemory.cpp
         ui/Keycaps.cpp
         ui/MainWindow.cpp
         ui/PanefileStyle.cpp
@@ -232,6 +248,7 @@ pf_layer_library(pf_ui
         ui/quicklook/renderers/TextRenderer.cpp
         ui/modals/CommandPaletteModal.cpp
         ui/modals/FindModal.cpp
+        ui/modals/FolderIconModal.cpp
         ui/modals/InputModal.cpp
         ui/modals/HelpModal.cpp
         ui/modals/RenameModal.cpp

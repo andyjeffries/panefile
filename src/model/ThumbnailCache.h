@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QCache>
 #include <QHash>
 #include <QImage>
 #include <QObject>
@@ -36,6 +37,10 @@ public:
     };
 
     static int pixelsFor(Size size);
+
+    /// The cache size to ask for when the icon is `logicalPx` wide on a screen
+    /// with this pixel ratio: Normal while 128 px is enough, Large beyond it.
+    static Size sizeFor(int logicalPx, qreal dpr);
     static QString directoryNameFor(Size size);
 
     /// The `file://` URI the spec hashes. Percent-encoded the way the spec
@@ -65,6 +70,9 @@ public:
     /// §7.7's `thumbnails.max_file_size_mb` (default 200).
     void setMaxFileSizeMb(int megabytes);
 
+    /// The memory tier's budget in KiB (default 128 MB).
+    void setMemoryBudgetKb(int kilobytes);
+
     /// §7.7's `thumbnails.video`. Video thumbnailing needs ffmpegthumbnailer,
     /// which §3.4 keeps behind the optional plugin host: without the
     /// pf-video-thumb plugin, videos are skipped, and never fail-cached.
@@ -75,6 +83,10 @@ public:
     /// stat plus, on a hit, a small PNG decode.
     QImage lookup(const QString &absolutePath, Size size) const;
 
+    /// The memory tier only: no stat, no disk, not verified against the file.
+    /// For showing the other size's image while the right one is generated.
+    QImage peek(const QString &absolutePath, Size size) const;
+
     /// §7.7: "Write failures to fail/panefile/ so you don't retry a file that
     /// can't be thumbnailed."
     bool hasFailed(const QString &absolutePath) const;
@@ -82,7 +94,10 @@ public:
     /// Queues generation off the GUI thread. A path already queued or already
     /// known to have failed is ignored, so a delegate may call this on every
     /// paint without flooding the pool.
-    void request(const QString &absolutePath, Size size);
+    ///
+    /// `priority` orders the queue: visible tiles pass the speculative ones.
+    /// One size is in flight per path; asking for another replaces it.
+    void request(const QString &absolutePath, Size size, int priority = 0);
 
     /// §7.7: "cancel requests for rows that scroll away".
     void cancel(const QString &absolutePath);
@@ -110,7 +125,7 @@ Q_SIGNALS:
     void failed(const QString &absolutePath);
 
 private:
-    enum class Kind { None, Image, Video };
+    enum class Kind { None, Image, Video, External };
     Kind kindFor(const QString &absolutePath) const;
 
     void writeFailMarker(const QString &absolutePath) const;
@@ -122,6 +137,7 @@ private:
     /// cancelled decode stops as soon as it notices. Erasing the entry is the
     /// cancellation: the worker holds the last reference and checks it.
     QHash<QString, std::shared_ptr<std::atomic<bool>>> m_pendingFlags;
+    QHash<QString, Size> m_pendingSizes;
 
     /// The memory tier. lookup() is called from the delegate's paint path,
     /// which §5.3 requires to do no IO at all — so a disk hit is decoded once
@@ -132,7 +148,11 @@ private:
         qint64 modifiedSeconds = 0;
     };
 
-    mutable QHash<QString, MemoryEntry> m_memory;
+    /// Keyed by size and path, because a 128 px image must not answer a 256 px
+    /// lookup. Cost is in KiB; the budget is 128 MB.
+    mutable QCache<QString, MemoryEntry> m_memory{128 * 1024};
+    static QString memoryKey(const QString &absolutePath, Size size);
+    void remember(const QString &absolutePath, Size size, const QImage &image);
 
     QThreadPool *m_pool = nullptr;
 

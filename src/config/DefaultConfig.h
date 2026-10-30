@@ -34,6 +34,7 @@ default_count        = 1
 max_count            = 10
 directories_first    = true
 default_sort         = "name"       # name | size | modified | type
+default_view         = "list"       # list | icons (folders you have not chosen a view for)
 show_hidden          = false
 
 [quicklook]

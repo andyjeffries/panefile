@@ -79,6 +79,13 @@ public:
     /// the entry is a symlink. Never null for a valid build.
     QIcon iconFor(const FileEntry &entry, const QColor &tint);
 
+    /// A directory's icon: the redrawn folder, tinted to `tint`, with the
+    /// debossed emblem for `glyphId` (empty for none), the symlink badge when
+    /// `linked`, drawn closed when `empty`. `fade` is the panel background an
+    /// unfocused panel mixes the whole icon toward.
+    QIcon folderIcon(const QString &glyphId, const QColor &tint, bool linked = false,
+                     bool empty = false, const QColor &fade = {});
+
     /// The icon for a kind, without an entry. `linked` adds the symlink badge.
     QIcon iconFor(Kind kind, const QColor &tint, bool linked = false);
 

@@ -3,9 +3,11 @@
 
 #include "core/Logging.h"
 #include "model/DirectoryModel.h"
+#include "model/ThumbnailCache.h"
 #include "ui/CursorMemory.h"
 #include "ui/FileItemDelegate.h"
 #include "ui/FolderSortMemory.h"
+#include "ui/FolderViewMemory.h"
 #include "ui/PanelView.h"
 #include "ui/ThemePalette.h"
 
@@ -37,6 +39,17 @@ constexpr int kPanelFocusEdgeHeight = 2;
 /// float inside the pane rather than touching its seams.
 constexpr int kListInsetVertical = 4;
 constexpr int kListInsetHorizontal = 6;
+
+/// §7.7: "within 20 rows of the viewport" — rows of the layout, so a grid
+/// reaches proportionally more files.
+constexpr int kThumbnailOvershootRows = 20;
+
+/// A row only shows a thumbnail when it is at least this tall (see the
+/// delegate), so a shorter one asks for none.
+constexpr int kListThumbnailMinimumRowHeight = 40;
+
+/// The icon box in a row.
+constexpr int kListIconSize = 16;
 
 } // namespace
 
@@ -212,6 +225,14 @@ FilePanel::FilePanel(QWidget *parent)
     // scrolling, and rows arriving.
     connect(m_view->verticalScrollBar(), &QScrollBar::valueChanged, this,
             [this] { updateThumbnailWindow(); });
+    // A sort or a filter reorders the rows under the window; rows arriving
+    // outside a scan (the watcher) extend it.
+    connect(m_proxy, &QAbstractItemModel::layoutChanged, this, [this] { updateThumbnailWindow(); });
+    connect(m_proxy, &QAbstractItemModel::rowsInserted, this, [this] {
+        if (!m_model->isScanning()) {
+            updateThumbnailWindow();
+        }
+    });
 
     applyPalette();
     setActive(false);
@@ -298,6 +319,7 @@ void FilePanel::setPathInternal(const QString &path, bool pushHistory)
     // Before the scan delivers rows, so they arrive in this directory's order
     // rather than being sorted once in the last directory's and then again.
     applySortOrder(FolderSortMemory::instance().recall(m_path).value_or(m_defaultSort));
+    applyViewMode(FolderViewMemory::instance().recall(m_path).value_or(m_defaultView));
 
     m_scanError.clear();
     m_model->setPath(m_path);
@@ -514,11 +536,123 @@ void FilePanel::moveCursorToEnd()
 
 void FilePanel::movePage(int direction)
 {
-    const int rowHeight = std::max(1, currentPalette().rowHeight);
+    const QSize grid = m_view->gridSize();
+    const int rowHeight = std::max(1, grid.isValid() ? grid.height() : currentPalette().rowHeight);
     const int visibleRows = std::max(1, m_view->viewport()->height() / rowHeight);
     // One row of overlap, so a page down leaves a line of context rather than
     // making the reader work out whether anything was skipped.
-    moveCursor(direction * std::max(1, visibleRows - 1));
+    moveCursorRows(direction * std::max(1, visibleRows - 1));
+}
+
+int FilePanel::itemsPerRow() const
+{
+    if (m_viewMode != ViewMode::Icons) {
+        return 1;
+    }
+    const int cell = std::max(1, m_view->gridSize().width());
+    return std::max(1, m_view->viewport()->width() / cell);
+}
+
+void FilePanel::moveCursorRows(int rows)
+{
+    const int count = m_proxy->rowCount();
+    if (count == 0 || rows == 0) {
+        return;
+    }
+
+    const int perRow = itemsPerRow();
+    const QModelIndex current = m_view->currentIndex();
+    const int from = current.isValid() ? current.row() : 0;
+    const int column = from % perRow;
+    const int lastRowStart = ((count - 1) / perRow) * perRow;
+
+    int target = from + (rows * perRow);
+    if (target < 0) {
+        // Past the top: the first row, same column, or stay if already there.
+        target = from < perRow ? from : column;
+    } else if (target > count - 1) {
+        // Past the bottom: the last row's same column, or its last tile when
+        // that row is short — and stay if already on it.
+        target = from >= lastRowStart ? from : std::min(lastRowStart + column, count - 1);
+    }
+    m_view->setCurrentIndex(m_proxy->index(target, 0));
+}
+
+void FilePanel::moveCursorColumns(int delta)
+{
+    if (m_viewMode == ViewMode::Icons) {
+        moveCursor(delta);
+    }
+}
+
+void FilePanel::setDefaultViewMode(ViewMode mode)
+{
+    m_defaultView = mode;
+    if (!FolderViewMemory::instance().recall(m_path).has_value() && m_viewMode != mode) {
+        applyViewMode(mode);
+    }
+}
+
+void FilePanel::setViewMode(ViewMode mode)
+{
+    applyViewMode(mode);
+    if (mode == m_defaultView) {
+        FolderViewMemory::instance().forget(m_path);
+    } else {
+        FolderViewMemory::instance().remember(m_path, mode);
+    }
+}
+
+void FilePanel::toggleViewMode()
+{
+    setViewMode(m_viewMode == ViewMode::Icons ? ViewMode::List : ViewMode::Icons);
+}
+
+ViewMode FilePanel::viewMode() const
+{
+    return m_viewMode;
+}
+
+void FilePanel::applyViewMode(ViewMode mode)
+{
+    const QString name = cursorName();
+    m_viewMode = mode;
+
+    if (mode == ViewMode::Icons) {
+        // ListMode with wrapping, not IconMode: IconMode keeps a geometry for
+        // every item and lays them all out, which a 100,000-entry folder
+        // cannot afford. A fixed grid keeps Qt's uniform-size fast path.
+        const auto metrics =
+            FileItemDelegate::tileMetricsFor(currentPalette(), m_view->fontMetrics());
+        m_delegate->setLayout(FileItemDelegate::Layout::Tile);
+        m_view->setFlow(QListView::LeftToRight);
+        m_view->setWrapping(true);
+        m_view->setSpacing(0);
+        m_view->setGridSize(metrics.tile);
+        m_view->setUniformItemSizes(true);
+        m_view->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+        m_view->verticalScrollBar()->setSingleStep(metrics.tile.height());
+    } else {
+        m_delegate->setLayout(FileItemDelegate::Layout::Row);
+        m_view->setGridSize(QSize());
+        m_view->setWrapping(false);
+        m_view->setFlow(QListView::TopToBottom);
+        m_view->setSpacing(0);
+        m_view->setUniformItemSizes(true);
+        m_view->setVerticalScrollMode(QAbstractItemView::ScrollPerItem);
+    }
+
+    // The view caches the uniform item size; without this it keeps the other
+    // layout's.
+    m_delegate->clearCaches();
+    m_view->doItemsLayout();
+
+    if (!name.isEmpty()) {
+        setCursorName(name);
+    }
+    m_view->viewport()->update();
+    updateThumbnailWindow();
+    updateHeader();
 }
 
 QString FilePanel::filterText() const
@@ -627,13 +761,58 @@ void FilePanel::updateThumbnailWindow()
         return;
     }
 
-    const QModelIndex first = m_view->indexAt(m_view->viewport()->rect().topLeft());
-    const QModelIndex last = m_view->indexAt(m_view->viewport()->rect().bottomLeft());
+    const bool tiles = m_viewMode == ViewMode::Icons;
 
-    const int firstRow = first.isValid() ? m_proxy->mapToSource(first).row() : 0;
-    const int lastRow = last.isValid() ? m_proxy->mapToSource(last).row() : m_model->rowCount() - 1;
+    // A row too short to show a thumbnail has no use for one.
+    if (!tiles && currentPalette().rowHeight < kListThumbnailMinimumRowHeight) {
+        m_model->requestThumbnails({}, {});
+        return;
+    }
 
-    m_model->requestThumbnailRange(std::min(firstRow, lastRow), std::max(firstRow, lastRow));
+    const int iconPixels = tiles ? currentPalette().iconSize : kListIconSize;
+    m_model->setThumbnailSize(ThumbnailCache::sizeFor(iconPixels, devicePixelRatioF()));
+
+    const int count = m_proxy->rowCount();
+    if (count == 0) {
+        m_model->requestThumbnails({}, {});
+        return;
+    }
+
+    // Worked out in the proxy's rows — what the view shows, in the order it
+    // shows it — and mapped to the model's afterwards. The source rows of a
+    // sorted or filtered list are not a contiguous range.
+    const int perRow = itemsPerRow();
+    const QRect viewport = m_view->viewport()->rect();
+    const QSize grid = m_view->gridSize();
+    const int cellHeight = std::max(1, grid.isValid() ? grid.height() : currentPalette().rowHeight);
+    const int visibleRows = (viewport.height() + cellHeight - 1) / cellHeight;
+
+    const QModelIndex first = m_view->indexAt(viewport.topLeft() + QPoint(1, 1));
+    const QModelIndex last = m_view->indexAt(viewport.bottomRight() - QPoint(1, 1));
+    const int firstRow = first.isValid() ? first.row() : 0;
+    // Empty grid space past the last tile, or a short list: estimate.
+    const int lastRow =
+        last.isValid() ? last.row() : std::min(count - 1, firstRow + (visibleRows * perRow) - 1);
+
+    const int overshoot = kThumbnailOvershootRows * perRow;
+
+    QList<int> visible;
+    for (int row = firstRow; row <= std::min(lastRow, count - 1); ++row) {
+        visible.append(m_proxy->mapToSource(m_proxy->index(row, 0)).row());
+    }
+
+    // Nearest first, so the tiles about to scroll in come before those far off.
+    QList<int> around;
+    for (int step = 1; step <= overshoot; ++step) {
+        if (lastRow + step < count) {
+            around.append(m_proxy->mapToSource(m_proxy->index(lastRow + step, 0)).row());
+        }
+        if (firstRow - step >= 0) {
+            around.append(m_proxy->mapToSource(m_proxy->index(firstRow - step, 0)).row());
+        }
+    }
+
+    m_model->requestThumbnails(visible, around);
 }
 
 void FilePanel::setShowHidden(bool show)
@@ -777,6 +956,9 @@ void FilePanel::setFilterText(const QString &text)
 void FilePanel::refreshTheme()
 {
     applyPalette();
+    // Icon size and font set the tile; the delegate's cached wrapping is
+    // for the old ones.
+    applyViewMode(m_viewMode);
     style()->unpolish(this);
     style()->polish(this);
     m_view->viewport()->update();
@@ -857,6 +1039,22 @@ void FilePanel::extendSelectionBy(int delta)
     }
     moveCursor(delta);
     extendSelectionTo(cursorName());
+}
+
+void FilePanel::extendSelectionByRows(int rows)
+{
+    if (m_selection.isEmpty()) {
+        m_selectionAnchor = cursorName();
+    }
+    moveCursorRows(rows);
+    extendSelectionTo(cursorName());
+}
+
+void FilePanel::extendSelectionByColumns(int delta)
+{
+    if (m_viewMode == ViewMode::Icons) {
+        extendSelectionBy(delta);
+    }
 }
 
 void FilePanel::extendSelectionTo(const QString &name)
@@ -1282,6 +1480,8 @@ void FilePanel::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
     applyHeaderElision();
+    // The number of tiles per row has changed with the width.
+    updateThumbnailWindow();
 }
 
 } // namespace pf::ui

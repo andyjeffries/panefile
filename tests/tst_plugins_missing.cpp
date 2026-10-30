@@ -101,6 +101,16 @@ private Q_SLOTS:
         QTemporaryDir cache;
         const QString video = writeFile(dir, QStringLiteral("clip.mp4"), "not really a video");
 
+        // A desktop with ffmpegthumbnailer registered would, rightly, still
+        // thumbnail the video through it; this is about a build with neither.
+        // The registry reads XDG_DATA_DIRS on first use, so it is pointed at
+        // an empty directory — after the MIME database, which lives there too,
+        // has loaded.
+        QVERIFY(QMimeDatabase().mimeTypeForFile(video).name().startsWith(QLatin1String("video/")));
+        QTemporaryDir noThumbnailers;
+        qputenv("XDG_DATA_HOME", QFile::encodeName(noThumbnailers.path()));
+        qputenv("XDG_DATA_DIRS", QFile::encodeName(noThumbnailers.path()));
+
         ThumbnailCache thumbnails;
         thumbnails.setCacheRoot(cache.path());
         QVERIFY(thumbnails.canThumbnail(video));

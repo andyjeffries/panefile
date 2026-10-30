@@ -135,6 +135,8 @@ void applyTable(const toml::table &table, Settings &settings, const QString &fil
     reader.readEnum("panels", "default_sort", settings.panels.defaultSort,
                     {QStringLiteral("name"), QStringLiteral("size"), QStringLiteral("modified"),
                      QStringLiteral("type"), QStringLiteral("random")});
+    reader.readEnum("panels", "default_view", settings.panels.defaultView,
+                    {QStringLiteral("list"), QStringLiteral("icons")});
     reader.readBool("panels", "show_hidden", settings.panels.showHidden);
 
     reader.readEnum("quicklook", "dock", settings.quicklook.dock,

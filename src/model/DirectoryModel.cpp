@@ -1,12 +1,17 @@
 #include "model/DirectoryModel.h"
 
 #include "core/Logging.h"
+#include "core/WorkerPools.h"
 #include "fs/DirectoryScanner.h"
 #include "fs/DirectoryWatcher.h"
+#include "model/FolderIconStore.h"
 #include "model/ThumbnailCache.h"
 
 #include <QDir>
+#include <QDirIterator>
 #include <QFileInfo>
+#include <QPointer>
+#include <QThreadPool>
 
 #include <algorithm>
 #include <utility>
@@ -35,6 +40,19 @@ DirectoryModel::DirectoryModel(QObject *parent)
     connect(m_scanner.get(), &fs::DirectoryScanner::finished, this,
             &DirectoryModel::onScanFinished);
     connect(m_scanner.get(), &fs::DirectoryScanner::failed, this, &DirectoryModel::onScanFailed);
+
+    // A folder icon chosen (or reset) for one of this directory's children
+    // repaints just that row.
+    connect(&FolderIconStore::instance(), &FolderIconStore::changed, this,
+            [this](const QString &path) {
+                if (QFileInfo(path).absolutePath() != m_path) {
+                    return;
+                }
+                if (const int row = indexOfName(QFileInfo(path).fileName()); row >= 0) {
+                    const QModelIndex changed = index(row, 0);
+                    Q_EMIT dataChanged(changed, changed, {FolderGlyphRole});
+                }
+            });
 }
 
 DirectoryModel::~DirectoryModel() = default;
@@ -47,7 +65,52 @@ QString DirectoryModel::path() const
 void DirectoryModel::setPath(const QString &path)
 {
     m_path = path;
+    m_emptyKnown.clear();
+    m_emptyPending.clear();
+    // Read here, with the scan, so painting never touches the disk.
+    FolderIconStore::instance().ensureLoaded();
     refresh();
+}
+
+void DirectoryModel::probeEmpty(const QString &absolutePath) const
+{
+    if (m_emptyPending.contains(absolutePath)) {
+        return;
+    }
+    m_emptyPending.insert(absolutePath);
+
+    // One readdir, on a single worker, for a directory that has been painted.
+    static QThreadPool *pool = WorkerPools::acquire("pf-folder-empty", 1);
+    const QPointer<DirectoryModel> self(const_cast<DirectoryModel *>(this));
+    pool->start([self, absolutePath] {
+        const bool empty = !QDirIterator(absolutePath, QDir::AllEntries | QDir::NoDotAndDotDot |
+                                                           QDir::Hidden | QDir::System)
+                                .hasNext();
+        if (self.isNull()) {
+            return;
+        }
+        QMetaObject::invokeMethod(
+            self.data(),
+            [self, absolutePath, empty] {
+                if (self.isNull() || !self->m_emptyPending.remove(absolutePath)) {
+                    return;
+                }
+                self->m_emptyKnown.insert(absolutePath, empty);
+                if (!empty) {
+                    return;
+                }
+                DirectoryModel *model = self.data();
+                if (QFileInfo(absolutePath).absolutePath() != model->m_path) {
+                    return;
+                }
+                if (const int row = model->indexOfName(QFileInfo(absolutePath).fileName());
+                    row >= 0) {
+                    const QModelIndex changed = model->index(row, 0);
+                    Q_EMIT model->dataChanged(changed, changed, {FolderEmptyRole});
+                }
+            },
+            Qt::QueuedConnection);
+    });
 }
 
 void DirectoryModel::refresh()
@@ -211,7 +274,23 @@ bool DirectoryModel::thumbnailsEnabled() const
     return m_thumbnailsEnabled;
 }
 
-void DirectoryModel::requestThumbnailRange(int firstVisibleRow, int lastVisibleRow)
+void DirectoryModel::setThumbnailSize(ThumbnailCache::Size size)
+{
+    if (m_thumbnailSize == size) {
+        return;
+    }
+    m_thumbnailSize = size;
+    // Whatever was queued is at the wrong size; the next request replaces it.
+    m_thumbnailWindow.clear();
+}
+
+ThumbnailCache::Size DirectoryModel::thumbnailSize() const
+{
+    return m_thumbnailSize;
+}
+
+void DirectoryModel::requestThumbnails(const QList<int> &visibleSourceRows,
+                                       const QList<int> &overshootSourceRows)
 {
     if (!m_thumbnailsEnabled) {
         return;
@@ -219,18 +298,33 @@ void DirectoryModel::requestThumbnailRange(int firstVisibleRow, int lastVisibleR
 
     connectThumbnailCache();
 
-    // §7.7: "rows in or within 20 rows of the viewport".
-    const int first = std::max(0, firstVisibleRow - kThumbnailOvershoot);
-    const int last =
-        std::min(static_cast<int>(m_entries.size()) - 1, lastVisibleRow + kThumbnailOvershoot);
-
-    QSet<QString> window;
-    for (int row = first; row <= last; ++row) {
-        const FileEntry &entry = m_entries[static_cast<std::size_t>(row)];
-        if (entry.isDir) {
-            continue;
+    const auto pathAt = [this](int row) -> QString {
+        if (row < 0 || row >= static_cast<int>(m_entries.size())) {
+            return {};
         }
-        window.insert(absolutePathFor(entry));
+        const FileEntry &entry = m_entries[static_cast<std::size_t>(row)];
+        return entry.isDir ? QString() : absolutePathFor(entry);
+    };
+
+    QStringList visible;
+    QStringList overshoot;
+    QSet<QString> window;
+    for (const int row : visibleSourceRows) {
+        if (const QString path = pathAt(row); !path.isEmpty() && !window.contains(path)) {
+            window.insert(path);
+            // Already in the window on the previous call (visible or
+            // overshoot): its request is pending or done, and repeating it
+            // costs stats, a redundant ready signal and a repaint per tile.
+            if (!m_thumbnailWindow.contains(path)) {
+                visible.append(path);
+            }
+        }
+    }
+    for (const int row : overshootSourceRows) {
+        if (const QString path = pathAt(row); !path.isEmpty() && !window.contains(path)) {
+            window.insert(path);
+            overshoot.append(path);
+        }
     }
 
     // §7.7: "cancel requests for rows that scroll away". Only what left the
@@ -242,9 +336,14 @@ void DirectoryModel::requestThumbnailRange(int firstVisibleRow, int lastVisibleR
         }
     }
 
-    for (const QString &path : std::as_const(window)) {
+    // Visible tiles first, and at a higher pool priority so they also pass
+    // work queued earlier for rows that were only the overshoot.
+    for (const QString &path : std::as_const(visible)) {
+        ThumbnailCache::instance().request(path, m_thumbnailSize, 1);
+    }
+    for (const QString &path : std::as_const(overshoot)) {
         if (!m_thumbnailWindow.contains(path)) {
-            ThumbnailCache::instance().request(path, ThumbnailCache::Size::Normal);
+            ThumbnailCache::instance().request(path, m_thumbnailSize, 0);
         }
     }
 
@@ -523,6 +622,20 @@ QVariant DirectoryModel::data(const QModelIndex &index, int role) const
         return entry->modified;
     case IsDirRole:
         return entry->isDir;
+    case FolderGlyphRole:
+        return entry->isDir ? FolderIconStore::instance().effectiveGlyph(absolutePathFor(*entry))
+                            : QString();
+    case FolderEmptyRole: {
+        if (!entry->isDir) {
+            return false;
+        }
+        const QString path = absolutePathFor(*entry);
+        if (const auto known = m_emptyKnown.constFind(path); known != m_emptyKnown.constEnd()) {
+            return known.value();
+        }
+        probeEmpty(path);
+        return false;
+    }
     case ThumbnailRole: {
         if (!m_thumbnailsEnabled || !m_thumbnailsConnected || entry->isDir) {
             return {};
@@ -530,8 +643,16 @@ QVariant DirectoryModel::data(const QModelIndex &index, int role) const
         // A memory-tier hit or nothing: §5.3 forbids IO in the paint path, and
         // this is called from it. Generation is driven by requestThumbnailRange
         // instead, which knows which rows are actually on screen.
-        const QImage image = ThumbnailCache::instance().lookup(absolutePathFor(*entry),
-                                                               ThumbnailCache::Size::Normal);
+        const QString path = absolutePathFor(*entry);
+        QImage image = ThumbnailCache::instance().lookup(path, m_thumbnailSize);
+        if (image.isNull()) {
+            // The other size, scaled by the delegate, until the right one lands:
+            // switching views should not blank every tile.
+            const auto other = m_thumbnailSize == ThumbnailCache::Size::Normal
+                                   ? ThumbnailCache::Size::Large
+                                   : ThumbnailCache::Size::Normal;
+            image = ThumbnailCache::instance().peek(path, other);
+        }
         return image.isNull() ? QVariant() : QVariant::fromValue(image);
     }
     case Qt::ToolTipRole:
@@ -566,6 +687,8 @@ QHash<int, QByteArray> DirectoryModel::roleNames() const
     names[SizeRole] = "size";
     names[ModifiedRole] = "modified";
     names[IsDirRole] = "isDir";
+    names[FolderGlyphRole] = "folderGlyph";
+    names[FolderEmptyRole] = "folderEmpty";
     return names;
 }
 

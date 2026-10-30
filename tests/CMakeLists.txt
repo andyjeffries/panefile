@@ -96,12 +96,18 @@ target_compile_definitions(tst_appearance PRIVATE
 pf_add_test(tst_dragdrop    SOURCES tst_dragdrop.cpp    LIBS pf_ui)
 pf_add_test(tst_filepanel   SOURCES tst_filepanel.cpp   LIBS pf_ui pf_input)
 pf_add_test(tst_panels      SOURCES tst_panels.cpp      LIBS pf_ui pf_app)
+pf_add_test(tst_viewmode    SOURCES tst_viewmode.cpp    LIBS pf_ui pf_app)
 pf_add_test(tst_fuzzymatcher SOURCES tst_fuzzymatcher.cpp LIBS pf_core)
 pf_add_test(tst_search      SOURCES tst_search.cpp      LIBS pf_fs pf_model)
 pf_add_test(tst_rename      SOURCES tst_rename.cpp      LIBS pf_fs)
 pf_add_test(tst_quicklook  SOURCES tst_quicklook.cpp  LIBS pf_ui)
 pf_add_test(tst_thumbnails SOURCES tst_thumbnails.cpp LIBS pf_model)
+pf_add_test(tst_thumbnailers SOURCES tst_thumbnailers.cpp LIBS pf_model)
+pf_add_test(tst_sec_sandbox SOURCES tst_sec_sandbox.cpp LIBS pf_model)
 pf_add_test(tst_icons      SOURCES tst_icons.cpp      LIBS pf_model)
+pf_add_test(tst_foldericons SOURCES tst_foldericons.cpp LIBS pf_ui)
+pf_add_test(tst_perf_thumbwindow SOURCES tst_perf_thumbwindow.cpp LIBS pf_model)
+pf_add_test(tst_perf_iconview SOURCES tst_perf_iconview.cpp LIBS pf_ui pf_app)
 
 # The optional-feature plugins (§3.4), loaded from the build tree's staging
 # directory. Each test of a plugin skips when this build did not produce it.

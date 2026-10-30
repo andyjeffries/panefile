@@ -264,6 +264,7 @@ void applyThemeTable(const toml::table &table, Theme &theme, const QString &file
     }
     readUiInt(table, "font_size", theme.fontSize, 6, 32, fileNameForIssues, issues);
     readUiInt(table, "row_height", theme.rowHeight, 14, 64, fileNameForIssues, issues);
+    readUiInt(table, "icon_size", theme.iconSize, 32, 128, fileNameForIssues, issues);
     readUiInt(table, "border_radius", theme.borderRadius, 0, 24, fileNameForIssues, issues);
     readUiInt(table, "panel_padding", theme.panelPadding, 0, 32, fileNameForIssues, issues);
 

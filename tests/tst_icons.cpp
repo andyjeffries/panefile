@@ -1,5 +1,8 @@
 #include "model/FileEntry.h"
+#include "model/FolderIconRenderer.h"
+#include "model/FolderIconStore.h"
 #include "model/IconProvider.h"
+#include "model/StandardFolders.h"
 #include "model/SymbolicIcon.h"
 #include "model/TintedIcon.h"
 
@@ -82,6 +85,11 @@ private Q_SLOTS:
             const QImage image = imageOf(icon, 16, 1.0);
             QVERIFY2(opaquePixels(image) > 20, qPrintable(name));
 
+            // The folder is drawn with gradients and paper of its own, so no
+            // pixel is exactly the tint; it is covered by the folder tests.
+            if (kind == Kind::Directory) {
+                continue;
+            }
             QColor strongest = strongestPixel(image);
             QCOMPARE(strongest.alpha(), 255);
             strongest.setAlpha(255);
@@ -154,12 +162,15 @@ private Q_SLOTS:
         const QColor tint(0x00, 0x00, 0xff);
         QColor strongest =
             strongestPixel(imageOf(IconProvider::instance().iconFor(folder, tint), 16, 1.0));
-        strongest.setAlpha(255);
 
         QIcon::setThemeSearchPaths(oldPaths);
         QIcon::setThemeName(oldTheme);
 
-        QCOMPARE(strongest, tint);
+        // The folder is shaded around the tint rather than flat in it, but it
+        // is still the tint's hue and nothing of the theme's red.
+        QCOMPARE(strongest.alpha(), 255);
+        QVERIFY(strongest.blue() > 150);
+        QCOMPARE(strongest.red(), 0);
     }
 
     /// A symlink is drawn as what it points at, with a badge: the badge must
@@ -341,6 +352,112 @@ private Q_SLOTS:
         QCOMPARE(strongest, tint);
 
         QVERIFY(!SymbolicIcon::icon(name, tint).isNull());
+    }
+
+    /// An emblem changes the folder, and is cached per glyph.
+    void folderIconWithAGlyphDiffersFromAPlainFolder()
+    {
+        const QColor tint(0x7b, 0xa7, 0xd8);
+        const QIcon plain = IconProvider::instance().folderIcon({}, tint);
+        const QIcon rocket = IconProvider::instance().folderIcon(QStringLiteral("hero:home"), tint);
+        QVERIFY(!plain.isNull());
+        QVERIFY(!rocket.isNull());
+        QVERIFY(imageOf(plain, 48, 1.0) != imageOf(rocket, 48, 1.0));
+
+        // The same arguments give the same engine, not a second one.
+        const QIcon again = IconProvider::instance().folderIcon(QStringLiteral("hero:home"), tint);
+        QCOMPARE(again.cacheKey(), rocket.cacheKey());
+    }
+
+    void closedFolderDropsTheSheetOfPaper()
+    {
+        const QColor tint(0x7b, 0xa7, 0xd8);
+        const QImage open = imageOf(IconProvider::instance().folderIcon({}, tint), 64, 1.0);
+        const QImage closed =
+            imageOf(IconProvider::instance().folderIcon({}, tint, false, true), 64, 1.0);
+        QVERIFY(open != closed);
+        // The paper is near white; a closed folder has none.
+        const auto whitePixels = [](const QImage &image) {
+            int count = 0;
+            for (int y = 0; y < image.height(); ++y) {
+                for (int x = 0; x < image.width(); ++x) {
+                    const QColor c = image.pixelColor(x, y);
+                    count +=
+                        (c.alpha() == 255 && c.red() > 220 && c.green() > 220 && c.blue() > 210)
+                            ? 1
+                            : 0;
+                }
+            }
+            return count;
+        };
+        QVERIFY(whitePixels(open) > 100);
+        QCOMPARE(whitePixels(closed), 0);
+    }
+
+    /// The deboss: the glyph is darker than the flap around it.
+    void emblemIsInsetIntoTheFlap()
+    {
+        const QColor tint(0x7b, 0xa7, 0xd8);
+        const QImage image = imageOf(
+            IconProvider::instance().folderIcon(QStringLiteral("hero:home"), tint), 96, 1.0);
+        const QImage plain = imageOf(IconProvider::instance().folderIcon({}, tint), 96, 1.0);
+        int darker = 0;
+        for (int y = 0; y < image.height(); ++y) {
+            for (int x = 0; x < image.width(); ++x) {
+                darker +=
+                    image.pixelColor(x, y).lightness() + 25 < plain.pixelColor(x, y).lightness()
+                        ? 1
+                        : 0;
+            }
+        }
+        QVERIFY2(darker > 150, qPrintable(QString::number(darker)));
+    }
+
+    void standardFoldersResolveToTheirEmblems()
+    {
+        const auto &folders = StandardFolders::all();
+        QVERIFY(!folders.isEmpty());
+        for (const StandardFolder &folder : folders) {
+            QCOMPARE(StandardFolders::glyphFor(folder.path), folder.glyph);
+            QVERIFY(FolderIconStore::isValidGlyphId(folder.glyph));
+        }
+        QCOMPARE(StandardFolders::glyphFor(QDir::cleanPath(QDir::homePath())),
+                 QStringLiteral("hero:home"));
+        QVERIFY(StandardFolders::glyphFor(QStringLiteral("/no/such/folder")).isEmpty());
+        QCOMPARE(StandardFolders::presets().size(), 9);
+    }
+
+    void everyEmblemExists_data()
+    {
+        QTest::addColumn<QString>("name");
+        for (const StandardFolder &preset : StandardFolders::presets()) {
+            QTest::newRow(qPrintable(preset.title)) << preset.glyph.mid(5);
+        }
+    }
+
+    void everyEmblemExists()
+    {
+        QFETCH(QString, name);
+        QVERIFY(QFile::exists(QStringLiteral(":/icons/emblems/%1.svg").arg(name)));
+        QVERIFY(!FolderIconStore::instance().svgFor(QStringLiteral("hero:") + name).isEmpty());
+    }
+
+    void invalidGlyphIdsAreRejected_data()
+    {
+        QTest::addColumn<QString>("glyph");
+        QTest::newRow("traversal") << QStringLiteral("hero:../../etc/passwd");
+        QTest::newRow("upper") << QStringLiteral("hero:Home");
+        QTest::newRow("no source") << QStringLiteral("home");
+        QTest::newRow("other source") << QStringLiteral("x:home");
+        QTest::newRow("empty name") << QStringLiteral("hero:");
+        QTest::newRow("slash") << QStringLiteral("hero:a/b");
+    }
+
+    void invalidGlyphIdsAreRejected()
+    {
+        QFETCH(QString, glyph);
+        QVERIFY(!FolderIconStore::isValidGlyphId(glyph));
+        QVERIFY(FolderIconStore::instance().svgFor(glyph).isEmpty());
     }
 
     void unknownSymbolicGlyphIsNull()

@@ -1,6 +1,7 @@
 #include "model/IconProvider.h"
 
 #include "model/FileEntry.h"
+#include "model/FolderIconRenderer.h"
 #include "model/TintedIcon.h"
 
 #include <QMimeDatabase>
@@ -372,8 +373,29 @@ QString IconProvider::mimeNameFor(const QString &directory, const FileEntry &ent
     return QStringLiteral("application/octet-stream");
 }
 
+QIcon IconProvider::folderIcon(const QString &glyphId, const QColor &tint, bool linked, bool empty,
+                               const QColor &fade)
+{
+    const QString key = QStringLiteral("folder+%1:%2:%3:%4:%5")
+                            .arg(glyphId, tint.name(QColor::HexArgb),
+                                 fade.isValid() ? fade.name(QColor::HexArgb) : QString(),
+                                 linked ? QStringLiteral("l") : QStringLiteral("n"),
+                                 empty ? QStringLiteral("e") : QStringLiteral("f"));
+    if (const auto cached = m_cache.constFind(key); cached != m_cache.constEnd()) {
+        return cached.value();
+    }
+    const QIcon icon = FolderIconRenderer::icon(FolderIconSpec{
+        .glyphId = glyphId, .tint = tint, .empty = empty, .linked = linked, .fade = fade});
+    m_cache.insert(key, icon);
+    return icon;
+}
+
 QIcon IconProvider::iconFor(Kind kind, const QColor &tint, bool linked)
 {
+    // Directories are drawn by the folder renderer, not from the flat glyph.
+    if (kind == Kind::Directory) {
+        return folderIcon({}, tint, linked);
+    }
     const QLatin1String name = iconNameFor(kind);
     const QString key = name + QLatin1Char(linked ? '@' : ':') + tint.name(QColor::HexArgb);
 

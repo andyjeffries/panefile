@@ -4,22 +4,36 @@
 #include "core/Logging.h"
 #include "platform/Paths.h"
 #include "platform/PluginHost.h"
+#include "platform/Thumbnailers.h"
 
 #include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QImageReader>
 #include <QMimeDatabase>
 #include <QPointer>
+#include <QProcess>
 #include <QRunnable>
 #include <QSaveFile>
+#include <QStandardPaths>
+#include <QTemporaryDir>
 #include <QThreadPool>
 
 #include "core/WorkerPools.h"
 #include <QUrl>
 
+#include <atomic>
 #include <functional>
+#include <mutex>
+#include <string>
+#include <vector>
+
+#include <dirent.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 namespace pf {
 namespace {
@@ -68,6 +82,240 @@ enum class Outcome {
     Unavailable,
 };
 
+/// Whether bubblewrap can set up a sandbox here (user namespaces may be
+/// disabled). Decided once by a probe Panefile controls, never from what a
+/// sandboxed thumbnailer prints: its stderr is as hostile as the file it reads.
+bool sandboxUsable(const QString &bwrap)
+{
+    static const bool usable = [&bwrap] {
+        const QTemporaryDir probeDir;
+        if (!probeDir.isValid()) {
+            return false;
+        }
+        const platform::ThumbnailerCommand probe{QStringLiteral("/usr/bin/true"), {}, false};
+        QStringList argv =
+            platform::Thumbnailers::sandboxed(probe, bwrap, probeDir.path(), probeDir.path());
+        QProcess process;
+        process.setProgram(argv.takeFirst());
+        process.setArguments(argv);
+        process.setStandardOutputFile(QProcess::nullDevice());
+        process.start();
+        const bool ok = process.waitForFinished(5000) && process.exitStatus() == QProcess::NormalExit &&
+                        process.exitCode() == 0;
+        if (process.state() != QProcess::NotRunning) {
+            process.kill();
+            process.waitForFinished(1000);
+        }
+        if (!ok) {
+            qCWarning(pfPlugins) << "bubblewrap cannot start a sandbox here; running "
+                                    "thumbnailers with a timeout only";
+        }
+        return ok;
+    }();
+    return usable;
+}
+
+constexpr int kExternalTimeoutMs = 10'000;
+constexpr int kCancelPollMs = 250;
+
+/// Removes the tree at `path`, however hostile its shape. The sandbox owns its
+/// work directory, so it can leave mode-000 directories, nest them deeper than
+/// PATH_MAX, or make one directory very wide; by-path removal then fails, or
+/// re-listing a parent after every child makes cleanup quadratic.
+/// This lists each directory exactly once, unlinking files as it goes and
+/// keeping its subdirectory names on an explicit stack. It holds one open
+/// descriptor at a time, descends with openat and climbs with openat("..") so
+/// no path is ever built, and chmods each directory before listing it.
+/// Symlinks are unlinked, never followed.
+void removeTree(const QString &path)
+{
+    const QByteArray encoded = QFile::encodeName(path);
+    int cur = ::open(encoded.constData(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (cur < 0) {
+        return;
+    }
+    struct Frame
+    {
+        std::string name;                  // this directory's name in its parent
+        std::vector<std::string> pending;  // subdirectories not yet removed
+    };
+    std::vector<Frame> chain(1); // chain[0] is the root
+    bool entered = false;        // whether chain.back() has been listed
+    for (;;) {
+        if (!entered) {
+            ::fchmod(cur, S_IRWXU);
+            Frame &frame = chain.back();
+            if (DIR *dir = ::fdopendir(::dup(cur))) {
+                while (const dirent *entry = ::readdir(dir)) {
+                    const std::string name = entry->d_name;
+                    if (name == "." || name == "..") {
+                        continue;
+                    }
+                    struct stat st {};
+                    if (::fstatat(cur, name.c_str(), &st, AT_SYMLINK_NOFOLLOW) == 0 &&
+                        S_ISDIR(st.st_mode)) {
+                        frame.pending.push_back(name);
+                    } else {
+                        ::unlinkat(cur, name.c_str(), 0);
+                    }
+                }
+                ::closedir(dir);
+            }
+            entered = true;
+        }
+        Frame &frame = chain.back();
+        if (!frame.pending.empty()) {
+            std::string subdir = std::move(frame.pending.back());
+            frame.pending.pop_back();
+            // A mode-000 directory cannot be opened until it is chmodded.
+            ::fchmodat(cur, subdir.c_str(), S_IRWXU, 0);
+            const int child =
+                ::openat(cur, subdir.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+            if (child < 0) {
+                continue; // cannot enter it; leave it and carry on with its siblings
+            }
+            ::close(cur);
+            cur = child;
+            chain.push_back({std::move(subdir), {}});
+            entered = false;
+            continue;
+        }
+        if (chain.size() == 1) {
+            ::close(cur);
+            ::rmdir(encoded.constData());
+            return;
+        }
+        const int parent = ::openat(cur, "..", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+        ::close(cur);
+        if (parent < 0) {
+            return;
+        }
+        ::unlinkat(parent, chain.back().name.c_str(), AT_REMOVEDIR);
+        chain.pop_back();
+        cur = parent;
+    }
+}
+
+/// A per-task work directory that is removed even when the sandboxed code left
+/// unreadable or very deep directories in it.
+class WorkDir
+{
+public:
+    explicit WorkDir(const QString &templatePath) : m_dir(templatePath) { m_dir.setAutoRemove(false); }
+    ~WorkDir()
+    {
+        if (m_dir.isValid()) {
+            removeTree(m_dir.path());
+        }
+    }
+    bool isValid() const { return m_dir.isValid(); }
+    QString path() const { return m_dir.path(); }
+    QString filePath(const QString &name) const { return m_dir.filePath(name); }
+
+private:
+    QTemporaryDir m_dir;
+};
+
+/// Removes task directories a crashed or killed earlier run left behind. Only
+/// directories older than an hour go, so a second running instance is safe.
+void sweepStaleWorkDirs(const QString &root)
+{
+    const QDateTime cutoff = QDateTime::currentDateTime().addSecs(-3600);
+    const QFileInfoList stale = QDir(root).entryInfoList({QStringLiteral("task-*")},
+                                                         QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks);
+    for (const QFileInfo &entry : stale) {
+        if (entry.lastModified() < cutoff) {
+            removeTree(entry.absoluteFilePath());
+        }
+    }
+}
+
+/// Runs an external thumbnailer for `path` and reads back its PNG.
+QImage runExternal(const QString &path, int target, const std::atomic<bool> &cancelled,
+                   Outcome *outcome)
+{
+    *outcome = Outcome::Failed;
+
+    static const QMimeDatabase database;
+    const QMimeType mime = database.mimeTypeForFile(path);
+
+    const QString root = platform::cacheDir() + QStringLiteral("/thumbnailer");
+    QDir().mkpath(root);
+    static std::once_flag swept;
+    std::call_once(swept, sweepStaleWorkDirs, root);
+    const WorkDir work(root + QStringLiteral("/task-XXXXXX"));
+    if (!work.isValid()) {
+        return {};
+    }
+    const QString output = work.filePath(QStringLiteral("out.png"));
+
+    const auto command = platform::Thumbnailers::instance().commandFor(mime, path, output, target);
+    if (!command) {
+        return {};
+    }
+
+    QString program = command->program;
+    QStringList arguments = command->arguments;
+    if (!command->selfSandboxed) {
+        if (const QString bwrap = QStandardPaths::findExecutable(QStringLiteral("bwrap"));
+            !bwrap.isEmpty() && sandboxUsable(bwrap)) {
+            QStringList argv =
+                platform::Thumbnailers::sandboxed(*command, bwrap, path, work.path());
+            program = argv.takeFirst();
+            arguments = argv;
+        }
+    }
+
+    QProcess process;
+    process.setProgram(program);
+    process.setArguments(arguments);
+    process.setStandardOutputFile(QProcess::nullDevice());
+    process.start();
+    if (!process.waitForStarted(5000)) {
+        return {};
+    }
+
+    int waited = 0;
+    while (!process.waitForFinished(kCancelPollMs)) {
+        waited += kCancelPollMs;
+        if (cancelled.load(std::memory_order_relaxed) || waited >= kExternalTimeoutMs) {
+            process.kill();
+            process.waitForFinished(1000);
+            return {};
+        }
+    }
+
+    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+        return {};
+    }
+
+    // Only PNG is accepted, and it is decoded by Qt, never trusted.
+    // The sandbox owns the work directory, so out.png may be a FIFO or a
+    // symlink: open without following or blocking, and require a regular file.
+    const int fd = ::open(QFile::encodeName(output).constData(),
+                          O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+    if (fd < 0) {
+        return {};
+    }
+    struct stat st {};
+    constexpr qint64 kMaxOutputBytes = 64 * 1024 * 1024;
+    if (::fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_size > kMaxOutputBytes) {
+        ::close(fd);
+        return {};
+    }
+    QFile file;
+    if (!file.open(fd, QIODevice::ReadOnly, QFileDevice::AutoCloseHandle)) {
+        ::close(fd);
+        return {};
+    }
+    QImageReader reader(&file, "png");
+    QImage image = reader.read();
+    if (!image.isNull()) {
+        *outcome = Outcome::Generated;
+    }
+    return image;
+}
+
 /// Decodes an image file, scaled at decode time where the format allows it so
 /// a 40-megapixel JPEG never materialises in full just to produce a 128 px
 /// square.
@@ -89,10 +337,12 @@ QImage decodeImage(const QString &path, int target)
 class ThumbnailTask : public QRunnable
 {
 public:
-    ThumbnailTask(QString path, ThumbnailCache::Size size, bool video, QString destination,
+    enum class Mode { Image, Video, External };
+
+    ThumbnailTask(QString path, ThumbnailCache::Size size, Mode mode, QString destination,
                   std::shared_ptr<std::atomic<bool>> cancelled,
                   std::function<void(QString, QImage, Outcome)> report)
-        : m_path(std::move(path)), m_size(size), m_video(video),
+        : m_path(std::move(path)), m_size(size), m_mode(mode),
           m_destination(std::move(destination)), m_cancelled(std::move(cancelled)),
           m_report(std::move(report))
     {
@@ -109,7 +359,10 @@ public:
         const int target = ThumbnailCache::pixelsFor(m_size);
 
         QImage image;
-        if (m_video) {
+        if (m_mode == Mode::External) {
+            Outcome outcome = Outcome::Failed;
+            image = runExternal(m_path, target, *m_cancelled, &outcome);
+        } else if (m_mode == Mode::Video) {
             // Loaded here, on the worker, and never on the GUI thread: the
             // plugin pulls in libffmpegthumbnailer and the whole of libav*,
             // which is not a cost a directory listing should pause to pay.
@@ -161,7 +414,7 @@ public:
 private:
     QString m_path;
     ThumbnailCache::Size m_size;
-    bool m_video = false;
+    Mode m_mode = Mode::Image;
     QString m_destination;
     std::shared_ptr<std::atomic<bool>> m_cancelled;
     std::function<void(QString, QImage, Outcome)> m_report;
@@ -172,6 +425,32 @@ private:
 int ThumbnailCache::pixelsFor(Size size)
 {
     return size == Size::Large ? 256 : 128;
+}
+
+ThumbnailCache::Size ThumbnailCache::sizeFor(int logicalPx, qreal dpr)
+{
+    return static_cast<qreal>(logicalPx) * dpr <= 128.0 ? Size::Normal : Size::Large;
+}
+
+QString ThumbnailCache::memoryKey(const QString &absolutePath, Size size)
+{
+    return (size == Size::Large ? QStringLiteral("L|") : QStringLiteral("N|")) + absolutePath;
+}
+
+void ThumbnailCache::remember(const QString &absolutePath, Size size, const QImage &image)
+{
+    const int cost = std::max<int>(1, static_cast<int>(image.sizeInBytes() / 1024));
+    m_memory.insert(memoryKey(absolutePath, size),
+                    new MemoryEntry{.image = image,
+                                    .modifiedSeconds =
+                                        QFileInfo(absolutePath).lastModified().toSecsSinceEpoch()},
+                    cost);
+}
+
+QImage ThumbnailCache::peek(const QString &absolutePath, Size size) const
+{
+    const MemoryEntry *entry = m_memory.object(memoryKey(absolutePath, size));
+    return entry != nullptr ? entry->image : QImage();
 }
 
 QString ThumbnailCache::directoryNameFor(Size size)
@@ -239,6 +518,11 @@ void ThumbnailCache::setMaxFileSizeMb(int megabytes)
     m_maxFileSizeMb = megabytes;
 }
 
+void ThumbnailCache::setMemoryBudgetKb(int kilobytes)
+{
+    m_memory.setMaxCost(kilobytes);
+}
+
 void ThumbnailCache::setVideoEnabled(bool enabled)
 {
     m_video = enabled;
@@ -300,11 +584,12 @@ QImage ThumbnailCache::lookup(const QString &absolutePath, Size size) const
 
     const qint64 sourceMTime = QFileInfo(absolutePath).lastModified().toSecsSinceEpoch();
 
-    if (const auto it = m_memory.constFind(absolutePath); it != m_memory.constEnd()) {
-        if (it->modifiedSeconds == sourceMTime) {
-            return it->image;
+    const QString key = memoryKey(absolutePath, size);
+    if (const MemoryEntry *entry = m_memory.object(key); entry != nullptr) {
+        if (entry->modifiedSeconds == sourceMTime) {
+            return entry->image;
         }
-        m_memory.erase(it);
+        m_memory.remove(key);
     }
 
     const QString path = thumbnailPathFor(absolutePath, size, m_root);
@@ -329,7 +614,8 @@ QImage ThumbnailCache::lookup(const QString &absolutePath, Size size) const
         return {};
     }
 
-    m_memory.insert(absolutePath, MemoryEntry{.image = image, .modifiedSeconds = sourceMTime});
+    m_memory.insert(key, new MemoryEntry{.image = image, .modifiedSeconds = sourceMTime},
+                    std::max<int>(1, static_cast<int>(image.sizeInBytes() / 1024)));
     return image;
 }
 
@@ -353,11 +639,24 @@ ThumbnailCache::Kind ThumbnailCache::kindFor(const QString &absolutePath) const
     if (mime.name().startsWith(QLatin1String("video/"))) {
         // §7.7's `thumbnails.video`, and pf-video-thumb (§3.4). Whether the
         // plugin is installed is found out on the worker that first tries,
-        // because loading it here would load libav* on the GUI thread.
-        return m_video && !m_videoUnavailable ? Kind::Video : Kind::None;
+        // because loading it here would load libav* on the GUI thread. Without
+        // it, a registered thumbnailer (ffmpegthumbnailer's own) does the job.
+        if (!m_video) {
+            return Kind::None;
+        }
+        if (!m_videoUnavailable) {
+            return Kind::Video;
+        }
+        return platform::Thumbnailers::instance().handles(mime) ? Kind::External : Kind::None;
     }
 
-    return isThumbnailable(mime) ? Kind::Image : Kind::None;
+    // In-process decoding is faster than spawning anything, so it goes first.
+    if (isThumbnailable(mime)) {
+        return Kind::Image;
+    }
+
+    // The registry is read here, on first need, and never at startup.
+    return platform::Thumbnailers::instance().handles(mime) ? Kind::External : Kind::None;
 }
 
 bool ThumbnailCache::canThumbnail(const QString &absolutePath) const
@@ -365,10 +664,19 @@ bool ThumbnailCache::canThumbnail(const QString &absolutePath) const
     return kindFor(absolutePath) != Kind::None;
 }
 
-void ThumbnailCache::request(const QString &absolutePath, Size size)
+void ThumbnailCache::request(const QString &absolutePath, Size size, int priority)
 {
+    if (const auto pending = m_pendingSizes.constFind(absolutePath);
+        pending != m_pendingSizes.constEnd()) {
+        if (pending.value() == size) {
+            return;
+        }
+        // One size in flight per path: the old one is no longer wanted.
+        cancel(absolutePath);
+    }
+
     const Kind kind = kindFor(absolutePath);
-    if (kind == Kind::None || m_pendingFlags.contains(absolutePath) || hasFailed(absolutePath)) {
+    if (kind == Kind::None || hasFailed(absolutePath)) {
         return;
     }
 
@@ -379,27 +687,32 @@ void ThumbnailCache::request(const QString &absolutePath, Size size)
 
     const auto cancelled = std::make_shared<std::atomic<bool>>(false);
     m_pendingFlags.insert(absolutePath, cancelled);
+    m_pendingSizes.insert(absolutePath, size);
 
     // QPointer, not `this`: the worker outlives a cancelled request by however
     // long the decode takes, and the queued invocation must not resurrect a
     // destroyed cache.
     const QPointer<ThumbnailCache> self(this);
-    auto report = [self, cancelled](const QString &path, const QImage &image, Outcome outcome) {
+    auto report = [self, cancelled, size, priority](const QString &path, const QImage &image,
+                                                    Outcome outcome) {
         if (cancelled->load(std::memory_order_relaxed)) {
             return;
         }
         QMetaObject::invokeMethod(
             self,
-            [self, path, image, outcome] {
+            [self, path, image, outcome, size, priority] {
                 if (self.isNull()) {
                     return;
                 }
                 self->m_pendingFlags.remove(path);
+                self->m_pendingSizes.remove(path);
                 if (outcome == Outcome::Unavailable) {
                     // The plugin host remembers a missing plugin for the life
                     // of the process, so asking again would only queue work
-                    // that is certain to end here.
+                    // that is certain to end here. A registered thumbnailer
+                    // may still take the file.
                     self->m_videoUnavailable = true;
+                    self->request(path, size, priority);
                     return;
                 }
                 if (outcome == Outcome::Failed || image.isNull()) {
@@ -407,22 +720,24 @@ void ThumbnailCache::request(const QString &absolutePath, Size size)
                     Q_EMIT self->failed(path);
                     return;
                 }
-                self->m_memory.insert(
-                    path, MemoryEntry{.image = image,
-                                      .modifiedSeconds =
-                                          QFileInfo(path).lastModified().toSecsSinceEpoch()});
+                self->remember(path, size, image);
                 Q_EMIT self->ready(path, image);
             },
             Qt::QueuedConnection);
     };
 
-    m_pool->start(new ThumbnailTask(absolutePath, size, kind == Kind::Video,
+    const ThumbnailTask::Mode mode = kind == Kind::Video      ? ThumbnailTask::Mode::Video
+                                     : kind == Kind::External ? ThumbnailTask::Mode::External
+                                                              : ThumbnailTask::Mode::Image;
+    m_pool->start(new ThumbnailTask(absolutePath, size, mode,
                                     thumbnailPathFor(absolutePath, size, m_root), cancelled,
-                                    std::move(report)));
+                                    std::move(report)),
+                  priority);
 }
 
 void ThumbnailCache::cancel(const QString &absolutePath)
 {
+    m_pendingSizes.remove(absolutePath);
     if (const auto flag = m_pendingFlags.take(absolutePath); flag) {
         flag->store(true, std::memory_order_relaxed);
     }
@@ -434,6 +749,7 @@ void ThumbnailCache::cancelAll()
         flag->store(true, std::memory_order_relaxed);
     }
     m_pendingFlags.clear();
+    m_pendingSizes.clear();
 }
 
 int ThumbnailCache::pendingCount() const

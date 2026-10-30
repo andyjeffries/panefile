@@ -571,6 +571,14 @@ void TestKeymap::defaultKeymapBindsTheDocumentedKeys()
         {KeymapLayer::Normal, ".", "toggle_dot_file"},
         {KeymapLayer::Global, "Space", "quick_look"},
         {KeymapLayer::Global, "Shift+Down", "select_down"},
+        {KeymapLayer::Global, "Left", "list_left"},
+        {KeymapLayer::Global, "Right", "list_right"},
+        {KeymapLayer::Global, "Shift+Left", "select_left"},
+        {KeymapLayer::Global, "Shift+Right", "select_right"},
+        {KeymapLayer::Selection, "Left", "select_left"},
+        {KeymapLayer::Selection, "Right", "select_right"},
+        {KeymapLayer::Global, "Ctrl+Alt+1", "view_as_icons"},
+        {KeymapLayer::Global, "Ctrl+Alt+2", "view_as_list"},
     };
 
     for (const Expectation &expected : kExpectations) {

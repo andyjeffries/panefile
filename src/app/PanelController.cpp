@@ -4,12 +4,14 @@
 #include "core/Logging.h"
 #include "fs/Trash.h"
 #include "model/FilterSortProxy.h"
+#include "model/FolderIconStore.h"
 #include "platform/Launcher.h"
 #include "platform/Paths.h"
 #include "ui/FilePanel.h"
 #include "ui/MainWindow.h"
 #include "ui/PanelStrip.h"
 #include "ui/Sidebar.h"
+#include "ui/modals/FolderIconModal.h"
 
 #include <QApplication>
 #include <QClipboard>
@@ -66,6 +68,33 @@ void PanelController::revealPath(const QString &path)
     ui::FilePanel *panel = m_strip->focusedPanel();
     panel->navigateTo(info.absolutePath());
     panel->setCursorName(info.fileName());
+}
+
+void PanelController::changeFolderIcon(ui::FilePanel *panel)
+{
+    const QString path = panel->cursorPath();
+    if (path.isEmpty() || !panel->cursorEntry().isDir) {
+        return;
+    }
+
+    if (m_folderIconModal == nullptr) {
+        // §3.4: on first use. The Heroicons directory is read when it first opens.
+        m_folderIconModal = new ui::FolderIconModal(m_window);
+    }
+    // Rebound each time: the target is whatever the cursor is on now.
+    disconnect(m_folderIconModal, &ui::FolderIconModal::chosen, nullptr, nullptr);
+    connect(m_folderIconModal, &ui::FolderIconModal::chosen, this,
+            [this, path](const QString &glyph) {
+                const QString name = QFileInfo(path).fileName();
+                if (glyph.isEmpty()) {
+                    FolderIconStore::instance().clear(path);
+                    Q_EMIT statusMessage(tr("Folder icon reset for %1").arg(name));
+                } else {
+                    FolderIconStore::instance().set(path, glyph);
+                    Q_EMIT statusMessage(tr("Folder icon for %1: %2").arg(name, glyph.mid(5)));
+                }
+            });
+    m_folderIconModal->open(path, FolderIconStore::instance().glyphFor(path));
 }
 
 void PanelController::showSortMenu(ui::FilePanel *panel)
@@ -153,9 +182,14 @@ void PanelController::registerActions()
         });
     };
     reg("list_down", tr("Move the cursor down"), ActionCategory::Movement,
-        move([](ui::FilePanel *panel) { panel->moveCursor(1); }));
+        move([](ui::FilePanel *panel) { panel->moveCursorRows(1); }));
     reg("list_up", tr("Move the cursor up"), ActionCategory::Movement,
-        move([](ui::FilePanel *panel) { panel->moveCursor(-1); }));
+        move([](ui::FilePanel *panel) { panel->moveCursorRows(-1); }));
+    // Only mean something in icon view, where tiles sit side by side.
+    reg("list_right", tr("Move the cursor to the next tile"), ActionCategory::Movement,
+        move([](ui::FilePanel *panel) { panel->moveCursorColumns(1); }));
+    reg("list_left", tr("Move the cursor to the previous tile"), ActionCategory::Movement,
+        move([](ui::FilePanel *panel) { panel->moveCursorColumns(-1); }));
     reg("page_down", tr("Move down one screen"), ActionCategory::Movement,
         move([](ui::FilePanel *panel) { panel->movePage(1); }));
     reg("page_up", tr("Move up one screen"), ActionCategory::Movement,
@@ -236,6 +270,39 @@ void PanelController::registerActions()
         hasCursorItem);
     m_registry->markContextual(QStringLiteral("open_with_default_app"));
 
+    // Folder icons (design 04): palette commands, no default keys. Contextual,
+    // so they lead the palette when the cursor is on a folder.
+    const auto cursorIsFolder = [this] {
+        const ui::FilePanel *panel = m_strip->focusedPanel();
+        return panel != nullptr && panel->cursorEntry().isDir;
+    };
+    const auto cursorHasCustomIcon = [this] {
+        const ui::FilePanel *panel = m_strip->focusedPanel();
+        return panel != nullptr && panel->cursorEntry().isDir &&
+               !FolderIconStore::instance().glyphFor(panel->cursorPath()).isEmpty();
+    };
+    reg("change_folder_icon", tr("Change folder icon…"), ActionCategory::General,
+        onPanel([this](ui::FilePanel *panel) { changeFolderIcon(panel); }), cursorIsFolder);
+    m_registry->markContextual(QStringLiteral("change_folder_icon"), [this] {
+        const ui::FilePanel *panel = m_strip->focusedPanel();
+        return panel != nullptr ? panel->cursorName() : QString();
+    });
+    reg("reset_folder_icon", tr("Reset folder icon"), ActionCategory::General,
+        onPanel([this](ui::FilePanel *panel) {
+            FolderIconStore::instance().clear(panel->cursorPath());
+            Q_EMIT statusMessage(tr("Folder icon reset for %1").arg(panel->cursorName()));
+        }),
+        cursorHasCustomIcon);
+    m_registry->markContextual(QStringLiteral("reset_folder_icon"), [this] {
+        const ui::FilePanel *panel = m_strip->focusedPanel();
+        if (panel == nullptr) {
+            return QString();
+        }
+        const QString glyph = FolderIconStore::instance().glyphFor(panel->cursorPath());
+        return glyph.isEmpty() ? panel->cursorName()
+                               : panel->cursorName() + QStringLiteral(" · ") + glyph.mid(5);
+    });
+
     reg("open_terminal_here", tr("Open a terminal in this directory"), ActionCategory::General,
         onPanel([this](ui::FilePanel *panel) {
             if (!platform::Launcher::openTerminal(panel->path())) {
@@ -265,6 +332,12 @@ void PanelController::registerActions()
 
     reg("toggle_dot_file", tr("Show or hide dotfiles"), ActionCategory::View,
         onPanel([](ui::FilePanel *panel) { panel->toggleShowHidden(); }));
+    reg("view_as_icons", tr("View as icons"), ActionCategory::View,
+        onPanel([](ui::FilePanel *panel) { panel->setViewMode(ui::ViewMode::Icons); }));
+    reg("view_as_list", tr("View as a list"), ActionCategory::View,
+        onPanel([](ui::FilePanel *panel) { panel->setViewMode(ui::ViewMode::List); }));
+    reg("toggle_view_mode", tr("Switch between list and icon view"), ActionCategory::View,
+        onPanel([](ui::FilePanel *panel) { panel->toggleViewMode(); }));
     reg("toggle_reverse_sort", tr("Reverse the sort order"), ActionCategory::View,
         onPanel([](ui::FilePanel *panel) { panel->setReverseSort(!panel->reverseSort()); }));
 

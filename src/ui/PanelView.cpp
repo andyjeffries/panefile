@@ -303,7 +303,9 @@ void PanelView::absorbPartialRow()
     // So the leftover pixels are given to the bottom inset instead, and the
     // list ends on a row boundary. Recomputed on every resize, because the
     // remainder changes as the window does.
-    const int rowHeight = std::max(1, currentPalette().rowHeight);
+    // A grid is laid out in tiles, so it is the tile that must not be sliced.
+    const int rowHeight = gridSize().isValid() ? std::max(1, gridSize().height())
+                                               : std::max(1, currentPalette().rowHeight);
     const int available = height() - (m_bodyInsetVertical * 2);
     const int leftover = available > rowHeight ? available % rowHeight : 0;
 

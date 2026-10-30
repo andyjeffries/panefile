@@ -94,6 +94,10 @@ constexpr DefaultBinding kDefaults[] = {
     // Movement
     {KeymapLayer::Global, "list_up", "Up"},
     {KeymapLayer::Global, "list_down", "Down"},
+    // Along a row of tiles in icon view; nothing in a list. Plain h and l stay
+    // free for typing a name.
+    {KeymapLayer::Global, "list_left", "Left"},
+    {KeymapLayer::Global, "list_right", "Right"},
     {KeymapLayer::Global, "page_up", "PgUp"},
     {KeymapLayer::Global, "page_up", "Ctrl+U"},
     {KeymapLayer::Global, "page_down", "PgDown"},
@@ -116,6 +120,9 @@ constexpr DefaultBinding kDefaults[] = {
     // One of the two plain keys kept. Names are typed without their leading
     // dot, so `.` never needs to start one.
     {KeymapLayer::Normal, "toggle_dot_file", "."},
+    // Not Ctrl+1 / Ctrl+2: desktops commonly spend those on workspaces.
+    {KeymapLayer::Global, "view_as_icons", "Ctrl+Alt+1"},
+    {KeymapLayer::Global, "view_as_list", "Ctrl+Alt+2"},
     {KeymapLayer::Global, "search_bar", "Ctrl+/"},
     {KeymapLayer::Global, "change_panel_mode", "Ctrl+Shift+V"},
     {KeymapLayer::Global, "select_all", "Ctrl+A"},
@@ -126,10 +133,14 @@ constexpr DefaultBinding kDefaults[] = {
     // plain movement for as long as the mode is on.
     {KeymapLayer::Selection, "select_down", "Down"},
     {KeymapLayer::Selection, "select_up", "Up"},
+    {KeymapLayer::Selection, "select_left", "Left"},
+    {KeymapLayer::Selection, "select_right", "Right"},
 
     // And Shift+arrows extend in either mode, as in every other file manager.
     {KeymapLayer::Global, "select_up", "Shift+Up"},
     {KeymapLayer::Global, "select_down", "Shift+Down"},
+    {KeymapLayer::Global, "select_left", "Shift+Left"},
+    {KeymapLayer::Global, "select_right", "Shift+Right"},
     // A browser's bookmark chord, shifted because Ctrl+D pages down.
     {KeymapLayer::Global, "pinned_directory", "Ctrl+Shift+D"},
     {KeymapLayer::Global, "sidebar_move_entry_up", "Alt+Up"},

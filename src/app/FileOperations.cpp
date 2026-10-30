@@ -13,6 +13,7 @@
 #include "fs/jobs/MediaJob.h"
 #include "fs/jobs/RenameJob.h"
 #include "fs/jobs/TransferJob.h"
+#include "model/FolderIconStore.h"
 #include "ui/FilePanel.h"
 #include "ui/MainWindow.h"
 #include "ui/PanelStrip.h"
@@ -346,6 +347,12 @@ void FileOperations::runRenamePlan(const QString &directory, const fs::RenamePla
                 return;
             }
 
+            // A folder's chosen icon follows it to its new name. Temporary
+            // steps are in the list too, so a swap chains through correctly.
+            for (const auto &[from, to] : raw->completedRenames()) {
+                FolderIconStore::instance().renamed(from, to);
+            }
+
             if (!result.cancelled && !raw->completedRenames().isEmpty()) {
                 // §7.9 step 6, and §7.13's Rename/BulkRename kinds: one
                 // entry for the whole thing, so Ctrl+Z reverses the rename
@@ -616,6 +623,7 @@ void FileOperations::runTransfer(const QStringList &paths, const QString &destin
                     const QStringList removed = raw->removedSources();
                     for (int i = 0; i < std::min(created.size(), removed.size()); ++i) {
                         pairs.append({removed.at(i), created.at(i)});
+                        FolderIconStore::instance().renamed(removed.at(i), created.at(i));
                     }
                     m_undoStack->push(fs::UndoEntry{.kind = fs::UndoEntry::Kind::Move,
                                                     .description = tr("Move"),
@@ -743,8 +751,8 @@ void FileOperations::startDelete(const QStringList &paths, bool permanent)
     auto *connection = new QMetaObject::Connection;
     *connection =
         connect(m_engine, &fs::JobEngine::jobFinished, this,
-                [this, jobId, raw, permanent, connection,
-                 forMatchingPanels](int id, const fs::JobResult &result) {
+                [this, jobId, raw, permanent, connection, forMatchingPanels,
+                 paths](int id, const fs::JobResult &result) {
                     if (id != jobId) {
                         return;
                     }
@@ -754,6 +762,16 @@ void FileOperations::startDelete(const QStringList &paths, bool permanent)
                     forMatchingPanels([](ui::FilePanel *candidate, const QStringList &names) {
                         candidate->finishRemoval(names);
                     });
+
+                    // Gone for good, so its icon choice goes too. Trashed folders
+                    // keep theirs: restoring brings the path back.
+                    if (permanent) {
+                        for (const QString &path : paths) {
+                            if (!QFileInfo::exists(path)) {
+                                FolderIconStore::instance().removed(path);
+                            }
+                        }
+                    }
 
                     if (!permanent && !result.cancelled && !raw->trashedItems().isEmpty()) {
                         m_undoStack->push(fs::UndoEntry{.kind = fs::UndoEntry::Kind::Trash,
@@ -1091,12 +1109,24 @@ void FileOperations::registerActions()
     // and Shift+Down extend it in either mode — the run of rows the cursor
     // passes over, from the row it started on.
     m_registry->registerAction(QStringLiteral("select_down"), tr("Extend the selection downwards"),
-                               ActionCategory::Selection,
-                               onPanel([](ui::FilePanel *panel) { panel->extendSelectionBy(1); }));
+                               ActionCategory::Selection, onPanel([](ui::FilePanel *panel) {
+                                   panel->extendSelectionByRows(1);
+                               }));
 
-    m_registry->registerAction(QStringLiteral("select_up"), tr("Extend the selection upwards"),
-                               ActionCategory::Selection,
-                               onPanel([](ui::FilePanel *panel) { panel->extendSelectionBy(-1); }));
+    m_registry->registerAction(
+        QStringLiteral("select_up"), tr("Extend the selection upwards"), ActionCategory::Selection,
+        onPanel([](ui::FilePanel *panel) { panel->extendSelectionByRows(-1); }));
+
+    // Icon view only: along a row of tiles. A no-op in a list.
+    m_registry->registerAction(
+        QStringLiteral("select_right"), tr("Extend the selection to the next tile"),
+        ActionCategory::Selection,
+        onPanel([](ui::FilePanel *panel) { panel->extendSelectionByColumns(1); }));
+
+    m_registry->registerAction(
+        QStringLiteral("select_left"), tr("Extend the selection to the previous tile"),
+        ActionCategory::Selection,
+        onPanel([](ui::FilePanel *panel) { panel->extendSelectionByColumns(-1); }));
 }
 
 } // namespace pf

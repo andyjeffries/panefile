@@ -55,6 +55,8 @@ void TestDefaultConfig::valuesMatchTheSpecifiedDefaults()
     QCOMPARE(table["panels"]["max_count"].value_or(0), 10);
     QCOMPARE(table["panels"]["default_sort"].value_or(std::string_view{}),
              std::string_view{"name"});
+    QCOMPARE(table["panels"]["default_view"].value_or(std::string_view{}),
+             std::string_view{"list"});
     QCOMPARE(table["quicklook"]["dock"].value_or(std::string_view{}), std::string_view{"float"});
     QCOMPARE(table["quicklook"]["debounce_ms"].value_or(0), 120);
     QCOMPARE(table["quicklook"]["max_read_bytes"].value_or(0), 67108864);

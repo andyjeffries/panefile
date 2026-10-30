@@ -38,6 +38,8 @@ if(PF_PLATFORM_DARWIN)
     # The target is now named Panefile, so both ends say Panefile.app.
     install(DIRECTORY "${PROJECT_SOURCE_DIR}/data/themes"
         DESTINATION "Panefile.app/Contents/Resources")
+    install(DIRECTORY "${PROJECT_SOURCE_DIR}/data/heroicons"
+        DESTINATION "Panefile.app/Contents/Resources")
 
     # The bundle target already carries the .icns through
     # MACOSX_PACKAGE_LOCATION, but an install of the loose binary — which is
@@ -53,6 +55,9 @@ else()
     install(TARGETS pf RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
     install(DIRECTORY "${PROJECT_SOURCE_DIR}/data/themes"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/panefile")
+
+    install(DIRECTORY "${PROJECT_SOURCE_DIR}/data/heroicons"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/panefile")
 
     install(FILES "${CMAKE_CURRENT_BINARY_DIR}/data/panefile.desktop"

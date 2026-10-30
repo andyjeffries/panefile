@@ -235,6 +235,7 @@ struct SettingsWindow::Controls {
     QCheckBox *followSystem = nullptr;
     QSpinBox *fontSize = nullptr;
     QSpinBox *rowHeight = nullptr;
+    QSpinBox *iconSize = nullptr;
 
     // General
     QLineEdit *newPanelPath = nullptr;
@@ -245,6 +246,7 @@ struct SettingsWindow::Controls {
     QSpinBox *maxCount = nullptr;
     QCheckBox *directoriesFirst = nullptr;
     QComboBox *defaultSort = nullptr;
+    QComboBox *defaultView = nullptr;
     QCheckBox *showHidden = nullptr;
 
     // Default file manager — Linux only, and absent rather than disabled on
@@ -405,6 +407,17 @@ QWidget *SettingsWindow::buildAppearanceTab()
     });
     form->addRow(tr("Row height"), m_controls->rowHeight);
 
+    m_controls->iconSize = new QSpinBox;
+    m_controls->iconSize->setRange(32, 128);
+    m_controls->iconSize->setSuffix(tr(" px"));
+    connect(m_controls->iconSize, &QSpinBox::valueChanged, this, [this](int value) {
+        if (!m_loading) {
+            writeTheme(QStringLiteral("ui"), QStringLiteral("icon_size"),
+                       config::TomlWriter::number(value), tr("Icon size: %1 px").arg(value));
+        }
+    });
+    form->addRow(tr("Icon size"), m_controls->iconSize);
+
     outer->addLayout(form);
     return page;
 }
@@ -485,6 +498,19 @@ QWidget *SettingsWindow::buildGeneralTab()
         }
     });
     form->addRow(tr("Sort by"), m_controls->defaultSort);
+
+    m_controls->defaultView = new QComboBox;
+    m_controls->defaultView->addItem(tr("List"), QStringLiteral("list"));
+    m_controls->defaultView->addItem(tr("Icons"), QStringLiteral("icons"));
+    connect(m_controls->defaultView, &QComboBox::currentIndexChanged, this, [this](int) {
+        if (!m_loading) {
+            const QString value = m_controls->defaultView->currentData().toString();
+            writeConfig(QStringLiteral("panels"), QStringLiteral("default_view"),
+                        config::TomlWriter::quote(value),
+                        tr("View as %1").arg(m_controls->defaultView->currentText()));
+        }
+    });
+    form->addRow(tr("View"), m_controls->defaultView);
 
     boolRow(&m_controls->showHidden, tr("Show hidden files"), QStringLiteral("panels"),
             QStringLiteral("show_hidden"));
@@ -755,6 +781,10 @@ void SettingsWindow::loadValues()
         index >= 0) {
         m_controls->defaultSort->setCurrentIndex(index);
     }
+    if (const int index = m_controls->defaultView->findData(settings.panels.defaultView);
+        index >= 0) {
+        m_controls->defaultView->setCurrentIndex(index);
+    }
     if (const int index = m_controls->dock->findData(settings.quicklook.dock); index >= 0) {
         m_controls->dock->setCurrentIndex(index);
     }
@@ -789,6 +819,7 @@ void SettingsWindow::loadValues()
 
     m_controls->fontSize->setValue(active.theme.fontSize);
     m_controls->rowHeight->setValue(active.theme.rowHeight);
+    m_controls->iconSize->setValue(active.theme.iconSize);
 
     // follow_system is true by default when there is no theme.toml at all,
     // which is exactly the state a fresh install is in.

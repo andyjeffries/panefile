@@ -1,8 +1,10 @@
 #pragma once
 
 #include "model/FileEntry.h"
+#include "model/ThumbnailCache.h"
 
 #include <QAbstractListModel>
+#include <QHash>
 #include <QSet>
 #include <QString>
 
@@ -41,12 +43,14 @@ public:
         SizeRole,
         ModifiedRole,
         IsDirRole,
+        /// A directory's folder-icon glyph id (custom, else standard), or empty.
+        /// A hash lookup: FolderIconStore is loaded by setPath(), not here.
+        FolderGlyphRole,
+        /// Whether a directory is known to be empty. False until a background
+        /// readdir says so, so a folder is drawn open until it is known closed.
+        FolderEmptyRole,
     };
     Q_ENUM(Roles)
-
-    /// §7.7: "Only request thumbnails for rows in or within 20 rows of the
-    /// viewport; cancel requests for rows that scroll away."
-    static constexpr int kThumbnailOvershoot = 20;
 
     explicit DirectoryModel(QObject *parent = nullptr);
     ~DirectoryModel() override;
@@ -69,10 +73,17 @@ public:
     void setThumbnailsEnabled(bool enabled);
     bool thumbnailsEnabled() const;
 
-    /// Queues thumbnails for the visible rows and the overshoot either side,
-    /// and cancels anything queued outside that window. Called by the panel on
-    /// scroll and after a scan.
-    void requestThumbnailRange(int firstVisibleRow, int lastVisibleRow);
+    /// The size thumbnails are requested and served at. Icon view wants Large.
+    void setThumbnailSize(ThumbnailCache::Size size);
+    ThumbnailCache::Size thumbnailSize() const;
+
+    /// Queues thumbnails for these *source* rows and cancels anything queued
+    /// outside them. The panel works the rows out in view order — a sorted or
+    /// filtered proxy makes the visible source rows non-contiguous — and lists
+    /// the on-screen ones separately so they jump the queue (§7.7: rows in or
+    /// within 20 rows of the viewport).
+    void requestThumbnails(const QList<int> &visibleSourceRows,
+                           const QList<int> &overshootSourceRows);
     bool isWatchingEnabled() const;
 
     int rowCount(const QModelIndex &parent = {}) const override;
@@ -137,6 +148,9 @@ private:
 
     QString absolutePathFor(const FileEntry &entry) const;
 
+    /// Starts the one readdir that tells whether a directory is empty.
+    void probeEmpty(const QString &absolutePath) const;
+
     /// Wires this model to the shared thumbnail cache, on first use.
     void connectThumbnailCache();
 
@@ -157,6 +171,7 @@ private:
     /// the rescan ends so it cannot re-add a deleted row afterwards.
     QStringList m_finishAfterRescan;
     bool m_thumbnailsEnabled = false;
+    ThumbnailCache::Size m_thumbnailSize = ThumbnailCache::Size::Normal;
 
     /// False until the first thumbnail request has wired this model to the
     /// shared cache. §3.4: constructing the cache resolves the thumbnail
@@ -168,6 +183,11 @@ private:
     /// what left it rather than cancelling and requeueing everything.
     QSet<QString> m_thumbnailWindow;
     std::vector<FileEntry> m_entries;
+
+    /// Which directories are empty, filled in off the GUI thread for the ones
+    /// that have been painted. Cleared when the path changes.
+    mutable QHash<QString, bool> m_emptyKnown;
+    mutable QSet<QString> m_emptyPending;
     QString m_path;
     QString m_error;
     bool m_scanning = false;

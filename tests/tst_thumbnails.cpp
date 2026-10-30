@@ -194,6 +194,86 @@ private Q_SLOTS:
         QVERIFY(!thumbnails.canThumbnail(text));
     }
 
+    /// Icon view asks for 256 px when the tile is big or the screen dense.
+    void sizeForPicksTheSharperCacheSize()
+    {
+        QCOMPARE(ThumbnailCache::sizeFor(64, 1.0), ThumbnailCache::Size::Normal);
+        QCOMPARE(ThumbnailCache::sizeFor(128, 1.0), ThumbnailCache::Size::Normal);
+        QCOMPARE(ThumbnailCache::sizeFor(64, 2.0), ThumbnailCache::Size::Normal);
+        QCOMPARE(ThumbnailCache::sizeFor(65, 2.0), ThumbnailCache::Size::Large);
+        QCOMPARE(ThumbnailCache::sizeFor(96, 1.0), ThumbnailCache::Size::Normal);
+        QCOMPARE(ThumbnailCache::sizeFor(129, 1.0), ThumbnailCache::Size::Large);
+    }
+
+    /// The memory tier is keyed by size: a 128 px image must not be served to a
+    /// 256 px lookup, but peek() may offer it as a stand-in.
+    void memoryTierIsKeyedBySize()
+    {
+        QTemporaryDir source;
+        QTemporaryDir cache;
+        const QString path = writeImage(source, QStringLiteral("a.png"), 600, 600);
+
+        ThumbnailCache thumbnails;
+        thumbnails.setCacheRoot(cache.path());
+
+        QSignalSpy ready(&thumbnails, &ThumbnailCache::ready);
+        thumbnails.request(path, ThumbnailCache::Size::Normal);
+        QTRY_VERIFY_WITH_TIMEOUT(ready.count() == 1, 5000);
+
+        QVERIFY(!thumbnails.lookup(path, ThumbnailCache::Size::Normal).isNull());
+        QVERIFY(thumbnails.lookup(path, ThumbnailCache::Size::Large).isNull());
+        QVERIFY(!thumbnails.peek(path, ThumbnailCache::Size::Normal).isNull());
+        QVERIFY(thumbnails.peek(path, ThumbnailCache::Size::Large).isNull());
+
+        thumbnails.request(path, ThumbnailCache::Size::Large);
+        QTRY_VERIFY_WITH_TIMEOUT(ready.count() == 2, 5000);
+        QCOMPARE(thumbnails.lookup(path, ThumbnailCache::Size::Large).width(), 256);
+        QCOMPARE(thumbnails.lookup(path, ThumbnailCache::Size::Normal).width(), 128);
+    }
+
+    /// Asking for the other size replaces the request in flight.
+    void anotherSizeReplacesThePendingRequest()
+    {
+        QTemporaryDir source;
+        QTemporaryDir cache;
+        const QString path = writeImage(source, QStringLiteral("a.png"), 900, 900);
+
+        ThumbnailCache thumbnails;
+        thumbnails.setCacheRoot(cache.path());
+
+        QSignalSpy ready(&thumbnails, &ThumbnailCache::ready);
+        thumbnails.request(path, ThumbnailCache::Size::Normal);
+        thumbnails.request(path, ThumbnailCache::Size::Large);
+        QCOMPARE(thumbnails.pendingCount(), 1);
+        QTRY_VERIFY_WITH_TIMEOUT(ready.count() >= 1, 5000);
+        QVERIFY(ThumbnailCache::pool()->waitForDone(5000));
+        QCoreApplication::processEvents();
+        QVERIFY(!thumbnails.lookup(path, ThumbnailCache::Size::Large).isNull());
+    }
+
+    /// The memory tier is capped, so a huge folder cannot grow it without bound.
+    void memoryTierEvicts()
+    {
+        QTemporaryDir source;
+        QTemporaryDir cache;
+        ThumbnailCache thumbnails;
+        thumbnails.setCacheRoot(cache.path());
+        // Room for about one 128 px thumbnail (64 KiB).
+        thumbnails.setMemoryBudgetKb(100);
+
+        const QString a = writeImage(source, QStringLiteral("a.png"), 300, 300);
+        const QString b = writeImage(source, QStringLiteral("b.png"), 300, 300);
+
+        QSignalSpy ready(&thumbnails, &ThumbnailCache::ready);
+        thumbnails.request(a, ThumbnailCache::Size::Normal);
+        thumbnails.request(b, ThumbnailCache::Size::Normal);
+        QTRY_VERIFY_WITH_TIMEOUT(ready.count() == 2, 5000);
+
+        const int held = !thumbnails.peek(a, ThumbnailCache::Size::Normal).isNull() +
+                         !thumbnails.peek(b, ThumbnailCache::Size::Normal).isNull();
+        QCOMPARE(held, 1);
+    }
+
     /// §7.7: "cancel requests for rows that scroll away".
     void cancelledRequestsDeliverNothing()
     {

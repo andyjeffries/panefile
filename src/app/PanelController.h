@@ -12,6 +12,7 @@ class FilePanel;
 class MainWindow;
 class PanelStrip;
 class Sidebar;
+class FolderIconModal;
 } // namespace pf::ui
 
 namespace pf {
@@ -59,6 +60,11 @@ private:
     void showSortMenu(ui::FilePanel *panel);
 
     ui::FilePanel *focused() const;
+
+    /// Opens the folder icon picker for the cursor folder; built on first use.
+    void changeFolderIcon(ui::FilePanel *panel);
+
+    ui::FolderIconModal *m_folderIconModal = nullptr;
 
     ui::MainWindow *m_window = nullptr;
     ui::PanelStrip *m_strip = nullptr;

@@ -41,6 +41,7 @@ private Q_SLOTS:
     void wrongTypeIsReportedAndIgnored();
     void outOfRangeNumbersAreClampedAndReported();
     void invalidEnumIsRejectedWithTheAllowedValues();
+    void defaultViewIsParsedAndValidated();
 
     // theme.toml
     void themeDefaultsAreCatppuccinMocha();
@@ -186,6 +187,19 @@ directories_first = false
     QCOMPARE(result.settings.panels.maxCount, 10);     // the affected key
     QCOMPARE(result.settings.panels.showHidden, true); // and not its neighbours
     QCOMPARE(result.settings.panels.directoriesFirst, false);
+}
+
+void TestConfig::defaultViewIsParsedAndValidated()
+{
+    QCOMPARE(parseConfig(QStringLiteral("[panels]\ndefault_view = \"icons\"\n"),
+                         QStringLiteral("config.toml"))
+                 .settings.panels.defaultView,
+             QStringLiteral("icons"));
+
+    const ConfigLoadResult bad = parseConfig(QStringLiteral("[panels]\ndefault_view = \"grid\"\n"),
+                                             QStringLiteral("config.toml"));
+    QCOMPARE(bad.issues.size(), 1);
+    QCOMPARE(bad.settings.panels.defaultView, QStringLiteral("list"));
 }
 
 void TestConfig::unknownKeysAreIgnoredSilently()
@@ -389,6 +403,11 @@ font_size = 1
     // A 900-pixel row is not a design choice anybody made deliberately.
     QVERIFY(result.theme.rowHeight <= 64);
     QVERIFY(result.theme.fontSize >= 6);
+
+    const ThemeLoadResult icons = parseTheme(QStringLiteral("[ui]\nicon_size = 900\n"));
+    QCOMPARE(icons.theme.iconSize, 128);
+    QCOMPARE(parseTheme(QStringLiteral("[ui]\nicon_size = 48\n")).theme.iconSize, 48);
+    QCOMPARE(Theme().iconSize, 64);
 }
 
 void TestConfig::lightnessIsDetected()

@@ -343,13 +343,17 @@ struct PanelState {
 };
 ```
 
+**Views.** A panel is either a list or an icon view (`ViewMode`). Both are the same `QListView` in `ListMode` with `setUniformItemSizes(true)`; the icon view switches on wrapping, `LeftToRight` flow and a fixed `gridSize` (one tile size derived from `ui.icon_size` and the font by `FileItemDelegate::tileMetricsFor`). It deliberately does **not** use `QListView::IconMode`, which keeps a geometry per item and lays out all of them — unusable in a 100,000-entry folder. The choice is remembered per folder in `<stateDir>/folder-views.json` (`FolderViewMemory`, like `FolderSortMemory`; only departures from `panels.default_view` are stored). `Ctrl+Alt+1` / `Ctrl+Alt+2` switch (`view_as_icons` / `view_as_list`; `toggle_view_mode` is a palette command). In icon view `Up`/`Down` and `PgUp`/`PgDn` move whole rows, `Left`/`Right` move one tile (wrapping), `Shift` extends the selection the same way; `Left`/`Right` do nothing in a list.
+
 **Cursor memory:** when you navigate out of a directory and back in, the cursor must land on the directory you came from. Keep a bounded LRU (256 entries) of `path → cursorName`.
 
 ### 5.3 `FileItemDelegate`
 
 Custom `QStyledItemDelegate`. Paints, left to right: selection marker, icon or thumbnail, name (with fuzzy-match spans in the accent colour), symlink arrow and target, right-aligned size and mtime. Broken symlinks render in the error colour with a strikethrough. Executables get the accent colour.
 
-Row height is fixed per theme so `uniformItemSizes` holds. Thumbnails, when enabled, replace the icon at the same box size.
+Row height is fixed per theme so `uniformItemSizes` holds. Thumbnails, when enabled, replace the icon at the same box size, and only for rows tall enough (40 px) to show one.
+
+In icon view (`Layout::Tile`) the delegate paints a rounded pill, an `ui.icon_size` icon or thumbnail centred at the top, and the name centred beneath on at most two lines (broken at a space or hyphen, else before the extension; the second line elided in the middle). Thumbnails are always shown in tiles. Tiles show no size, date or link target. Directories use the folder icon with its glyph (§7.14) where one is set.
 
 ### 5.4 Modals
 
@@ -465,7 +469,8 @@ Originally derived from superfile's defaults, then reworked so that letters belo
 
 | Action id | Default | Description |
 | --- | --- | --- |
-| `list_up` / `list_down` | `Up` / `Down` | |
+| `list_up` / `list_down` | `Up` / `Down` | A row in a list, a whole row of tiles in icon view |
+| `list_left` / `list_right` | `Left` / `Right` | One tile in icon view; nothing in a list |
 | `page_up` / `page_down` | `PgUp` / `PgDn`, `Ctrl+U` / `Ctrl+D` | |
 | `list_top` / `list_bottom` | `Home` / `End`, `Ctrl+G g` / `Ctrl+G G` | |
 | `go_home` | `Ctrl+G h`, `Alt+Home` | Navigate panel to `$HOME` |
@@ -677,7 +682,9 @@ Implement the freedesktop thumbnail spec so the cache is shared with other appli
 - Store at `$XDG_CACHE_HOME/thumbnails/{normal,large}/<md5-of-file-uri>.png` (`normal` = 128 px, `large` = 256 px).
 - Embed `Thumb::URI` and `Thumb::MTime` PNG text chunks; treat a thumbnail whose `Thumb::MTime` doesn't match the source as stale.
 - Write failures to `$XDG_CACHE_HOME/thumbnails/fail/panefile/` so you don't retry a file that can't be thumbnailed.
-- Only request thumbnails for rows in or within 20 rows of the viewport; cancel requests for rows that scroll away.
+- Only request thumbnails for rows in or within 20 rows of the viewport (rows of the layout: in icon view that is 20 rows of tiles); cancel requests for rows that scroll away. Visible tiles are queued ahead of the overshoot.
+- Icon view asks for `normal` or `large` depending on the tile size and the screen's pixel ratio (`ThumbnailCache::sizeFor`); a list asks for `normal`, and nothing at all when rows are too short to show one.
+- Types Qt cannot decode use the freedesktop thumbnailer registry (`/usr/share/thumbnailers/*.thumbnailer`, user and `XDG_DATA_DIRS`): Panefile runs the registered command, inside bubblewrap when it is installed (no network, read-only system, only the output folder writable) and with a timeout either way, and stores the result in the shared cache.
 - Config: `thumbnails.enabled`, `thumbnails.max_file_size_mb` (default 200), `thumbnails.video` (default true).
 
 ### 7.8 Fuzzy find
@@ -731,6 +738,10 @@ Note: on Wayland, a drag must originate from a genuine pointer press-and-move �
 
 Maintain a bounded stack (50 entries) of undoable operations: move, rename, bulk rename, trash. `Ctrl+Z` undoes the last. Copy and permanent delete are **not** undoable and must be labelled as such in the confirmation. Undo of a trash operation restores from trash by `.trashinfo` path. In-place image edits (rotate, flip) push a *Replace* entry: the original was trashed before the edit was written, and undo trashes the edited file and restores the original. Image and media conversions create new files and, like copies, are not undoable.
 
+### 7.14 Folder icons
+
+A folder can carry a glyph, drawn debossed into the standard folder shape (`FolderIconRenderer`). The palette's **Change folder icon…** opens a searchable picker offering *Default*, the standard-folder emblems (Home, Desktop, Documents, Downloads, Music, Pictures, Videos, Public, Templates) and the full Heroicons set (v2, solid, shipped as data files and loaded when the picker opens). **Reset folder icon** removes the choice. The XDG standard folders get their emblem automatically. Choices live in `<stateDir>/folder-icons.json` (`path → "hero:<name>"`, validated against `^[a-z0-9-]+$` before touching the filesystem) and follow Panefile's own renames and moves; a rename elsewhere leaves the icon behind. Painting never does IO: the store reads the glyphs' SVG bytes when it loads or when a choice is made.
+
 ---
 
 ## 8. Configuration
@@ -760,6 +771,7 @@ default_count        = 1
 max_count            = 10
 directories_first    = true
 default_sort         = "name"       # name | size | modified | type; `Ctrl+O` overrides it per folder
+default_view         = "list"       # list | icons; `Ctrl+Alt+1` / `Ctrl+Alt+2` override it per folder
 show_hidden          = false
 
 [quicklook]
@@ -875,6 +887,7 @@ border_focused    = "#89b4fa"
 font_family       = ""          # empty = system default
 font_size         = 10
 row_height        = 24
+icon_size         = 64          # icon view: side of the icon or thumbnail (32-128)
 border_radius     = 6
 panel_padding     = 8
 ```

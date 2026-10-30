@@ -252,6 +252,7 @@ void Application::configurePanel(ui::FilePanel *panel)
 
     panel->setShowHidden(m_settings.panels.showHidden);
     panel->setDefaultSortKey(sortKeyFromName(m_settings.panels.defaultSort));
+    panel->setDefaultViewMode(ui::viewModeFromName(m_settings.panels.defaultView));
 
     // §7.7: thumbnails are a panel-level facility, so a build with them
     // disabled never constructs the cache's memory tier at all.
@@ -428,6 +429,8 @@ void Application::showApplicationMenu(const QPoint &globalPosition)
          {.actionId = "go_home", .label = tr("Home")},
          {.actionId = "open_fuzzy_find", .label = tr("Find…")}},
         {{.actionId = "toggle_dot_file", .label = tr("Show Hidden Files")},
+         {.actionId = "view_as_icons", .label = tr("View as Icons")},
+         {.actionId = "view_as_list", .label = tr("View as List")},
          {.actionId = "toggle_sidebar", .label = tr("Sidebar")},
          {.actionId = "sidebar_new_section", .label = tr("New Sidebar Section…")},
          {.actionId = "toggle_footer", .label = tr("Status Bar")},
@@ -605,6 +608,9 @@ void Application::reloadConfiguration(const QStringList &changedFiles)
         if (m_mainWindow != nullptr) {
             m_mainWindow->update();
             for (ui::FilePanel *panel : m_mainWindow->panelStrip()->panels()) {
+                // Default sort is not re-applied on reload; the default view
+                // is, so a change in Settings shows at once.
+                panel->setDefaultViewMode(ui::viewModeFromName(m_settings.panels.defaultView));
                 panel->refreshTheme();
             }
             m_mainWindow->sidebar()->refreshTheme();

@@ -9,11 +9,13 @@
 #include "ui/ThemePalette.h"
 
 #include <QApplication>
+#include <QIcon>
 #include <QPainter>
 #include <QSet>
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 
 namespace pf::ui {
 namespace {
@@ -117,6 +119,85 @@ bool isImageName(const QString &name)
 
 FileItemDelegate::FileItemDelegate(QObject *parent) : QStyledItemDelegate(parent) {}
 
+void FileItemDelegate::setLayout(Layout layout)
+{
+    m_layout = layout;
+}
+
+FileItemDelegate::Layout FileItemDelegate::layout() const
+{
+    return m_layout;
+}
+
+void FileItemDelegate::clearCaches()
+{
+    m_wrapCache.clear();
+}
+
+FileItemDelegate::TileMetrics FileItemDelegate::tileMetricsFor(const ThemePalette &palette,
+                                                               const QFontMetrics &metrics)
+{
+    TileMetrics tile;
+    tile.iconSize = std::clamp(palette.iconSize, 16, 256);
+    tile.padding = std::max(4, palette.panelPadding);
+    tile.nameGap = 6;
+    tile.lineHeight = metrics.lineSpacing();
+
+    const int width = std::max(tile.iconSize + (2 * tile.padding),
+                               static_cast<int>(std::lround(tile.iconSize * 1.6)));
+    const int height = tile.padding + tile.iconSize + tile.nameGap +
+                       (TileMetrics::kNameLines * tile.lineHeight) + tile.padding;
+    tile.tile = QSize(width, height);
+    return tile;
+}
+
+QStringList FileItemDelegate::wrapName(const QString &name, const QFontMetrics &metrics, int width)
+{
+    width = std::max(1, width);
+    if (metrics.horizontalAdvance(name) <= width) {
+        return {name};
+    }
+
+    // The most that fits on the first line.
+    int fit = 0;
+    while (fit < name.size() && metrics.horizontalAdvance(name.left(fit + 1)) <= width) {
+        ++fit;
+    }
+    fit = std::max(1, fit);
+
+    // The latest preferred break within that: after a hyphen, or at a space.
+    int split = -1;
+    for (int at = std::min<int>(fit, name.size() - 1); at >= 1; --at) {
+        const QChar before = name.at(at - 1);
+        if (before == QLatin1Char(' ') || before == QLatin1Char('-') ||
+            name.at(at) == QLatin1Char(' ')) {
+            split = at;
+            break;
+        }
+    }
+    if (split < 0) {
+        // Before the extension, so `DSC_0498` and `.heic` land on two lines.
+        const int dot = static_cast<int>(name.lastIndexOf(QLatin1Char('.')));
+        split = dot > 0 && dot <= fit ? dot : fit;
+    }
+
+    const QString first = name.left(split).trimmed();
+    const QString rest = name.mid(split).trimmed();
+    return {first, metrics.elidedText(rest, Qt::ElideMiddle, width)};
+}
+
+QIcon FileItemDelegate::iconFor(const QModelIndex &index, const FileEntry &entry,
+                                const QColor &colour)
+{
+    if (entry.isDir) {
+        const QString glyph = index.data(DirectoryModel::FolderGlyphRole).toString();
+        if (!glyph.isEmpty()) {
+            return IconProvider::instance().folderIcon(glyph, colour, entry.isSymlink);
+        }
+    }
+    return IconProvider::instance().iconFor(entry, colour);
+}
+
 void FileItemDelegate::setSelectedNames(const QSet<QString> *names)
 {
     m_selectedNames = names;
@@ -124,8 +205,10 @@ void FileItemDelegate::setSelectedNames(const QSet<QString> *names)
 
 QSize FileItemDelegate::sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const
 {
-    Q_UNUSED(option)
     Q_UNUSED(index)
+    if (m_layout == Layout::Tile) {
+        return tileMetricsFor(currentPalette(), option.fontMetrics).tile;
+    }
     // §5.3: fixed per theme. The view sets uniformItemSizes, which means this is
     // asked once and applied to every row — it must not depend on the content.
     return {0, currentPalette().rowHeight};
@@ -212,6 +295,10 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
         return;
     }
     const auto entry = entryValue.value<FileEntry>();
+    if (m_layout == Layout::Tile) {
+        paintTile(painter, option, index, entry);
+        return;
+    }
     const ThemePalette &palette = currentPalette();
 
     painter->save();
@@ -375,8 +462,7 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
                                  iconRect.y() + ((iconRect.height() - scaled.height()) / 2),
                                  scaled.width(), scaled.height()),
                            image);
-    } else if (const QIcon icon = IconProvider::instance().iconFor(entry, iconColour);
-               !icon.isNull()) {
+    } else if (const QIcon icon = iconFor(index, entry, iconColour); !icon.isNull()) {
         icon.paint(painter, iconRect, Qt::AlignCenter,
                    entry.isBroken ? QIcon::Disabled : QIcon::Normal);
     }
@@ -473,6 +559,132 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
                               metrics.elidedText(QStringLiteral("→ ") + entry.linkTarget,
                                                  Qt::ElideMiddle, available));
         }
+    }
+
+    painter->restore();
+}
+
+void FileItemDelegate::paintTile(QPainter *painter, const QStyleOptionViewItem &option,
+                                 const QModelIndex &index, const FileEntry &entry) const
+{
+    const ThemePalette &palette = currentPalette();
+    const TileMetrics metrics = tileMetricsFor(palette, option.fontMetrics);
+
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing, true);
+    painter->setRenderHint(QPainter::SmoothPixmapTransform, true);
+
+    // The cell may be taller or wider than the content; the content is centred
+    // in it.
+    const QRect cell = option.rect;
+    const bool isCursor = (option.state & QStyle::State_HasFocus) != 0 ||
+                          (option.state & QStyle::State_Selected) != 0;
+    const bool isSelected = m_selectedNames != nullptr && m_selectedNames->contains(entry.name);
+    const bool isHovered = (option.state & QStyle::State_MouseOver) != 0;
+
+    const auto *view = qobject_cast<const PanelView *>(option.widget);
+    const bool panelActive =
+        view != nullptr ? view->isPanelActive() : (option.state & QStyle::State_Active) != 0;
+    const QColor panelBackground = panelActive ? palette.surface : palette.background;
+
+    // No banding in tiles: there are no rows to alternate.
+    const QRectF pill = QRectF(cell.adjusted(kPillInset, kPillInset, -kPillInset, -kPillInset));
+
+    QColor pillFill;
+    if (isCursor) {
+        pillFill = panelActive ? palette.focusedCursorBackground() : palette.cursorBackground;
+    } else if (isSelected) {
+        pillFill = palette.selectionBackground;
+    } else if (isHovered) {
+        pillFill = palette.hoverBackground(panelBackground);
+    }
+    if (pillFill.isValid()) {
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(pillFill);
+        painter->drawRoundedRect(pill, kPillRadius, kPillRadius);
+    }
+
+    if (view != nullptr && index.row() == view->dropTargetRow()) {
+        painter->setPen(QPen(palette.borderFocused, 1.5));
+        painter->setBrush(palette.focusedCursorBackground());
+        painter->drawRoundedRect(pill.adjusted(0.75, 0.75, -0.75, -0.75), kPillRadius, kPillRadius);
+    }
+
+    // The tile's version of the gutter marker: an accent outline.
+    if (isSelected) {
+        painter->setPen(QPen(palette.accent, 2));
+        painter->setBrush(Qt::NoBrush);
+        painter->drawRoundedRect(pill.adjusted(1, 1, -1, -1), kPillRadius - 1, kPillRadius - 1);
+    }
+
+    QColor iconColour = colourFor(entry);
+    if (!panelActive) {
+        iconColour = blend(iconColour, palette.background, 0.30);
+    }
+
+    const int left = cell.left() + ((cell.width() - metrics.tile.width()) / 2);
+    const int top = cell.top() + ((cell.height() - metrics.tile.height()) / 2);
+    const QRect iconRect(left + ((metrics.tile.width() - metrics.iconSize) / 2),
+                         top + metrics.padding, metrics.iconSize, metrics.iconSize);
+
+    // Thumbnails always show here: the tile is the size they are made for.
+    const QVariant thumbnail = index.data(DirectoryModel::ThumbnailRole);
+    const auto image = thumbnail.canConvert<QImage>() ? thumbnail.value<QImage>() : QImage();
+    if (!image.isNull()) {
+        const QSizeF logical = QSizeF(image.size()) / image.devicePixelRatio();
+        const QSizeF scaled = logical.scaled(QSizeF(iconRect.size()), Qt::KeepAspectRatio);
+        const QRectF target(iconRect.x() + ((iconRect.width() - scaled.width()) / 2.0),
+                            iconRect.y() + ((iconRect.height() - scaled.height()) / 2.0),
+                            scaled.width(), scaled.height());
+        painter->drawImage(target, image);
+        painter->setPen(QPen(palette.border, 1));
+        painter->setBrush(Qt::NoBrush);
+        painter->drawRect(target.adjusted(0.5, 0.5, -0.5, -0.5));
+    } else if (const QIcon icon = iconFor(index, entry, iconColour); !icon.isNull()) {
+        icon.paint(painter, iconRect, Qt::AlignCenter,
+                   entry.isBroken ? QIcon::Disabled : QIcon::Normal);
+    }
+
+    QColor nameColour = palette.text;
+    if (entry.isBroken) {
+        nameColour = palette.broken;
+    } else if (!panelActive) {
+        nameColour = blend(palette.text, palette.background, 0.22);
+    }
+
+    QFont nameFont = option.font;
+    if (entry.isBroken) {
+        nameFont.setStrikeOut(true);
+    }
+    painter->setFont(nameFont);
+    painter->setPen(nameColour);
+
+    const int textWidth = metrics.tile.width() - (2 * kPillInset) - 4;
+    const QString cacheKey = QString::number(textWidth) + QLatin1Char('|') + nameFont.key() +
+                             QLatin1Char('|') + entry.name;
+    const QStringList *cached = m_wrapCache.object(cacheKey);
+    if (cached == nullptr) {
+        cached = new QStringList(wrapName(entry.name, option.fontMetrics, textWidth));
+        m_wrapCache.insert(cacheKey, const_cast<QStringList *>(cached));
+    }
+
+    int y = iconRect.bottom() + 1 + metrics.nameGap;
+    for (const QString &line : *cached) {
+        const QRect lineRect(left + ((metrics.tile.width() - textWidth) / 2), y, textWidth,
+                             metrics.lineHeight);
+        painter->drawText(lineRect, Qt::AlignHCenter | Qt::AlignVCenter, line);
+        y += metrics.lineHeight;
+    }
+
+    // Match spans only when the whole name is on one unelided line, the rule
+    // rows use too.
+    if (cached->size() == 1) {
+        const int lineWidth = option.fontMetrics.horizontalAdvance(cached->constFirst());
+        const QRect nameRect(left + ((metrics.tile.width() - lineWidth) / 2),
+                             iconRect.bottom() + 1 + metrics.nameGap, lineWidth,
+                             metrics.lineHeight);
+        paintMatchSpans(painter, nameRect, cached->constFirst(), entry.name, index,
+                        option.fontMetrics, palette);
     }
 
     painter->restore();

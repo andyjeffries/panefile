@@ -6,7 +6,9 @@ set(PF_DESKTOP_EXEC "pf")
 add_custom_target(pf_stage_data ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_CURRENT_SOURCE_DIR}/themes" "${CMAKE_BINARY_DIR}/data/themes"
-    COMMENT "Staging themes into the build tree")
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/heroicons" "${CMAKE_BINARY_DIR}/data/heroicons"
+    COMMENT "Staging themes and the Heroicons set into the build tree")
 
 configure_file(panefile.desktop.in "${CMAKE_CURRENT_BINARY_DIR}/panefile.desktop" @ONLY)
 configure_file(pf.1.in "${CMAKE_CURRENT_BINARY_DIR}/pf.1" @ONLY)

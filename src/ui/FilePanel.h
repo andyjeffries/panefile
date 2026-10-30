@@ -3,6 +3,7 @@
 #include "model/FileEntry.h"
 #include "model/FilterSortProxy.h"
 #include "ui/FolderSortMemory.h"
+#include "ui/ViewMode.h"
 
 #include <QSet>
 #include <QString>
@@ -66,6 +67,29 @@ public:
     void moveCursorToStart();
     void moveCursorToEnd();
     void movePage(int direction);
+
+    /// Moves the cursor a whole row of the layout: one entry in a list, a full
+    /// row of tiles in icon view. Stays put rather than wrapping at the ends,
+    /// and a Down from the last full row lands on the last tile when the row
+    /// below is short.
+    void moveCursorRows(int rows);
+
+    /// Moves along a row of tiles, wrapping onto the next. Does nothing in a
+    /// list, where Left and Right have no meaning.
+    void moveCursorColumns(int delta);
+
+    /// Tiles per row in icon view, 1 in a list.
+    int itemsPerRow() const;
+
+    /// `panels.default_view`: the view for any directory the user has not
+    /// chosen one for. Takes effect at once unless this directory has its own.
+    void setDefaultViewMode(ViewMode mode);
+
+    /// The user choosing a view. Belongs to the current directory, like sort
+    /// order (FolderViewMemory).
+    void setViewMode(ViewMode mode);
+    void toggleViewMode();
+    ViewMode viewMode() const;
 
     /// §7.7's `thumbnails.enabled`, applied to this panel's model.
     void setThumbnailsEnabled(bool enabled);
@@ -135,6 +159,11 @@ public:
     /// at the row the cursor is leaving, not wherever an earlier click put the
     /// anchor.
     void extendSelectionBy(int delta);
+
+    /// The grid-aware versions: by whole rows of the layout, and along a row of
+    /// tiles (nothing in a list).
+    void extendSelectionByRows(int rows);
+    void extendSelectionByColumns(int delta);
 
     /// Applies a click's modifiers to the selection (§6.1 by mouse).
     ///
@@ -236,6 +265,10 @@ private:
     /// Applies an order without recording it or touching the cursor.
     void applySortOrder(SortOrder order);
 
+    /// Switches the view's layout without recording the choice. Keeps the
+    /// cursor on its entry and re-requests thumbnails at the new size.
+    void applyViewMode(ViewMode mode);
+
     // Declaration order is initialisation order, and these are constructed in
     // the member initialiser list, so it has to match it.
     DirectoryModel *m_model = nullptr;
@@ -252,6 +285,8 @@ private:
     QString m_path;
     QSet<QString> m_selection;
     SortOrder m_defaultSort;
+    ViewMode m_defaultView = ViewMode::List;
+    ViewMode m_viewMode = ViewMode::List;
 
     /// Where a Shift+click range starts. Held by name rather than row because
     /// a sort or a filter can move a row out from under an index.

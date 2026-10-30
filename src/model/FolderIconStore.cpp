@@ -1,14 +1,17 @@
 #include "model/FolderIconStore.h"
 
 #include "core/Logging.h"
+#include "model/FolderIconImage.h"
 #include "model/StandardFolders.h"
 #include "platform/Paths.h"
 
 #include <QDir>
 #include <QFile>
+#include <QImageReader>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
+#include <QSet>
 #include <QSaveFile>
 
 namespace pf {
@@ -21,7 +24,13 @@ QString storagePath()
 
 QString nameOf(const QString &glyphId)
 {
-    return glyphId.mid(5); // after "hero:"
+    return glyphId.mid(glyphId.indexOf(QLatin1Char(':')) + 1); // after "hero:" or "img:"
+}
+
+QString maskPath(const QString &glyphId)
+{
+    return FolderIconStore::imagesDirectory() + QLatin1Char('/') + nameOf(glyphId) +
+           QStringLiteral(".png");
 }
 
 } // namespace
@@ -34,8 +43,48 @@ FolderIconStore &FolderIconStore::instance()
 
 bool FolderIconStore::isValidGlyphId(const QString &glyphId)
 {
-    static const QRegularExpression pattern(QStringLiteral("^hero:[a-z0-9-]+$"));
+    static const QRegularExpression pattern(
+        QStringLiteral("^(hero:[a-z0-9-]+|img:[0-9a-f]{32})$"));
     return pattern.match(glyphId).hasMatch();
+}
+
+bool FolderIconStore::isImageGlyph(const QString &glyphId)
+{
+    return glyphId.startsWith(QLatin1String("img:")) && isValidGlyphId(glyphId);
+}
+
+QString FolderIconStore::displayName(const QString &glyphId)
+{
+    if (glyphId.isEmpty()) {
+        return tr("Default");
+    }
+    return isImageGlyph(glyphId) ? tr("pasted image") : nameOf(glyphId);
+}
+
+QString FolderIconStore::imagesDirectory()
+{
+    return platform::stateDir() + QStringLiteral("/folder-icons");
+}
+
+bool FolderIconStore::hasArtwork(const QString &glyphId) const
+{
+    return !m_svgs.value(glyphId).isEmpty() || !m_images.value(glyphId).isNull();
+}
+
+QString FolderIconStore::addImage(const QImage &mask)
+{
+    if (mask.isNull()) {
+        return {};
+    }
+    const QImage grey = mask.convertToFormat(QImage::Format_Grayscale8);
+    const QString id = FolderIconImage::idFor(grey);
+    m_images.insert(id, grey);
+    return id;
+}
+
+QImage FolderIconStore::maskFor(const QString &glyphId) const
+{
+    return m_images.value(glyphId);
 }
 
 QString FolderIconStore::heroiconsDirectory()
@@ -56,25 +105,50 @@ void FolderIconStore::ensureLoaded()
     }
     m_loaded = true;
 
+    // Orphaned masks are only pruned when the file is absent or parsed, so a
+    // damaged state file cannot wipe them.
+    bool prune = true;
     QFile file(storagePath());
     if (file.open(QIODevice::ReadOnly)) {
-        m_icons = fromJson(file.readAll());
+        const QByteArray bytes = file.readAll();
+        prune = QJsonDocument::fromJson(bytes).isObject();
+        m_icons = fromJson(bytes);
     }
     for (const StandardFolder &folder : StandardFolders::all()) {
         preload(folder.glyph);
     }
     for (auto it = m_icons.begin(); it != m_icons.end();) {
         preload(it.value());
-        it = m_svgs.value(it.value()).isEmpty() ? m_icons.erase(it) : std::next(it);
+        it = hasArtwork(it.value()) ? std::next(it) : m_icons.erase(it);
+    }
+    if (prune) {
+        pruneImages();
     }
 }
 
 void FolderIconStore::preload(const QString &glyphId)
 {
-    if (m_svgs.contains(glyphId) || !isValidGlyphId(glyphId)) {
+    if (m_svgs.contains(glyphId) || m_images.contains(glyphId) || !isValidGlyphId(glyphId)) {
         return;
     }
     const QString name = nameOf(glyphId);
+
+    if (isImageGlyph(glyphId)) {
+        QImageReader reader(maskPath(glyphId), "png");
+        reader.setAllocationLimit(16);
+        QImage mask;
+        if (reader.size() == QSize(FolderIconImage::kMaskSize, FolderIconImage::kMaskSize)) {
+            mask = reader.read();
+        }
+        if (mask.isNull()) {
+            // Remembered as null, so a bad file is logged once and not per paint.
+            qCWarning(pfApp) << "folder icon mask not usable:" << glyphId;
+        } else {
+            mask = mask.convertToFormat(QImage::Format_Grayscale8);
+        }
+        m_images.insert(glyphId, mask);
+        return;
+    }
 
     // The nine emblems are compiled in; the rest come from the data directory.
     QFile emblem(QStringLiteral(":/icons/emblems/%1.svg").arg(name));
@@ -114,23 +188,34 @@ QString FolderIconStore::effectiveGlyph(const QString &path) const
     return StandardFolders::glyphFor(path);
 }
 
-void FolderIconStore::set(const QString &path, const QString &glyphId)
+bool FolderIconStore::set(const QString &path, const QString &glyphId)
 {
     ensureLoaded();
     if (path.isEmpty()) {
-        return;
+        return false;
     }
     if (glyphId.isEmpty()) {
         clear(path);
-        return;
+        return true;
     }
     preload(glyphId);
-    if (m_svgs.value(glyphId).isEmpty()) {
-        return;
+    if (!hasArtwork(glyphId)) {
+        return false;
+    }
+    if (isImageGlyph(glyphId) && !QFile::exists(maskPath(glyphId))) {
+        QDir().mkpath(imagesDirectory());
+        QSaveFile file(maskPath(glyphId));
+        if (!file.open(QIODevice::WriteOnly) || !m_images.value(glyphId).save(&file, "PNG") ||
+            !file.commit()) {
+            qCWarning(pfApp) << "could not write folder icon mask" << maskPath(glyphId);
+            return false;
+        }
     }
     m_icons.insert(QDir::cleanPath(path), glyphId);
     save();
+    pruneImages();
     Q_EMIT changed(QDir::cleanPath(path));
+    return true;
 }
 
 void FolderIconStore::clear(const QString &path)
@@ -139,6 +224,7 @@ void FolderIconStore::clear(const QString &path)
     const QString cleaned = QDir::cleanPath(path);
     if (m_icons.remove(cleaned)) {
         save();
+        pruneImages();
         Q_EMIT changed(cleaned);
     }
 }
@@ -190,6 +276,7 @@ void FolderIconStore::removed(const QString &path)
     }
     if (any) {
         save();
+        pruneImages();
         Q_EMIT changed(cleaned);
     }
 }
@@ -197,6 +284,7 @@ void FolderIconStore::removed(const QString &path)
 void FolderIconStore::reset()
 {
     m_icons.clear();
+    m_images.clear();
     m_loaded = true;
     for (const StandardFolder &folder : StandardFolders::all()) {
         preload(folder.glyph);
@@ -224,6 +312,22 @@ QHash<QString, QString> FolderIconStore::fromJson(const QByteArray &bytes)
         icons.insert(it.key(), glyph);
     }
     return icons;
+}
+
+void FolderIconStore::pruneImages() const
+{
+    static const QRegularExpression pattern(QStringLiteral("^[0-9a-f]{32}\\.png$"));
+    QSet<QString> used;
+    for (const QString &glyph : m_icons) {
+        used.insert(glyph);
+    }
+    const QDir directory(imagesDirectory());
+    for (const QString &name : directory.entryList(QDir::Files)) {
+        if (pattern.match(name).hasMatch() &&
+            !used.contains(QStringLiteral("img:") + name.left(32))) {
+            QFile::remove(directory.filePath(name));
+        }
+    }
 }
 
 void FolderIconStore::save() const

@@ -1,23 +1,28 @@
 #include "ui/modals/FolderIconModal.h"
 
 #include "core/FuzzyMatcher.h"
+#include "model/FolderIconImage.h"
 #include "model/FolderIconRenderer.h"
 #include "model/FolderIconStore.h"
 #include "model/StandardFolders.h"
 #include "ui/ThemePalette.h"
 
 #include <QAbstractListModel>
+#include <QClipboard>
 #include <QDir>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMimeData>
 #include <QListView>
 #include <QPainter>
 #include <QPixmap>
 #include <QResizeEvent>
 #include <QScrollBar>
+#include <QStyle>
 #include <QStyledItemDelegate>
 #include <QVBoxLayout>
 
@@ -275,8 +280,15 @@ FolderIconModal::FolderIconModal(QWidget *parent)
     m_query->installEventFilter(this);
     layout->addWidget(m_query);
 
+    auto *stripHeader = new QHBoxLayout;
     m_stripHeading = headingLabel(tr("Default and standard folders"), this);
-    layout->addWidget(m_stripHeading);
+    m_pasteStatus = new QLabel(this);
+    m_pasteStatus->setObjectName(QStringLiteral("findStatus"));
+    m_pasteStatus->setTextFormat(Qt::PlainText);
+    m_pasteStatus->setVisible(false);
+    stripHeader->addWidget(m_stripHeading, 1);
+    stripHeader->addWidget(m_pasteStatus);
+    layout->addLayout(stripHeader);
     m_stripView = makeView(m_stripModel, this);
     m_stripView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     layout->addWidget(m_stripView);
@@ -297,7 +309,7 @@ FolderIconModal::FolderIconModal(QWidget *parent)
     m_gridView = makeView(m_gridModel, this);
     layout->addWidget(m_gridView, 1);
 
-    auto *footer = new QLabel(tr("↵ applies · ←↑↓→ moves · Esc cancels"), this);
+    auto *footer = new QLabel(tr("↵ applies · ←↑↓→ moves · Ctrl+V pastes an image · Esc cancels"), this);
     footer->setObjectName(QStringLiteral("findStatus"));
     layout->addWidget(footer);
 
@@ -334,8 +346,13 @@ void FolderIconModal::open(const QString &path, const QString &currentGlyph)
                              ? QStringLiteral("~") + path.mid(home.size())
                              : path);
     m_current->setText(currentGlyph.isEmpty() ? tr("Currently: Default")
-                                              : tr("Currently: %1").arg(currentGlyph.mid(5)));
+                                              : tr("Currently: %1").arg(FolderIconStore::displayName(currentGlyph)));
 
+    m_pasteSource = {};
+    m_pasteInverted = false;
+    m_pasteGlyph.clear();
+    m_pasteOrigin.clear();
+    m_pasteStatus->setVisible(false);
     m_query->clear();
     refresh();
 
@@ -377,14 +394,26 @@ void FolderIconModal::refresh()
         GlyphListModel::Item item;
         int score;
     };
+    // A pasted image, or the folder's current one, sits right after Default.
+    QList<Cell> cells = m_all;
+    if (!m_pasteGlyph.isEmpty()) {
+        cells.insert(1, {.glyph = m_pasteGlyph,
+                         .title = tr("Pasted image"),
+                         .name = tr("pasted image")});
+    } else if (FolderIconStore::isImageGlyph(m_currentGlyph)) {
+        cells.insert(1, {.glyph = m_currentGlyph,
+                         .title = tr("Current image"),
+                         .name = tr("current image")});
+    }
+
     QList<GlyphListModel::Item> strip;
     if (needle.isEmpty()) {
-        for (const Cell &cell : std::as_const(m_all)) {
+        for (const Cell &cell : std::as_const(cells)) {
             strip.append({.glyph = cell.glyph, .title = cell.title});
         }
     } else {
         QList<Scored> scored;
-        for (const Cell &cell : std::as_const(m_all)) {
+        for (const Cell &cell : std::as_const(cells)) {
             if (cell.glyph.isEmpty()) {
                 continue;
             }
@@ -463,7 +492,20 @@ void FolderIconModal::resizeEvent(QResizeEvent *event)
 bool FolderIconModal::eventFilter(QObject *watched, QEvent *event)
 {
     if (watched == m_query && event->type() == QEvent::KeyPress) {
-        const auto *key = static_cast<QKeyEvent *>(event);
+        auto *key = static_cast<QKeyEvent *>(event);
+        if (key->matches(QKeySequence::Paste)) {
+            // A file-panel copy leaves paths on the clipboard as text too; they
+            // must not land in the search box.
+            const QMimeData *mime = QGuiApplication::clipboard()->mimeData();
+            if (pasteImage() || (mime != nullptr && mime->hasUrls())) {
+                return true;
+            }
+            return Modal::eventFilter(watched, event);
+        }
+        if (key->key() == Qt::Key_I && key->modifiers() == Qt::ControlModifier) {
+            keyPressEvent(key);
+            return true;
+        }
         // The box keeps focus, so the cursor keys it would use for its own
         // caret drive the grid instead.
         switch (key->key()) {
@@ -551,8 +593,79 @@ void FolderIconModal::moveCursor(int dRow, int dColumn)
     select(false, std::min(next, gridCount - 1));
 }
 
+void FolderIconModal::showStatus(const QString &text, bool error)
+{
+    m_pasteStatus->setText(text);
+    // The red comes from the stylesheet's modalProblem rule.
+    m_pasteStatus->setObjectName(error ? QStringLiteral("modalProblem")
+                                       : QStringLiteral("findStatus"));
+    m_pasteStatus->style()->unpolish(m_pasteStatus);
+    m_pasteStatus->style()->polish(m_pasteStatus);
+    m_pasteStatus->setVisible(!text.isEmpty());
+}
+
+bool FolderIconModal::pasteImage()
+{
+    QString origin;
+    const QImage source = FolderIconImage::sourceFromClipboard(
+        QGuiApplication::clipboard()->mimeData(), &origin);
+    if (source.isNull()) {
+        // Plain text is an ordinary paste into the search box; only a file
+        // copy that held no usable image is worth an error.
+        const QMimeData *mime = QGuiApplication::clipboard()->mimeData();
+        if (mime != nullptr && mime->hasUrls()) {
+            showStatus(tr("No image on the clipboard"), true);
+        }
+        return false;
+    }
+    m_pasteSource = source;
+    m_pasteOrigin = origin;
+    m_pasteInverted = false;
+    m_pasteGlyph.clear();
+    rebuildPaste();
+    return true;
+}
+
+void FolderIconModal::rebuildPaste()
+{
+    const QImage mask = FolderIconImage::toMask(m_pasteSource, m_pasteInverted);
+    if (mask.isNull()) {
+        // Drop the earlier pasted cell so Enter can't apply a stale image.
+        m_pasteGlyph.clear();
+        refresh();
+        showStatus(tr("Couldn't find a shape in that image"), true);
+        return;
+    }
+    m_pasteGlyph = FolderIconStore::instance().addImage(mask);
+    m_query->clear();
+    refresh();
+    for (int i = 0; i < m_stripModel->rowCount(); ++i) {
+        if (m_stripModel->index(i).data(kGlyphRole).toString() == m_pasteGlyph) {
+            select(true, i);
+            break;
+        }
+    }
+    showStatus(tr("Using %1 · Ctrl+I inverts").arg(m_pasteOrigin), false);
+}
+
 void FolderIconModal::keyPressEvent(QKeyEvent *event)
 {
+    if (event->matches(QKeySequence::Paste)) {
+        const QMimeData *mime = QGuiApplication::clipboard()->mimeData();
+        if (!pasteImage() && (mime == nullptr || !mime->hasUrls())) {
+            m_query->paste();
+        }
+        return;
+    }
+    if (event->key() == Qt::Key_I && event->modifiers() == Qt::ControlModifier) {
+        if (m_pasteSource.isNull()) {
+            showStatus(tr("Paste an image first"), false);
+        } else {
+            m_pasteInverted = !m_pasteInverted;
+            rebuildPaste();
+        }
+        return;
+    }
     switch (event->key()) {
     case Qt::Key_Left:
         moveCursor(0, -1);

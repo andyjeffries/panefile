@@ -27,6 +27,12 @@ QString hex(const QColor &colour)
     return colour.name(QColor::HexRgb);
 }
 
+/// An unfocused panel mixes every colour 30% toward its own.
+QColor faded(const QColor &colour, const QColor &fade)
+{
+    return fade.isValid() ? mix(colour, fade, 0.30) : colour;
+}
+
 // The 64-unit master, from the design generator (design/_build/common.py).
 const char *const kBack64 =
     "M11 9H53A7 7 0 0 1 60 16V50A7 7 0 0 1 53 57H11A7 7 0 0 1 4 50V16A7 7 0 0 1 11 9Z";
@@ -93,6 +99,34 @@ QString front16Top(double top)
         .arg(y);
 }
 
+/// Where the emblem sits, in the master's units. The SVG and raster paths
+/// share it so they cannot drift apart.
+struct EmblemGeometry {
+    double u;     ///< master side
+    double one;   ///< one device pixel, in master units
+    double x;
+    double y;
+    double units; ///< emblem side
+};
+
+EmblemGeometry emblemGeometry(const FolderIconSpec &spec, int devicePixels)
+{
+    const bool large = devicePixels > 20;
+    const double u = large ? 64.0 : 16.0;
+    const double top =
+        large ? (spec.empty ? kClosed64 : kOpen64) : (spec.empty ? kClosed16 : kOpen16);
+    const double bodyTop = top + (large ? 5.0 : 1.4);
+    const double bodyH = (large ? 57.0 : 14.0) - bodyTop;
+    const double bodyCy = bodyTop + (bodyH / 2);
+    const double px = std::max(7.0, devicePixels * (large ? 0.40 : 0.44));
+    const double units = std::min(px * u / std::max(1, devicePixels), bodyH * 0.82);
+    return {.u = u,
+            .one = u / std::max(1, devicePixels),
+            .x = (u / 2) - (units / 2),
+            .y = bodyCy - (units / 2),
+            .units = units};
+}
+
 /// A Heroicons file's content between its <svg> tags.
 QByteArray innerOf(const QByteArray &file)
 {
@@ -131,6 +165,44 @@ QImage renderResource(const QString &resource, const QSize &size)
     QImageReader reader(resource, "svg");
     reader.setScaledSize(size);
     return reader.read().convertToFormat(QImage::Format_ARGB32_Premultiplied);
+}
+
+/// A pasted image's mask, debossed like an SVG glyph: highlight one device
+/// pixel lower, then the inset in place, both tinted from the folder colour.
+void paintMaskEmblem(QImage &image, const FolderIconSpec &spec, int devicePixels)
+{
+    const QImage mask = FolderIconStore::instance().maskFor(spec.glyphId);
+    if (mask.isNull()) {
+        return;
+    }
+    const EmblemGeometry emblem = emblemGeometry(spec, devicePixels);
+    const double perUnit = devicePixels / emblem.u;
+    const int side = std::max(1, qRound(emblem.units * perUnit));
+    const QPoint origin(qRound(emblem.x * perUnit), qRound(emblem.y * perUnit));
+    const QImage scaled =
+        mask.scaled(side, side, Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
+            .convertToFormat(QImage::Format_Grayscale8);
+    QImage alpha(scaled.size(), QImage::Format_Alpha8);
+    for (int y = 0; y < scaled.height(); ++y) {
+        std::copy_n(scaled.constScanLine(y), scaled.width(), alpha.scanLine(y));
+    }
+
+    const QColor white(Qt::white);
+    const QColor black(Qt::black);
+    const auto layer = [&](const QColor &colour, double opacity, int dy) {
+        QImage tinted(scaled.size(), QImage::Format_ARGB32_Premultiplied);
+        tinted.fill(Qt::transparent);
+        QPainter painter(&tinted);
+        painter.drawImage(0, 0, alpha);
+        painter.setCompositionMode(QPainter::CompositionMode_SourceIn);
+        painter.fillRect(tinted.rect(), faded(colour, spec.fade));
+        painter.end();
+        QPainter target(&image);
+        target.setOpacity(opacity);
+        target.drawImage(origin + QPoint(0, dy), tinted);
+    };
+    layer(mix(spec.tint, white, 0.45), 0.55, 1);
+    layer(mix(spec.tint, black, 0.38), 0.80, 0);
 }
 
 class FolderIconEngine final : public QIconEngine
@@ -190,9 +262,7 @@ QByteArray FolderIconRenderer::svg(const FolderIconSpec &spec, int devicePixels)
 {
     const bool large = devicePixels > 20;
     const QColor tint = spec.tint;
-    const auto fadeTo = [&spec](const QColor &colour) {
-        return hex(spec.fade.isValid() ? mix(colour, spec.fade, 0.30) : colour);
-    };
+    const auto fadeTo = [&spec](const QColor &colour) { return hex(faded(colour, spec.fade)); };
     const QColor black(Qt::black);
     const QColor white(Qt::white);
     const bool light = isLight(spec.fade);
@@ -204,9 +274,6 @@ QByteArray FolderIconRenderer::svg(const FolderIconSpec &spec, int devicePixels)
     const QString paper = QString::fromLatin1(large ? kPaper64 : kPaper16);
     const QString front = large ? front64(top) : front16(top);
     const QString frontTop = large ? front64Top(top) : front16Top(top);
-    const double bodyTop = top + (large ? 5.0 : 1.4);
-    const double bodyH = (large ? 57.0 : 14.0) - bodyTop;
-    const double bodyCy = bodyTop + (bodyH / 2);
     const double one = u / std::max(1, devicePixels);
 
     const QString paperTop =
@@ -282,14 +349,13 @@ QByteArray FolderIconRenderer::svg(const FolderIconSpec &spec, int devicePixels)
                  .arg(one);
     }
 
-    if (!spec.glyphId.isEmpty()) {
+    if (!spec.glyphId.isEmpty() && !FolderIconStore::isImageGlyph(spec.glyphId)) {
         const QByteArray inner = innerOf(FolderIconStore::instance().svgFor(spec.glyphId));
         if (!inner.isEmpty()) {
-            const double px = std::max(7.0, devicePixels * (large ? 0.40 : 0.44));
-            const double units = std::min(px * u / std::max(1, devicePixels), bodyH * 0.82);
-            const double scale = units / 24.0;
-            const double x = (u / 2) - (units / 2);
-            const double y = bodyCy - (units / 2);
+            const EmblemGeometry emblem = emblemGeometry(spec, devicePixels);
+            const double scale = emblem.units / 24.0;
+            const double x = emblem.x;
+            const double y = emblem.y;
             const auto glyph = [&](double dy, const QColor &colour, double opacity) {
                 s += QStringLiteral("<g transform=\"translate(%1 %2) scale(%3)\" fill=\"%4\" "
                                     "opacity=\"%5\">")
@@ -335,6 +401,10 @@ QPixmap FolderIconRenderer::pixmap(const FolderIconSpec &spec, const QSize &logi
     }
     image = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
 
+    if (FolderIconStore::isImageGlyph(spec.glyphId)) {
+        paintMaskEmblem(image, spec, std::min(deviceSize.width(), deviceSize.height()));
+    }
+
     if (spec.linked) {
         // The same halo-then-arrow the file glyphs use, in the folder's colour.
         QPainter painter(&image);
@@ -345,7 +415,7 @@ QPixmap FolderIconRenderer::pixmap(const FolderIconSpec &spec, const QSize &logi
         QPainter badgePainter(&badge);
         badgePainter.setCompositionMode(QPainter::CompositionMode_SourceIn);
         badgePainter.fillRect(badge.rect(),
-                              spec.fade.isValid() ? mix(spec.tint, spec.fade, 0.3) : spec.tint);
+                              faded(spec.tint, spec.fade));
         badgePainter.end();
         painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
         painter.drawImage(0, 0, badge);

@@ -2,6 +2,7 @@
 
 #include "ui/modals/Modal.h"
 
+#include <QImage>
 #include <QList>
 #include <QString>
 
@@ -20,6 +21,10 @@ class GlyphListModel;
 /// and the grid as one surface (Up from the grid's top row enters the strip).
 /// Enter applies, Escape cancels. The header shows the folder being changed
 /// and a live preview of the highlighted choice at three sizes.
+///
+/// Ctrl+V reads an image from the clipboard (a file copied in Panefile, or
+/// image data) and offers it as a "Pasted image" cell next to Default, made
+/// into a one-colour mask; Ctrl+I inverts it. The clipboard is never modified.
 ///
 /// The Heroicons directory is read when the picker first opens, not at start-up.
 /// Without it only Default and the presets are offered, with a note.
@@ -63,6 +68,9 @@ private:
         QString name; ///< what the query matches
     };
 
+    bool pasteImage();
+    void showStatus(const QString &text, bool error);
+    void rebuildPaste();
     void refresh();
     void layoutViews();
     void moveCursor(int dRow, int dColumn);
@@ -85,6 +93,12 @@ private:
     QListView *m_gridView = nullptr;
     GlyphListModel *m_stripModel = nullptr;
     GlyphListModel *m_gridModel = nullptr;
+
+    QLabel *m_pasteStatus = nullptr;
+    QImage m_pasteSource;
+    bool m_pasteInverted = false;
+    QString m_pasteGlyph;
+    QString m_pasteOrigin;
 
     QList<Cell> m_all;
     QString m_currentGlyph;

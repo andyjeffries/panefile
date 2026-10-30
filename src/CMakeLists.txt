@@ -164,6 +164,7 @@ pf_layer_library(pf_model
         model/DirectoryModel.cpp
         model/FilterSortProxy.cpp
         model/FolderIconRenderer.cpp
+        model/FolderIconImage.cpp
         model/FolderIconStore.cpp
         model/IconProvider.cpp
         model/StandardFolders.cpp

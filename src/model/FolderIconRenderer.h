@@ -31,7 +31,7 @@ struct FolderIconSpec {
 ///
 /// Back panel, one sheet of paper, the flap's shadow cast onto it, then the
 /// front flap with its gradient and edge lines. An emblem is debossed into the
-/// flap: the glyph one device pixel lower in a highlight, then in place in a
+/// flap (an SVG glyph, or the mask of a pasted image drawn as raster): the glyph one device pixel lower in a highlight, then in place in a
 /// darker inset, so it reads as pressed into the surface.
 ///
 /// The picture is built as SVG text from the theme's colour and rasterised at

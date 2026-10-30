@@ -90,8 +90,12 @@ void PanelController::changeFolderIcon(ui::FilePanel *panel)
                     FolderIconStore::instance().clear(path);
                     Q_EMIT statusMessage(tr("Folder icon reset for %1").arg(name));
                 } else {
-                    FolderIconStore::instance().set(path, glyph);
-                    Q_EMIT statusMessage(tr("Folder icon for %1: %2").arg(name, glyph.mid(5)));
+                    if (!FolderIconStore::instance().set(path, glyph)) {
+                        Q_EMIT statusMessage(tr("Couldn't save the folder icon for %1").arg(name));
+                        return;
+                    }
+                    Q_EMIT statusMessage(tr("Folder icon for %1: %2")
+                                             .arg(name, FolderIconStore::displayName(glyph)));
                 }
             });
     m_folderIconModal->open(path, FolderIconStore::instance().glyphFor(path));
@@ -300,7 +304,7 @@ void PanelController::registerActions()
         }
         const QString glyph = FolderIconStore::instance().glyphFor(panel->cursorPath());
         return glyph.isEmpty() ? panel->cursorName()
-                               : panel->cursorName() + QStringLiteral(" · ") + glyph.mid(5);
+                               : panel->cursorName() + QStringLiteral(" · ") + FolderIconStore::displayName(glyph);
     });
 
     reg("open_terminal_here", tr("Open a terminal in this directory"), ActionCategory::General,

@@ -1,4 +1,6 @@
 #include "model/DirectoryModel.h"
+#include "model/FolderIconImage.h"
+#include "model/FolderIconRenderer.h"
 #include "model/FolderIconStore.h"
 #include "model/IconProvider.h"
 #include "model/StandardFolders.h"
@@ -6,12 +8,17 @@
 #include "ui/ThemePalette.h"
 #include "ui/modals/FolderIconModal.h"
 
+#include <QClipboard>
 #include <QDir>
 #include <QFile>
+#include <QGuiApplication>
 #include <QKeyEvent>
+#include <QMimeData>
+#include <QPainter>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QUrl>
 #include <QWidget>
 
 using namespace pf;
@@ -188,6 +195,185 @@ private Q_SLOTS:
         iconOf(QStringLiteral("full"));
         QTRY_VERIFY(iconOf(QStringLiteral("empty")) == closed);
         QCOMPARE(iconOf(QStringLiteral("full")), open);
+    }
+
+    static QImage testMask(int inset = 30)
+    {
+        QImage image(200, 200, QImage::Format_ARGB32);
+        image.fill(Qt::transparent);
+        QPainter painter(&image);
+        painter.fillRect(QRect(inset, inset, 200 - (2 * inset), 200 - (2 * inset)), Qt::black);
+        painter.end();
+        return FolderIconImage::toMask(image, false);
+    }
+
+    void fromJsonAcceptsImageIds()
+    {
+        const QString good = QStringLiteral("img:") + QString(32, QLatin1Char('a'));
+        QVERIFY(FolderIconStore::isImageGlyph(good));
+        const QString prefix = QStringLiteral("img:");
+        for (const QString &bad : QStringList{prefix + QStringLiteral("../x"),
+                                              prefix + QString(32, QLatin1Char('A')),
+                                              prefix + QString(31, QLatin1Char('a')),
+                                              prefix + QString(33, QLatin1Char('a'))}) {
+            QVERIFY(!FolderIconStore::isValidGlyphId(bad));
+        }
+        const auto icons = FolderIconStore::fromJson(
+            QStringLiteral(R"({"/ok":"%1","/bad":"img:../../x"})").arg(good).toUtf8());
+        QCOMPARE(icons.size(), 1);
+    }
+
+    void imageMasksArePersistedAndPruned()
+    {
+        auto &store = FolderIconStore::instance();
+        const QString id = store.addImage(testMask());
+        const QString file = FolderIconStore::imagesDirectory() + QLatin1Char('/') +
+                             id.mid(4) + QStringLiteral(".png");
+        // Nothing is written until a folder takes it.
+        QVERIFY(!QFile::exists(file));
+
+        QVERIFY(store.set(QStringLiteral("/tmp/x/one"), id));
+        QVERIFY(store.set(QStringLiteral("/tmp/x/two"), id));
+        QVERIFY(QFile::exists(file));
+
+        // A fresh store has no mask in memory; the file restores it.
+        store.reset();
+        QVERIFY(store.maskFor(id).isNull());
+        QVERIFY(store.set(QStringLiteral("/tmp/x/one"), id));
+        QVERIFY(!store.maskFor(id).isNull());
+        QVERIFY(store.set(QStringLiteral("/tmp/x/two"), id));
+
+        store.clear(QStringLiteral("/tmp/x/one"));
+        QVERIFY(QFile::exists(file));
+        store.clear(QStringLiteral("/tmp/x/two"));
+        QVERIFY(!QFile::exists(file));
+    }
+
+    void imageEmblemPaintsInsideTheEmblemOnly()
+    {
+        auto &store = FolderIconStore::instance();
+        const QString id = store.addImage(testMask(10));
+        const QColor tint(60, 110, 180);
+        const auto render = [&](const QString &glyph) {
+            return FolderIconRenderer::pixmap(FolderIconSpec{.glyphId = glyph, .tint = tint},
+                                              {96, 96}, 1.0)
+                .toImage();
+        };
+        const QImage plain = render({});
+        const QImage with = render(id);
+        QVERIFY(plain != with);
+        // The top-left corner of the folder is untouched.
+        QCOMPARE(with.pixel(8, 8), plain.pixel(8, 8));
+        QVERIFY(with.pixel(48, 66) != plain.pixel(48, 66));
+    }
+
+    void pickerPastesAnImageFile()
+    {
+        QTemporaryDir dir;
+        QImage image(64, 64, QImage::Format_ARGB32);
+        image.fill(Qt::transparent);
+        QPainter(&image).fillRect(QRect(8, 8, 48, 48), Qt::black);
+        const QString file = dir.filePath(QStringLiteral("logo.png"));
+        QVERIFY(image.save(file));
+
+        auto *mime = new QMimeData;
+        mime->setUrls({QUrl::fromLocalFile(file)});
+        mime->setText(file);
+        QGuiApplication::clipboard()->setMimeData(mime);
+
+        QWidget host;
+        host.resize(1000, 800);
+        ui::FolderIconModal modal(&host);
+        host.show();
+        modal.open(QDir::homePath(), {});
+        QTest::keyClick(&modal, Qt::Key_V, Qt::ControlModifier);
+        const QString pasted = modal.cursorGlyph();
+        QVERIFY(FolderIconStore::isImageGlyph(pasted));
+        QVERIFY(modal.visibleGlyphs().contains(pasted));
+
+        // Ctrl+I inverts into a different mask.
+        QTest::keyClick(&modal, Qt::Key_I, Qt::ControlModifier);
+        QVERIFY(FolderIconStore::isImageGlyph(modal.cursorGlyph()));
+        QVERIFY(modal.cursorGlyph() != pasted);
+
+        QSignalSpy chosen(&modal, &ui::FolderIconModal::chosen);
+        QTest::keyClick(&modal, Qt::Key_Return);
+        QCOMPARE(chosen.count(), 1);
+        QVERIFY(FolderIconStore::isImageGlyph(chosen.first().first().toString()));
+        // The clipboard is left alone.
+        QVERIFY(QGuiApplication::clipboard()->mimeData()->hasUrls());
+    }
+
+    void pickerPasteOfBlankImageDropsThePreviousPaste()
+    {
+        QTemporaryDir dir;
+        QImage logo(64, 64, QImage::Format_ARGB32);
+        logo.fill(Qt::transparent);
+        QPainter(&logo).fillRect(QRect(8, 8, 48, 48), Qt::black);
+        QImage blank(64, 64, QImage::Format_ARGB32);
+        blank.fill(Qt::white);
+        const QString logoFile = dir.filePath(QStringLiteral("logo.png"));
+        const QString blankFile = dir.filePath(QStringLiteral("blank.png"));
+        QVERIFY(logo.save(logoFile));
+        QVERIFY(blank.save(blankFile));
+        const auto copy = [](const QString &file) {
+            auto *mime = new QMimeData;
+            mime->setUrls({QUrl::fromLocalFile(file)});
+            QGuiApplication::clipboard()->setMimeData(mime);
+        };
+
+        QWidget host;
+        host.resize(1000, 800);
+        ui::FolderIconModal modal(&host);
+        host.show();
+        modal.open(QDir::homePath(), {});
+        copy(logoFile);
+        QTest::keyClick(&modal, Qt::Key_V, Qt::ControlModifier);
+        QVERIFY(FolderIconStore::isImageGlyph(modal.cursorGlyph()));
+
+        copy(blankFile);
+        QTest::keyClick(&modal, Qt::Key_V, Qt::ControlModifier);
+        for (const QString &glyph : modal.visibleGlyphs()) {
+            QVERIFY(!FolderIconStore::isImageGlyph(glyph));
+        }
+        QVERIFY(!FolderIconStore::isImageGlyph(modal.cursorGlyph()));
+    }
+
+    void pickerPasteWithoutImageKeepsPathsOutOfTheSearchBox()
+    {
+        QTemporaryDir dir;
+        const QString file = dir.filePath(QStringLiteral("notes.txt"));
+        QFile out(file);
+        QVERIFY(out.open(QIODevice::WriteOnly));
+        out.close();
+        auto *mime = new QMimeData;
+        mime->setUrls({QUrl::fromLocalFile(file)});
+        mime->setText(file);
+        QGuiApplication::clipboard()->setMimeData(mime);
+
+        QWidget host;
+        host.resize(1000, 800);
+        ui::FolderIconModal modal(&host);
+        host.show();
+        modal.open(QDir::homePath(), {});
+        const int before = modal.visibleGlyphs().size();
+        QTest::keyClick(&modal, Qt::Key_V, Qt::ControlModifier);
+        QCOMPARE(modal.visibleGlyphs().size(), before);
+    }
+
+    void pickerPastesPlainTextIntoTheQuery()
+    {
+        auto *mime = new QMimeData;
+        mime->setText(QStringLiteral("zzqq"));
+        QGuiApplication::clipboard()->setMimeData(mime);
+
+        QWidget host;
+        host.resize(1000, 800);
+        ui::FolderIconModal modal(&host);
+        host.show();
+        modal.open(QDir::homePath(), {});
+        QTest::keyClick(&modal, Qt::Key_V, Qt::ControlModifier);
+        QVERIFY(modal.visibleGlyphs().size() < 10);
     }
 
     void pickerFiltersAndApplies()

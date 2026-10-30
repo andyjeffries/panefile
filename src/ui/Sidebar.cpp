@@ -457,6 +457,23 @@ void Sidebar::addHeading(const QString &title, const QString &sectionId)
     item->setData(kIsHeadingRole, true);
     item->setData(kToneRole, static_cast<int>(Tone::Heading));
     item->setFlags(Qt::NoItemFlags);
+
+    // Small bold capitals, and a gap above every heading but the first, so one
+    // section's end and the next one's start are not the same grey.
+    QFont font = m_list->font();
+    font.setBold(true);
+    font.setCapitalization(QFont::AllUppercase);
+    font.setLetterSpacing(QFont::PercentageSpacing, 104);
+    if (font.pixelSize() > 0) {
+        font.setPixelSize(std::max(1, font.pixelSize() - 1));
+    } else if (font.pointSizeF() > 1) {
+        font.setPointSizeF(font.pointSizeF() - 1);
+    }
+    item->setFont(font);
+    if (m_list->count() > 1) {
+        item->setSizeHint(QSize(0, 44));
+        item->setTextAlignment(Qt::AlignLeft | Qt::AlignBottom);
+    }
     applyItemTheme(item);
 }
 

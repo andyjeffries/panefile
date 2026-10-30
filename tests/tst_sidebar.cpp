@@ -3,6 +3,9 @@
 
 #include "ui/ThemePalette.h"
 
+#include "model/FolderIconStore.h"
+#include "model/SymbolicIcon.h"
+
 #include "core/Format.h"
 
 #include <QApplication>
@@ -96,6 +99,12 @@ QStringList describe(const pf::ui::SidebarLayout &layout)
     return lines;
 }
 
+/// An icon as the pixels it paints at 16px, for comparing two icons.
+QImage pixelsOf(const QIcon &icon)
+{
+    return icon.pixmap(QSize(16, 16), 1.0).toImage().convertToFormat(QImage::Format_ARGB32);
+}
+
 QPoint centreOf(QListWidget *list, const QString &name)
 {
     return list->visualItemRect(itemNamed(list, name)).center();
@@ -144,7 +153,17 @@ class TestSidebar : public QObject
 {
     Q_OBJECT
 
+private:
+    QTemporaryDir m_state;
+
+
 private Q_SLOTS:
+    void initTestCase()
+    {
+        // Never the developer's real state directory: the folder icon tests
+        // below write folder-icons.json.
+        qputenv("PANEFILE_STATE_DIR", m_state.path().toUtf8());
+    }
 
     /// A single click opens a place.
     ///
@@ -634,6 +653,78 @@ private Q_SLOTS:
         QCOMPARE(tintOf(list->item(1)->icon()), QColor(0x00, 0xff, 0x00));
 
         setCurrentPalette(original);
+    }
+
+    /// A folder with a custom icon shows that glyph in the sidebar — the bare
+    /// glyph, tinted like its neighbours, not the plain folder outline.
+    void aCustomFolderIconIsShownInTheSidebar()
+    {
+        FolderIconStore::instance().reset();
+        QTemporaryDir dir;
+        const QString folder = dir.filePath(QStringLiteral("Developer"));
+        QVERIFY(QDir().mkpath(folder));
+        // "film" is one of the compiled-in emblems, so this needs no installed
+        // Heroicons set.
+        QVERIFY(FolderIconStore::instance().set(folder, QStringLiteral("hero:film")));
+
+        Sidebar sidebar;
+        sidebar.togglePin(folder);
+        sidebar.populate();
+        auto *list = sidebar.findChild<QListWidget *>(QStringLiteral("sidebarList"));
+        QListWidgetItem *item = itemNamed(list, QStringLiteral("Developer"));
+        QVERIFY(item != nullptr);
+        QVERIFY(!item->icon().isNull());
+
+        const QImage plainFolder =
+            pixelsOf(SymbolicIcon::icon(QStringLiteral("folder"), currentPalette().subtext));
+        QVERIFY2(pixelsOf(item->icon()) != plainFolder,
+                 "the sidebar still draws the plain folder glyph for a folder with a custom icon");
+        QCOMPARE(tintOf(item->icon()), currentPalette().subtext);
+
+        FolderIconStore::instance().reset();
+    }
+
+    /// Choosing an icon while the sidebar is showing updates its row.
+    void choosingAFolderIconUpdatesTheSidebar()
+    {
+        FolderIconStore::instance().reset();
+        QTemporaryDir dir;
+        const QString folder = dir.filePath(QStringLiteral("Developer"));
+        QVERIFY(QDir().mkpath(folder));
+
+        Sidebar sidebar;
+        sidebar.togglePin(folder);
+        sidebar.populate();
+        auto *list = sidebar.findChild<QListWidget *>(QStringLiteral("sidebarList"));
+        QVERIFY(itemNamed(list, QStringLiteral("Developer")) != nullptr);
+        const QImage before = pixelsOf(itemNamed(list, QStringLiteral("Developer"))->icon());
+
+        QVERIFY(FolderIconStore::instance().set(folder, QStringLiteral("hero:film")));
+        QVERIFY2(pixelsOf(itemNamed(list, QStringLiteral("Developer"))->icon()) != before,
+                 "the sidebar row kept its old icon after a folder icon was chosen");
+
+        FolderIconStore::instance().clear(folder);
+        QCOMPARE(pixelsOf(itemNamed(list, QStringLiteral("Developer"))->icon()), before);
+
+        FolderIconStore::instance().reset();
+    }
+
+    /// An icon change must not populate a sidebar that was never populated.
+    void aFolderIconChangeDoesNotPopulateAnUnpopulatedSidebar()
+    {
+        FolderIconStore::instance().reset();
+        QTemporaryDir dir;
+        const QString folder = dir.filePath(QStringLiteral("Developer"));
+        QVERIFY(QDir().mkpath(folder));
+
+        Sidebar sidebar;
+        auto *list = sidebar.findChild<QListWidget *>(QStringLiteral("sidebarList"));
+        QVERIFY(list != nullptr);
+        QCOMPARE(list->count(), 0);
+        QVERIFY(FolderIconStore::instance().set(folder, QStringLiteral("hero:film")));
+        QCOMPARE(list->count(), 0);
+
+        FolderIconStore::instance().reset();
     }
 };
 

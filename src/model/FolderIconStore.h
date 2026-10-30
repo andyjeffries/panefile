@@ -1,7 +1,9 @@
 #pragma once
 
 #include <QByteArray>
+#include <QColor>
 #include <QHash>
+#include <QIcon>
 #include <QImage>
 #include <QObject>
 #include <QString>
@@ -54,6 +56,10 @@ public:
     /// The glyph's SVG file contents, or empty when it is unknown or its file
     /// is missing. Cached; reading happens once per glyph.
     QByteArray svgFor(const QString &glyphId);
+
+    /// The glyph alone, tinted to `tint`, at whatever size it is painted. Null
+    /// when the glyph has no artwork.
+    QIcon iconFor(const QString &glyphId, const QColor &tint);
 
     /// Holds a mask in memory and returns its `img:` id. Nothing is written
     /// until set() applies it, so a cancelled picker leaves no file.

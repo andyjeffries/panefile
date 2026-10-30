@@ -4,6 +4,7 @@
 #include "core/Logging.h"
 #include "core/WorkerPools.h"
 #include "fs/Trash.h"
+#include "model/FolderIconStore.h"
 #include "model/StandardFolders.h"
 #include "model/SymbolicIcon.h"
 #include "platform/Paths.h"
@@ -75,6 +76,9 @@ constexpr int kPlaceholderRole = Qt::UserRole + 12;
 
 /// An entry that is a file: clicking it reveals it rather than opening it.
 constexpr int kFileRole = Qt::UserRole + 13;
+
+/// The glyph id the user chose for a folder place, or empty.
+constexpr int kCustomGlyphRole = Qt::UserRole + 14;
 
 /// An entry or section being dragged around or out of the sidebar. Its own
 /// type, not a file URL: a place dropped on a panel must not be taken as "copy
@@ -217,6 +221,12 @@ Sidebar::Sidebar(QWidget *parent)
     : QWidget(parent), m_list(new QListWidget(this)), m_trashSummaryTimer(new QTimer(this))
 {
     setObjectName(QStringLiteral("sidebar"));
+
+    // A rename or delete reports the parent, so rebuild rather than match paths.
+    connect(&FolderIconStore::instance(), &FolderIconStore::changed, this, [this] {
+        if (m_populated)
+            populate();
+    });
 
     // Without this a plain QWidget subclass ignores the stylesheet's
     // background-color entirely — Qt only paints one automatically for the
@@ -382,7 +392,14 @@ void Sidebar::applyItemTheme(QListWidgetItem *item)
     // The glyph is a step quieter than the label, as in Review and Nautilus:
     // it is there to be found by shape, not read.
     const QColor tint = tone == Tone::Unmounted ? palette.overlay : palette.subtext;
-    item->setIcon(SymbolicIcon::icon(item->data(kIconNameRole).toString(), tint));
+    const QString custom = item->data(kCustomGlyphRole).toString();
+    QIcon icon;
+    if (!custom.isEmpty()) {
+        icon = FolderIconStore::instance().iconFor(custom, tint);
+    }
+    // Missing artwork falls back to the usual glyph, never a blank row.
+    item->setIcon(icon.isNull() ? SymbolicIcon::icon(item->data(kIconNameRole).toString(), tint)
+                                : icon);
 }
 
 QString Sidebar::iconNameForPath(const QString &path)
@@ -488,6 +505,10 @@ QListWidgetItem *Sidebar::addPlace(const QString &title, const QString &path,
     item->setData(kIconNameRole, iconName);
     item->setData(kToneRole, static_cast<int>(Tone::Place));
     item->setToolTip(QDir::toNativeSeparators(path));
+    if (iconName != QLatin1String("trash") && QFileInfo(path).isDir()) {
+        item->setData(kCustomGlyphRole,
+                      FolderIconStore::instance().glyphFor(QDir::cleanPath(path)));
+    }
     applyItemTheme(item);
     return item;
 }
@@ -526,6 +547,7 @@ QString Sidebar::iconNameForEntry(const QString &path)
 void Sidebar::populate()
 {
     m_dragCandidate = nullptr;
+    FolderIconStore::instance().ensureLoaded();
     m_list->clear();
 
     const auto builtinTitle = [](const QString &key) {

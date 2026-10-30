@@ -1,7 +1,9 @@
 #pragma once
 
 #include <QColor>
+#include <QByteArray>
 #include <QIcon>
+#include <QImage>
 #include <QList>
 #include <QPixmap>
 #include <QSize>
@@ -13,6 +15,12 @@ namespace pf {
 struct TintedLayer {
     /// A resource path, e.g. ":/icons/files/folder.svg".
     QString resource;
+
+    /// Instead of a resource: SVG bytes, or an alpha mask, held in memory (a
+    /// folder's chosen glyph). `id` names them in the cache key.
+    QByteArray svg;
+    QImage mask;
+    QString id;
 
     /// Erase this layer's shape from what is beneath it instead of drawing it.
     /// The symlink badge uses this to cut a halo out of the icon it sits on, so

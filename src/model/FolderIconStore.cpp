@@ -3,6 +3,7 @@
 #include "core/Logging.h"
 #include "model/FolderIconImage.h"
 #include "model/StandardFolders.h"
+#include "model/TintedIcon.h"
 #include "platform/Paths.h"
 
 #include <QDir>
@@ -165,6 +166,18 @@ void FolderIconStore::preload(const QString &glyphId)
     // Remembered as empty, so a missing file is logged once and not per paint.
     qCWarning(pfApp) << "folder icon glyph not found:" << glyphId;
     m_svgs.insert(glyphId, QByteArray());
+}
+
+QIcon FolderIconStore::iconFor(const QString &glyphId, const QColor &tint)
+{
+    TintedLayer layer;
+    layer.id = glyphId;
+    if (isImageGlyph(glyphId)) {
+        layer.mask = maskFor(glyphId);
+    } else {
+        layer.svg = svgFor(glyphId);
+    }
+    return TintedIcon::icon({layer}, tint);
 }
 
 QByteArray FolderIconStore::svgFor(const QString &glyphId)

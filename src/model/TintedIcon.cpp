@@ -1,5 +1,6 @@
 #include "model/TintedIcon.h"
 
+#include <QBuffer>
 #include <QFile>
 #include <QIconEngine>
 #include <QImage>
@@ -8,6 +9,7 @@
 #include <QPainter>
 #include <QPixmapCache>
 
+#include <algorithm>
 #include <utility>
 
 namespace pf {
@@ -28,7 +30,7 @@ QString cacheKey(const QList<TintedLayer> &layers, const QColor &colour, const Q
                       .arg(mode == QIcon::Disabled ? 1 : 0);
     for (const TintedLayer &layer : layers) {
         key += QLatin1Char(layer.erase ? '-' : '+');
-        key += layer.resource;
+        key += layer.id.isEmpty() ? layer.resource : layer.id;
     }
     return key;
 }
@@ -39,9 +41,31 @@ QString cacheKey(const QList<TintedLayer> &layers, const QColor &colour, const Q
 /// without linking QtSvg (see the header), and setScaledSize() makes the
 /// plugin rasterise at the target size rather than at the SVG's nominal one —
 /// which is the whole point of the 16px grid the file glyphs are drawn on.
-QImage renderLayer(const QString &resource, const QSize &deviceSize)
+QImage renderLayer(const TintedLayer &layer, const QSize &deviceSize)
 {
-    QImageReader reader(resource, "svg");
+    if (!layer.mask.isNull()) {
+        // Smooth, as a 128px mask shrunk to 16 is mush otherwise.
+        const QImage grey = layer.mask.scaled(deviceSize, Qt::IgnoreAspectRatio,
+                                              Qt::SmoothTransformation)
+                                .convertToFormat(QImage::Format_Grayscale8);
+        QImage alpha(grey.size(), QImage::Format_Alpha8);
+        for (int y = 0; y < grey.height(); ++y) {
+            std::copy_n(grey.constScanLine(y), grey.width(), alpha.scanLine(y));
+        }
+        QImage image(deviceSize, QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::transparent);
+        QPainter painter(&image);
+        painter.drawImage(0, 0, alpha);
+        return image;
+    }
+    QBuffer buffer;
+    QImageReader reader(layer.resource, "svg");
+    if (!layer.svg.isEmpty()) {
+        buffer.setData(layer.svg);
+        buffer.open(QIODevice::ReadOnly);
+        reader.setDevice(&buffer);
+        reader.setFormat("svg");
+    }
     reader.setScaledSize(deviceSize);
     QImage image = reader.read();
     if (image.isNull()) {
@@ -146,7 +170,7 @@ QPixmap TintedIcon::pixmap(const QList<TintedLayer> &layers, const QColor &colou
     {
         QPainter painter(&canvas);
         for (const TintedLayer &layer : layers) {
-            const QImage rendered = renderLayer(layer.resource, deviceSize);
+            const QImage rendered = renderLayer(layer, deviceSize);
             if (rendered.isNull()) {
                 // A missing layer is a packaging bug, and half an icon hides
                 // it better than none does. Nothing is cached, so it is not
@@ -176,7 +200,12 @@ QPixmap TintedIcon::pixmap(const QList<TintedLayer> &layers, const QColor &colou
 
 QIcon TintedIcon::icon(const QList<TintedLayer> &layers, const QColor &colour)
 {
-    if (layers.isEmpty() || !QFile::exists(layers.first().resource)) {
+    if (layers.isEmpty()) {
+        return {};
+    }
+    const TintedLayer &first = layers.first();
+    const bool inMemory = !first.svg.isEmpty() || !first.mask.isNull();
+    if (!inMemory && !QFile::exists(first.resource)) {
         return {};
     }
     return QIcon(new TintedIconEngine(layers, colour));

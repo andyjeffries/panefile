@@ -1,7 +1,10 @@
 // Icon view (the panel's second layout): switching, memory, grid movement, the
 // tile's metrics and name wrapping, and a guard against the slow layout path.
 
+#include "app/KeyDispatcher.h"
 #include "input/ActionRegistry.h"
+#include "input/DefaultKeymap.h"
+#include "input/Keymap.h"
 #include "config/Theme.h"
 #include "ui/FileItemDelegate.h"
 #include "ui/FilePanel.h"
@@ -13,6 +16,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFontMetrics>
+#include <QKeyEvent>
 #include <QScrollBar>
 #include <QTemporaryDir>
 #include <QTest>
@@ -290,6 +294,31 @@ private Q_SLOTS:
         QCOMPARE(huge.size(), 2);
         QVERIFY(huge.at(1).endsWith(QStringLiteral("png")));
         QVERIFY(metrics.horizontalAdvance(huge.at(1)) <= width);
+    }
+
+    /// Ctrl+Shift+I / Ctrl+Shift+L, as a key press reaches the dispatcher.
+    void theDefaultShortcutsSwitchTheView()
+    {
+        input::ActionRegistry registry;
+        input::Keymap keymap;
+        input::installDefaultKeymap(keymap);
+        KeyDispatcher dispatcher(&registry, &keymap);
+        registry.registerAction(QStringLiteral("view_as_icons"), QStringLiteral("icons"),
+                                input::ActionCategory::View,
+                                [this] { m_panel->setViewMode(ViewMode::Icons); });
+        registry.registerAction(QStringLiteral("view_as_list"), QStringLiteral("list"),
+                                input::ActionCategory::View,
+                                [this] { m_panel->setViewMode(ViewMode::List); });
+
+        const auto press = [&dispatcher](Qt::Key key, const QString &text) {
+            QKeyEvent event(QEvent::KeyPress, key, Qt::ControlModifier | Qt::ShiftModifier, text);
+            return dispatcher.handleKeyPress(&event);
+        };
+
+        QVERIFY(press(Qt::Key_I, QString()));
+        QCOMPARE(m_panel->viewMode(), ViewMode::Icons);
+        QVERIFY(press(Qt::Key_L, QString()));
+        QCOMPARE(m_panel->viewMode(), ViewMode::List);
     }
 
     void aLargeFolderSwitchesAndScrollsQuickly()

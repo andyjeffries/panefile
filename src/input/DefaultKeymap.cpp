@@ -120,9 +120,10 @@ constexpr DefaultBinding kDefaults[] = {
     // One of the two plain keys kept. Names are typed without their leading
     // dot, so `.` never needs to start one.
     {KeymapLayer::Normal, "toggle_dot_file", "."},
-    // Not Ctrl+1 / Ctrl+2: desktops commonly spend those on workspaces.
-    {KeymapLayer::Global, "view_as_icons", "Ctrl+Alt+1"},
-    {KeymapLayer::Global, "view_as_list", "Ctrl+Alt+2"},
+    // Not Ctrl+1 / Ctrl+2 (desktops spend those on workspaces) nor Ctrl+Alt+digit
+    // (keyboard remappers commonly turn Alt+digit into level-3 symbols).
+    {KeymapLayer::Global, "view_as_icons", "Ctrl+Shift+I"},
+    {KeymapLayer::Global, "view_as_list", "Ctrl+Shift+L"},
     {KeymapLayer::Global, "search_bar", "Ctrl+/"},
     {KeymapLayer::Global, "change_panel_mode", "Ctrl+Shift+V"},
     {KeymapLayer::Global, "select_all", "Ctrl+A"},

@@ -343,7 +343,7 @@ struct PanelState {
 };
 ```
 
-**Views.** A panel is either a list or an icon view (`ViewMode`). Both are the same `QListView` in `ListMode` with `setUniformItemSizes(true)`; the icon view switches on wrapping, `LeftToRight` flow and a fixed `gridSize` (one tile size derived from `ui.icon_size` and the font by `FileItemDelegate::tileMetricsFor`). It deliberately does **not** use `QListView::IconMode`, which keeps a geometry per item and lays out all of them — unusable in a 100,000-entry folder. The choice is remembered per folder in `<stateDir>/folder-views.json` (`FolderViewMemory`, like `FolderSortMemory`; only departures from `panels.default_view` are stored). `Ctrl+Alt+1` / `Ctrl+Alt+2` switch (`view_as_icons` / `view_as_list`; `toggle_view_mode` is a palette command). In icon view `Up`/`Down` and `PgUp`/`PgDn` move whole rows, `Left`/`Right` move one tile (wrapping), `Shift` extends the selection the same way; `Left`/`Right` do nothing in a list.
+**Views.** A panel is either a list or an icon view (`ViewMode`). Both are the same `QListView` in `ListMode` with `setUniformItemSizes(true)`; the icon view switches on wrapping, `LeftToRight` flow and a fixed `gridSize` (one tile size derived from `ui.icon_size` and the font by `FileItemDelegate::tileMetricsFor`). It deliberately does **not** use `QListView::IconMode`, which keeps a geometry per item and lays out all of them — unusable in a 100,000-entry folder. The choice is remembered per folder in `<stateDir>/folder-views.json` (`FolderViewMemory`, like `FolderSortMemory`; only departures from `panels.default_view` are stored). `Ctrl+Shift+I` / `Ctrl+Shift+L` switch (`view_as_icons` / `view_as_list`; `toggle_view_mode` is a palette command). In icon view `Up`/`Down` and `PgUp`/`PgDn` move whole rows, `Left`/`Right` move one tile (wrapping), `Shift` extends the selection the same way; `Left`/`Right` do nothing in a list.
 
 **Cursor memory:** when you navigate out of a directory and back in, the cursor must land on the directory you came from. Keep a bounded LRU (256 entries) of `path → cursorName`.
 
@@ -773,7 +773,7 @@ default_count        = 1
 max_count            = 10
 directories_first    = true
 default_sort         = "name"       # name | size | modified | type; `Ctrl+O` overrides it per folder
-default_view         = "list"       # list | icons; `Ctrl+Alt+1` / `Ctrl+Alt+2` override it per folder
+default_view         = "list"       # list | icons; `Ctrl+Shift+I` / `Ctrl+Shift+L` override it per folder
 show_hidden          = false
 
 [quicklook]

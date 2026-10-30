@@ -577,8 +577,8 @@ void TestKeymap::defaultKeymapBindsTheDocumentedKeys()
         {KeymapLayer::Global, "Shift+Right", "select_right"},
         {KeymapLayer::Selection, "Left", "select_left"},
         {KeymapLayer::Selection, "Right", "select_right"},
-        {KeymapLayer::Global, "Ctrl+Alt+1", "view_as_icons"},
-        {KeymapLayer::Global, "Ctrl+Alt+2", "view_as_list"},
+        {KeymapLayer::Global, "Ctrl+Shift+I", "view_as_icons"},
+        {KeymapLayer::Global, "Ctrl+Shift+L", "view_as_list"},
     };
 
     for (const Expectation &expected : kExpectations) {

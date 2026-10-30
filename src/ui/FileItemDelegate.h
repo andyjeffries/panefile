@@ -68,6 +68,11 @@ public:
     /// The second line is elided in the middle so the extension survives.
     static QStringList wrapName(const QString &name, const QFontMetrics &metrics, int width);
 
+    /// A folder drawn closed when empty and with its glyph where it has one,
+    /// else the type icon. Both layouts draw their icon through here; public
+    /// so the empty and glyph roles can be tested without painting.
+    static QIcon iconFor(const QModelIndex &index, const FileEntry &entry, const QColor &colour);
+
     enum class Layout { Row, Tile };
 
     explicit FileItemDelegate(QObject *parent = nullptr);
@@ -93,10 +98,6 @@ public:
 private:
     void paintTile(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index,
                    const FileEntry &entry) const;
-
-    /// The glyph-carrying folder icon where the folder has one, else the type
-    /// icon. Both layouts draw their icon through here.
-    static QIcon iconFor(const QModelIndex &index, const FileEntry &entry, const QColor &colour);
 
     static QColor colourFor(const FileEntry &entry);
 

@@ -190,10 +190,10 @@ QIcon FileItemDelegate::iconFor(const QModelIndex &index, const FileEntry &entry
                                 const QColor &colour)
 {
     if (entry.isDir) {
-        const QString glyph = index.data(DirectoryModel::FolderGlyphRole).toString();
-        if (!glyph.isEmpty()) {
-            return IconProvider::instance().folderIcon(glyph, colour, entry.isSymlink);
-        }
+        // Asking for FolderEmptyRole is also what starts the background probe.
+        return IconProvider::instance().folderIcon(
+            index.data(DirectoryModel::FolderGlyphRole).toString(), colour, entry.isSymlink,
+            index.data(DirectoryModel::FolderEmptyRole).toBool());
     }
     return IconProvider::instance().iconFor(entry, colour);
 }

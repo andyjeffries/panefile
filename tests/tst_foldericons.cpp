@@ -1,6 +1,8 @@
 #include "model/DirectoryModel.h"
 #include "model/FolderIconStore.h"
+#include "model/IconProvider.h"
 #include "model/StandardFolders.h"
+#include "ui/FileItemDelegate.h"
 #include "ui/ThemePalette.h"
 #include "ui/modals/FolderIconModal.h"
 
@@ -158,6 +160,34 @@ private Q_SLOTS:
         QTRY_VERIFY(!model.index(model.indexOfName(QStringLiteral("full")))
                          .data(DirectoryModel::FolderEmptyRole)
                          .toBool());
+    }
+
+    void delegateDrawsEmptyFoldersClosed()
+    {
+        QTemporaryDir dir;
+        QVERIFY(QDir(dir.path()).mkpath(QStringLiteral("empty")));
+        QVERIFY(QDir(dir.path()).mkpath(QStringLiteral("full/inner")));
+
+        DirectoryModel model;
+        model.setPath(dir.path());
+        QTRY_COMPARE(model.rowCount(), 2);
+
+        const QColor colour(Qt::blue);
+        const auto iconOf = [&](const QString &name) {
+            const QModelIndex index = model.index(model.indexOfName(name));
+            const auto entry = index.data(DirectoryModel::EntryRole).value<FileEntry>();
+            return ui::FileItemDelegate::iconFor(index, entry, colour).pixmap(64).toImage();
+        };
+        const QImage closed =
+            IconProvider::instance().folderIcon({}, colour, false, true).pixmap(64).toImage();
+        const QImage open = IconProvider::instance().folderIcon({}, colour).pixmap(64).toImage();
+        QVERIFY(closed != open);
+
+        // Painting is what asks; the closed folder follows once the probe answers.
+        iconOf(QStringLiteral("empty"));
+        iconOf(QStringLiteral("full"));
+        QTRY_VERIFY(iconOf(QStringLiteral("empty")) == closed);
+        QCOMPARE(iconOf(QStringLiteral("full")), open);
     }
 
     void pickerFiltersAndApplies()

@@ -286,7 +286,9 @@ private Q_SLOTS:
 
         Sidebar sidebar;
         sidebar.populate();
-        qunsetenv("PANEFILE_STATE_DIR");
+        // Back to the suite's own directory, never unset: the tests after this
+        // one would otherwise write the developer's real folder-icons.json.
+        qputenv("PANEFILE_STATE_DIR", m_state.path().toUtf8());
 
         auto *list = sidebar.findChild<QListWidget *>(QStringLiteral("sidebarList"));
         QVERIFY(list != nullptr);

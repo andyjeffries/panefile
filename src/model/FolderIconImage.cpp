@@ -22,7 +22,7 @@ namespace {
 constexpr int kMaxSide = 8192;
 /// Qt's decode allocation limit, in megabytes.
 constexpr int kAllocationLimitMb = 128;
-/// SVGs have no pixel size; they are rasterised to this square.
+/// SVGs have no pixel size; they are rasterised to fit this square, aspect kept.
 constexpr int kSvgSide = 512;
 /// The picture is scaled to fit this square before analysis.
 constexpr int kWorkSide = 512;
@@ -58,7 +58,9 @@ QImage decode(QImageReader &reader, bool svg)
     reader.setAutoTransform(true);
     reader.setAllocationLimit(kAllocationLimitMb);
     if (svg) {
-        reader.setScaledSize({kSvgSide, kSvgSide});
+        const QSize size = reader.size();
+        reader.setScaledSize(size.isEmpty() ? QSize(kSvgSide, kSvgSide)
+                                            : size.scaled(kSvgSide, kSvgSide, Qt::KeepAspectRatio));
     } else {
         const QSize size = reader.size();
         if (size.isValid() && (size.width() > kMaxSide || size.height() > kMaxSide)) {

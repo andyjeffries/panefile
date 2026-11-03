@@ -232,6 +232,35 @@ private Q_SLOTS:
         QCOMPARE(origin, QStringLiteral("clipboard image"));
     }
 
+    void wideSvgKeepsItsAspectRatio()
+    {
+        const QByteArray svg =
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 200 100\">"
+            "<rect x=\"20\" y=\"10\" width=\"160\" height=\"80\" fill=\"black\"/></svg>";
+        QTemporaryDir dir;
+        QFile file(dir.filePath(QStringLiteral("wide.svg")));
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(svg);
+        file.close();
+
+        QMimeData fromFile;
+        fromFile.setUrls({QUrl::fromLocalFile(file.fileName())});
+        QMimeData fromBytes;
+        fromBytes.setData(QStringLiteral("image/svg+xml"), svg);
+        for (const QMimeData *mime : {&fromFile, &fromBytes}) {
+            const QImage image = FolderIconImage::sourceFromClipboard(mime);
+            QVERIFY(!image.isNull());
+            QCOMPARE(image.width(), 2 * image.height());
+
+            // Trimmed and centred, a 2:1 shape spans the mask's width but
+            // only half its height.
+            const QImage mask = FolderIconImage::toMask(image, false);
+            QVERIFY(at(mask, 64, 64) > 240);
+            QVERIFY(at(mask, 64, 20) < 10);
+            QVERIFY(at(mask, 64, 108) < 10);
+        }
+    }
+
     void oversizedHeaderIsRefused()
     {
         QByteArray bytes = pngBytes(canvas(Qt::white, 8));

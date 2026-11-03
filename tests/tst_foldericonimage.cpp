@@ -44,6 +44,25 @@ QImage disc(const QColor &background, const QColor &shape)
     return image;
 }
 
+QImage plate(const QColor &top, const QColor &bottom, int inset, int radius, bool logo = true)
+{
+    QImage image = canvas(Qt::transparent);
+    QPainter painter(&image);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(Qt::NoPen);
+    QLinearGradient gradient(0, inset, 0, 200 - inset);
+    gradient.setColorAt(0, top);
+    gradient.setColorAt(1, bottom);
+    painter.setBrush(gradient);
+    painter.drawRoundedRect(QRect(inset, inset, 200 - (2 * inset), 200 - (2 * inset)), radius,
+                            radius);
+    if (logo) {
+        painter.setBrush(Qt::white);
+        painter.drawEllipse(QRect(50, 50, 100, 100));
+    }
+    return image;
+}
+
 } // namespace
 
 class TestFolderIconImage : public QObject
@@ -74,12 +93,59 @@ private Q_SLOTS:
     {
         QImage image = canvas(Qt::transparent);
         QPainter painter(&image);
-        painter.fillRect(QRect(20, 20, 160, 160), QColor(30, 90, 200));
-        painter.fillRect(QRect(80, 80, 40, 40), Qt::white);
+        painter.fillRect(QRect(40, 40, 120, 120), QColor(30, 90, 200));
+        painter.fillRect(QRect(85, 85, 30, 30), Qt::white);
         painter.end();
         const QImage mask = FolderIconImage::toMask(image, false);
         QVERIFY(at(mask, 20, 20) > 240);
         QVERIFY(at(mask, 64, 64) < 10);
+    }
+
+    void logoOnTransparentPlate()
+    {
+        const QImage mask =
+            FolderIconImage::toMask(plate(QColor(200, 100, 60), QColor(200, 100, 60), 12, 30),
+                                    false);
+        QVERIFY(at(mask, 64, 64) > 240);
+        QVERIFY(at(mask, 14, 14) < 10);
+    }
+
+    void gradientPlateLeavesNoOutline()
+    {
+        const QImage mask =
+            FolderIconImage::toMask(plate(QColor(31, 196, 111), QColor(0, 135, 63), 12, 30),
+                                    false);
+        QVERIFY(at(mask, 64, 64) > 240);
+        QVERIFY(at(mask, 14, 14) < 10);
+        QVERIFY(at(mask, 64, 14) > 200);
+        QVERIFY(at(mask, 64, 4) < 10);
+    }
+
+    void plateFlushToEdges()
+    {
+        const QImage mask =
+            FolderIconImage::toMask(plate(QColor(40, 60, 160), QColor(40, 60, 160), 0, 50),
+                                    false);
+        QVERIFY(at(mask, 64, 64) > 240);
+        QVERIFY(at(mask, 14, 14) < 10);
+        QVERIFY(at(mask, 2, 2) < 10);
+    }
+
+    void emptyPlateFallsBack()
+    {
+        const QImage mask = FolderIconImage::toMask(
+            plate(QColor(200, 100, 60), QColor(200, 100, 60), 12, 30, false), false);
+        QVERIFY(!mask.isNull());
+        QVERIFY(at(mask, 64, 64) > 240);
+    }
+
+    void invertOnPlateKeepsSurroundEmpty()
+    {
+        const QImage mask = FolderIconImage::toMask(
+            plate(QColor(200, 100, 60), QColor(200, 100, 60), 12, 30), true);
+        QVERIFY(at(mask, 64, 64) < 10);
+        QVERIFY(at(mask, 20, 64) > 240);
+        QVERIFY(at(mask, 2, 2) < 10);
     }
 
     void shapeOnOpaqueBackgrounds()

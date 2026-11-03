@@ -23,8 +23,11 @@ QImage sourceFromClipboard(const QMimeData *mime, QString *origin = nullptr);
 
 /// A 128x128 Format_Grayscale8 mask (white is shape), or null when the picture
 /// holds no shape. The background is found from the picture's edge and
-/// everything clearly different from it becomes the shape. `invert` swaps
-/// shape and background.
+/// everything clearly different from it becomes the shape. A plate found at the
+/// four edge centres (opaque, matching colours, within 1/8 of the side) is
+/// background along with any transparent surround, so only the logo on it is
+/// the shape; a plate with nothing on it falls back to the plain rule.
+/// `invert` swaps shape and background (within the plate only, for a plate).
 QImage toMask(const QImage &source, bool invert);
 
 /// `img:` plus the first 128 bits of SHA-256 over the mask's pixels, in hex.

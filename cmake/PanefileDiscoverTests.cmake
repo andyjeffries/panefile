@@ -33,6 +33,11 @@ foreach(argument IN LISTS command)
     string(APPEND quoted_command " [==[${argument}]==]")
 endforeach()
 
+set(serial_property "")
+if(serial)
+    set(serial_property " RUN_SERIAL TRUE")
+endif()
+
 set(script "")
 set(count 0)
 string(REPLACE "\n" ";" lines "${listing}")
@@ -45,7 +50,7 @@ foreach(line IN LISTS lines)
     string(APPEND script
         "add_test([==[${test}]==]${quoted_command} [==[${function}]==])\n"
         "set_tests_properties([==[${test}]==] PROPERTIES\n"
-        "    ENVIRONMENT [==[${environment}]==] TIMEOUT 120 LABELS [==[${name}]==])\n")
+        "    ENVIRONMENT [==[${environment}]==] TIMEOUT 120 LABELS [==[${name}]==]${serial_property})\n")
     math(EXPR count "${count} + 1")
 endforeach()
 

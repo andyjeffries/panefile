@@ -11,6 +11,10 @@
 
 # pf_add_test(<name> SOURCES ... [LIBS ...] [WRAPPER command...] [ENVIRONMENT VAR=value...])
 #
+# SERIAL keeps ctest from running anything alongside the binary's tests, for
+# tests that assert on wall-clock time and so fail when the other cores' work
+# starves them.
+#
 # WRAPPER runs the test under another program — dbus-run-session, for the one
 # test that needs a session bus of its own.
 #
@@ -21,7 +25,7 @@
 # itself once it links (see cmake/PanefileDiscoverTests.cmake), so a new test
 # slot is picked up without a reconfigure.
 function(pf_add_test name)
-    cmake_parse_arguments(ARG "" "" "SOURCES;LIBS;WRAPPER;ENVIRONMENT" ${ARGN})
+    cmake_parse_arguments(ARG "SERIAL" "" "SOURCES;LIBS;WRAPPER;ENVIRONMENT" ${ARGN})
 
     qt_add_executable(${name} ${ARG_SOURCES})
     target_link_libraries(${name} PRIVATE Qt6::Test pf::common_flags ${ARG_LIBS})
@@ -36,7 +40,7 @@ function(pf_add_test name)
     set(discover "${PROJECT_SOURCE_DIR}/cmake/PanefileDiscoverTests.cmake")
 
     file(GENERATE OUTPUT "${params}" CONTENT
-        "set(name [==[${name}]==])\nset(command [==[${command}]==])\nset(environment [==[${environment}]==])\n")
+        "set(name [==[${name}]==])\nset(command [==[${command}]==])\nset(environment [==[${environment}]==])\nset(serial [==[${ARG_SERIAL}]==])\n")
 
     # Re-listed whenever the binary relinks, and when its wrapper or
     # environment change.
@@ -104,7 +108,7 @@ pf_add_test(tst_rename      SOURCES tst_rename.cpp      LIBS pf_fs)
 pf_add_test(tst_quicklook  SOURCES tst_quicklook.cpp  LIBS pf_ui)
 pf_add_test(tst_thumbnails SOURCES tst_thumbnails.cpp LIBS pf_model)
 pf_add_test(tst_thumbnailers SOURCES tst_thumbnailers.cpp LIBS pf_model)
-pf_add_test(tst_sec_sandbox SOURCES tst_sec_sandbox.cpp LIBS pf_model)
+pf_add_test(tst_sec_sandbox SERIAL SOURCES tst_sec_sandbox.cpp LIBS pf_model)
 pf_add_test(tst_icons      SOURCES tst_icons.cpp      LIBS pf_model)
 pf_add_test(tst_foldericonimage SOURCES tst_foldericonimage.cpp LIBS pf_ui)
 pf_add_test(tst_foldericons SOURCES tst_foldericons.cpp LIBS pf_ui)

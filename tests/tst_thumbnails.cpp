@@ -66,6 +66,12 @@ private Q_SLOTS:
     {
         QCOMPARE(ThumbnailCache::pixelsFor(ThumbnailCache::Size::Normal), 128);
         QCOMPARE(ThumbnailCache::pixelsFor(ThumbnailCache::Size::Large), 256);
+        QCOMPARE(ThumbnailCache::pixelsFor(ThumbnailCache::Size::XLarge), 512);
+        QCOMPARE(
+            ThumbnailCache::thumbnailPathFor(QStringLiteral("/a.png"), ThumbnailCache::Size::XLarge,
+                                             QStringLiteral("/cache")),
+            QStringLiteral("/cache/x-large/") +
+                ThumbnailCache::cacheFileName(ThumbnailCache::fileUri(QStringLiteral("/a.png"))));
     }
 
     /// The generated PNG carries the chunks that make it verifiable, and is
@@ -203,6 +209,10 @@ private Q_SLOTS:
         QCOMPARE(ThumbnailCache::sizeFor(65, 2.0), ThumbnailCache::Size::Large);
         QCOMPARE(ThumbnailCache::sizeFor(96, 1.0), ThumbnailCache::Size::Normal);
         QCOMPARE(ThumbnailCache::sizeFor(129, 1.0), ThumbnailCache::Size::Large);
+        QCOMPARE(ThumbnailCache::sizeFor(128, 2.0), ThumbnailCache::Size::Large);
+        QCOMPARE(ThumbnailCache::sizeFor(256, 1.0), ThumbnailCache::Size::Large);
+        QCOMPARE(ThumbnailCache::sizeFor(257, 1.0), ThumbnailCache::Size::XLarge);
+        QCOMPARE(ThumbnailCache::sizeFor(200, 2.0), ThumbnailCache::Size::XLarge);
     }
 
     /// The memory tier is keyed by size: a 128 px image must not be served to a

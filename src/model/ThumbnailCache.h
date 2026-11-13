@@ -30,16 +30,18 @@ class ThumbnailCache : public QObject
     Q_OBJECT
 
 public:
-    /// §7.7: "`normal` = 128 px, `large` = 256 px".
+    /// §7.7: "`normal` = 128 px, `large` = 256 px"; `x-large` (512 px) is the
+    /// freedesktop spec's next size, for the mosaic's big tiles.
     enum class Size {
         Normal,
         Large,
+        XLarge,
     };
 
     static int pixelsFor(Size size);
 
     /// The cache size to ask for when the icon is `logicalPx` wide on a screen
-    /// with this pixel ratio: Normal while 128 px is enough, Large beyond it.
+    /// with this pixel ratio: Normal up to 128 px, Large up to 256, XLarge beyond.
     static Size sizeFor(int logicalPx, qreal dpr);
     static QString directoryNameFor(Size size);
 

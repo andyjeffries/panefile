@@ -88,11 +88,22 @@ private Q_SLOTS:
         QCOMPARE(m_panel->view()->flow(), QListView::LeftToRight);
         QCOMPARE(m_panel->view()->viewMode(), QListView::ListMode);
 
-        m_panel->toggleViewMode();
+        m_panel->setViewMode(ViewMode::List);
         QCOMPARE(m_panel->viewMode(), ViewMode::List);
         QVERIFY(!m_panel->view()->gridSize().isValid());
         QVERIFY(!m_panel->view()->isWrapping());
         QCOMPARE(m_panel->view()->flow(), QListView::TopToBottom);
+    }
+
+    void toggleCyclesThroughThreeViews()
+    {
+        QCOMPARE(m_panel->viewMode(), ViewMode::List);
+        m_panel->toggleViewMode();
+        QCOMPARE(m_panel->viewMode(), ViewMode::Icons);
+        m_panel->toggleViewMode();
+        QCOMPARE(m_panel->viewMode(), ViewMode::Mosaic);
+        m_panel->toggleViewMode();
+        QCOMPARE(m_panel->viewMode(), ViewMode::List);
     }
 
     void itemsHaveOneSizeInBothLayoutsAfterToggling()
@@ -309,6 +320,9 @@ private Q_SLOTS:
         registry.registerAction(QStringLiteral("view_as_list"), QStringLiteral("list"),
                                 input::ActionCategory::View,
                                 [this] { m_panel->setViewMode(ViewMode::List); });
+        registry.registerAction(QStringLiteral("view_as_mosaic"), QStringLiteral("mosaic"),
+                                input::ActionCategory::View,
+                                [this] { m_panel->setViewMode(ViewMode::Mosaic); });
 
         const auto press = [&dispatcher](Qt::Key key, const QString &text) {
             QKeyEvent event(QEvent::KeyPress, key, Qt::ControlModifier | Qt::ShiftModifier, text);
@@ -317,6 +331,8 @@ private Q_SLOTS:
 
         QVERIFY(press(Qt::Key_I, QString()));
         QCOMPARE(m_panel->viewMode(), ViewMode::Icons);
+        QVERIFY(press(Qt::Key_M, QString()));
+        QCOMPARE(m_panel->viewMode(), ViewMode::Mosaic);
         QVERIFY(press(Qt::Key_L, QString()));
         QCOMPARE(m_panel->viewMode(), ViewMode::List);
     }
@@ -338,6 +354,10 @@ private Q_SLOTS:
         m_panel->moveCursorToEnd();
         QCoreApplication::processEvents();
         m_panel->moveCursorToStart();
+        m_panel->setViewMode(ViewMode::Mosaic);
+        QCoreApplication::processEvents();
+        m_panel->moveCursorToEnd();
+        QCoreApplication::processEvents();
         m_panel->setViewMode(ViewMode::List);
         QCoreApplication::processEvents();
         QVERIFY2(timer.elapsed() < 3000, qPrintable(QString::number(timer.elapsed())));

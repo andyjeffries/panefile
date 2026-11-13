@@ -5,6 +5,7 @@
 #include "ui/FilePanel.h"
 #include "ui/FolderViewMemory.h"
 #include "ui/PanelView.h"
+#include "ui/ViewMode.h"
 
 #include <QDir>
 #include <QElapsedTimer>
@@ -15,6 +16,8 @@
 
 using namespace pf;
 using pf::ui::ViewMode;
+
+Q_DECLARE_METATYPE(pf::ui::ViewMode)
 
 class TestPerfIconView : public QObject
 {
@@ -48,24 +51,25 @@ private Q_SLOTS:
     void costs_data()
     {
         QTest::addColumn<int>("count");
-        QTest::addColumn<bool>("icons");
+        QTest::addColumn<ViewMode>("mode");
         for (const int n : {10000, 100000}) {
-            QTest::addRow("list-%d", n) << n << false;
-            QTest::addRow("icons-%d", n) << n << true;
+            QTest::addRow("list-%d", n) << n << ViewMode::List;
+            QTest::addRow("icons-%d", n) << n << ViewMode::Icons;
+            QTest::addRow("mosaic-%d", n) << n << ViewMode::Mosaic;
         }
     }
 
     void costs()
     {
         QFETCH(int, count);
-        QFETCH(bool, icons);
+        QFETCH(ViewMode, mode);
         const QString dir = makeFolder(count);
 
         ui::FolderViewMemory::instance().clear();
         ui::FilePanel panel;
         panel.resize(900, 700);
         panel.show();
-        panel.setDefaultViewMode(icons ? ViewMode::Icons : ViewMode::List);
+        panel.setDefaultViewMode(mode);
         QVERIFY(QTest::qWaitForWindowExposed(&panel));
 
         QElapsedTimer timer;
@@ -76,9 +80,10 @@ private Q_SLOTS:
         const qint64 scan = timer.elapsed();
 
         timer.restart();
-        panel.toggleViewMode();
+        const ViewMode other = mode == ViewMode::List ? ViewMode::Icons : ViewMode::List;
+        panel.setViewMode(other);
         QCoreApplication::processEvents();
-        panel.toggleViewMode();
+        panel.setViewMode(mode);
         QCoreApplication::processEvents();
         const qint64 toggle = timer.elapsed();
 
@@ -100,8 +105,9 @@ private Q_SLOTS:
         QCoreApplication::processEvents();
         const double perMove = static_cast<double>(timer.nsecsElapsed()) / 1e6 / kMoves;
 
-        qInfo().noquote() << QStringLiteral("%1 n=%2 scan=%3ms toggle-twice=%4ms page=%5ms move=%6ms")
-                                 .arg(icons ? "icons" : "list ")
+        qInfo().noquote() << QStringLiteral(
+                                 "%1 n=%2 scan=%3ms toggle-twice=%4ms page=%5ms move=%6ms")
+                                 .arg(viewModeName(mode), -6)
                                  .arg(count)
                                  .arg(scan)
                                  .arg(toggle)

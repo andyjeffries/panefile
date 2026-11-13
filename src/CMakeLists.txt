@@ -223,6 +223,8 @@ pf_layer_library(pf_ui
         ui/FolderViewMemory.cpp
         ui/Keycaps.cpp
         ui/MainWindow.cpp
+        ui/MosaicLayout.cpp
+        ui/MosaicZoom.cpp
         ui/PanefileStyle.cpp
         ui/PanelStrip.cpp
         ui/PanelView.cpp

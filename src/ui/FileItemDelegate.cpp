@@ -5,13 +5,17 @@
 #include "model/DirectoryModel.h"
 #include "model/FileEntry.h"
 #include "model/IconProvider.h"
+#include "ui/MosaicZoom.h"
 #include "ui/PanelView.h"
 #include "ui/ThemePalette.h"
 
 #include <QApplication>
 #include <QIcon>
 #include <QPainter>
+#include <QPainterPath>
+#include <QScrollBar>
 #include <QSet>
+#include <QStyle>
 
 #include <algorithm>
 #include <array>
@@ -203,9 +207,63 @@ void FileItemDelegate::setSelectedNames(const QSet<QString> *names)
     m_selectedNames = names;
 }
 
+void FileItemDelegate::invalidateMosaic()
+{
+    m_mosaicDirty = true;
+}
+
+const MosaicLayout &FileItemDelegate::mosaicLayout(const QAbstractItemModel *model, int width) const
+{
+    if (width < 0) {
+        width = m_mosaicViewWidth;
+    }
+    const int target = MosaicZoom::instance().rowHeight();
+    const int count = model != nullptr ? model->rowCount() : 0;
+    if (m_mosaicDirty || width != m_mosaicViewWidth || target != m_mosaic.targetHeight ||
+        count != m_mosaic.rects.size()) {
+        QList<qreal> aspects;
+        aspects.reserve(count);
+        for (int row = 0; row < count; ++row) {
+            aspects.append(model->index(row, 0).data(DirectoryModel::AspectRatioRole).toReal());
+        }
+        m_mosaic =
+            MosaicLayout::compute(aspects, std::max(1, width - kMosaicSlack), target, kMosaicGap);
+        m_mosaicViewWidth = width;
+        m_mosaicDirty = false;
+    }
+    return m_mosaic;
+}
+
+int FileItemDelegate::mosaicWidth(const QStyleOptionViewItem &option) const
+{
+    // The width QListView lays out in, worked out the way it does. The rect
+    // Qt hands over is the layout bounds only during a layout pass; it asks
+    // again for an item's size afterwards (visualRect) with a different rect,
+    // and an answer that differs by even a pixel from the layout's own leaves
+    // the item's size and its position from two different layouts.
+    const auto *view = qobject_cast<const PanelView *>(option.widget);
+    if (view == nullptr) {
+        return option.rect.width() > 0 ? option.rect.width() : m_mosaicViewWidth;
+    }
+    int width = view->maximumViewportSize().width();
+    if (view->verticalScrollBarPolicy() == Qt::ScrollBarAsNeeded) {
+        width -= view->style()->pixelMetric(QStyle::PM_ScrollBarExtent, nullptr,
+                                            view->verticalScrollBar());
+        if (view->style()->styleHint(QStyle::SH_ScrollView_FrameOnlyAroundContents) != 0) {
+            width -= view->style()->pixelMetric(QStyle::PM_DefaultFrameWidth) * 2;
+        }
+    }
+    return width;
+}
+
 QSize FileItemDelegate::sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const
 {
-    Q_UNUSED(index)
+    if (m_layout == Layout::Mosaic) {
+        const MosaicLayout &layout = mosaicLayout(index.model(), mosaicWidth(option));
+        return index.row() >= 0 && index.row() < layout.rects.size()
+                   ? layout.rects.at(index.row()).size()
+                   : QSize(1, layout.targetHeight);
+    }
     if (m_layout == Layout::Tile) {
         return tileMetricsFor(currentPalette(), option.fontMetrics).tile;
     }
@@ -297,6 +355,10 @@ void FileItemDelegate::paint(QPainter *painter, const QStyleOptionViewItem &opti
     const auto entry = entryValue.value<FileEntry>();
     if (m_layout == Layout::Tile) {
         paintTile(painter, option, index, entry);
+        return;
+    }
+    if (m_layout == Layout::Mosaic) {
+        paintMosaic(painter, option, index, entry);
         return;
     }
     const ThemePalette &palette = currentPalette();
@@ -727,6 +789,167 @@ void FileItemDelegate::paintMatchSpans(QPainter *painter, const QRect &nameRect,
 
         painter->drawText(spanRect, Qt::AlignLeft | Qt::AlignVCenter, text);
     }
+}
+
+void FileItemDelegate::paintMosaic(QPainter *painter, const QStyleOptionViewItem &option,
+                                   const QModelIndex &index, const FileEntry &entry) const
+{
+    const ThemePalette &palette = currentPalette();
+
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing, true);
+    painter->setRenderHint(QPainter::SmoothPixmapTransform, true);
+
+    const QRectF tile =
+        QRectF(option.rect)
+            .adjusted(kMosaicGap / 2.0, kMosaicGap / 2.0, -kMosaicGap / 2.0, -kMosaicGap / 2.0);
+    if (tile.width() < 2 || tile.height() < 2) {
+        painter->restore();
+        return;
+    }
+
+    const bool isCursor = (option.state & QStyle::State_HasFocus) != 0 ||
+                          (option.state & QStyle::State_Selected) != 0;
+    const bool isSelected = m_selectedNames != nullptr && m_selectedNames->contains(entry.name);
+    const bool isHovered = (option.state & QStyle::State_MouseOver) != 0;
+    const auto *view = qobject_cast<const PanelView *>(option.widget);
+    const bool panelActive =
+        view != nullptr ? view->isPanelActive() : (option.state & QStyle::State_Active) != 0;
+
+    QPainterPath clip;
+    clip.addRoundedRect(tile, kPillRadius, kPillRadius);
+    painter->setClipPath(clip);
+
+    const QVariant sizeValue = index.data(DirectoryModel::ImageSizeRole);
+    const bool isImage = sizeValue.canConvert<QSize>() && sizeValue.toSize().isValid();
+    const QVariant aspectValue = index.data(DirectoryModel::AspectRatioRole);
+    // An image whose header has not been read yet has a guessed shape, not 1.
+    const bool imageLike = !entry.isDir && (isImage || aspectValue.toReal() != 1.0);
+
+    QColor iconColour = colourFor(entry);
+    if (!panelActive) {
+        iconColour = blend(iconColour, palette.background, 0.30);
+    }
+
+    const QVariant thumbnail = index.data(DirectoryModel::ThumbnailRole);
+    const auto image = thumbnail.canConvert<QImage>() ? thumbnail.value<QImage>() : QImage();
+
+    painter->fillRect(tile, isHovered ? palette.hoverBackground(palette.surface) : palette.surface);
+
+    const QFontMetrics metrics(option.font);
+    bool showsName = false;
+    if (!image.isNull() && !entry.isDir) {
+        // Cover: scaled to fill the tile, the overflow cropped evenly.
+        const QSizeF logical = QSizeF(image.size()) / image.devicePixelRatio();
+        const QSizeF scaled = logical.scaled(tile.size(), Qt::KeepAspectRatioByExpanding);
+        painter->drawImage(QRectF(tile.center().x() - (scaled.width() / 2.0),
+                                  tile.center().y() - (scaled.height() / 2.0), scaled.width(),
+                                  scaled.height()),
+                           image);
+        if (!panelActive) {
+            painter->fillRect(tile, QColor(0, 0, 0, 26));
+        }
+    } else if (imageLike) {
+        const int glyph = static_cast<int>(std::min({32.0, tile.width(), tile.height()}));
+        const QRect glyphRect(static_cast<int>(tile.center().x()) - (glyph / 2),
+                              static_cast<int>(tile.center().y()) - (glyph / 2), glyph, glyph);
+        if (const QIcon icon = iconFor(index, entry, iconColour); !icon.isNull()) {
+            icon.paint(painter, glyphRect, Qt::AlignCenter, QIcon::Normal);
+        }
+    } else {
+        // Folders and other files: their icon over their name.
+        const int lineHeight = metrics.height();
+        const int icon =
+            static_cast<int>(std::min<qreal>({static_cast<qreal>(palette.iconSize),
+                                              tile.width() - 8, tile.height() - lineHeight - 12}));
+        const bool roomForName = tile.height() >= icon + lineHeight + 12 && tile.width() >= 40;
+        const qreal blockHeight = icon + (roomForName ? lineHeight + 4 : 0);
+        const QRect iconRect(static_cast<int>(tile.center().x()) - (icon / 2),
+                             static_cast<int>(tile.center().y() - (blockHeight / 2.0)),
+                             std::max(icon, 1), std::max(icon, 1));
+        if (icon > 0) {
+            if (const QIcon glyph = iconFor(index, entry, iconColour); !glyph.isNull()) {
+                glyph.paint(painter, iconRect, Qt::AlignCenter,
+                            entry.isBroken ? QIcon::Disabled : QIcon::Normal);
+            }
+        }
+        if (roomForName) {
+            QFont nameFont = option.font;
+            nameFont.setStrikeOut(entry.isBroken);
+            painter->setFont(nameFont);
+            painter->setPen(entry.isBroken ? palette.broken : palette.text);
+            const QRect nameRect(static_cast<int>(tile.left()) + 4, iconRect.bottom() + 4,
+                                 static_cast<int>(tile.width()) - 8, lineHeight);
+            painter->drawText(nameRect, Qt::AlignHCenter | Qt::AlignVCenter,
+                              metrics.elidedText(entry.name, Qt::ElideMiddle, nameRect.width()));
+            showsName = true;
+        }
+    }
+
+    if (isSelected) {
+        painter->fillRect(
+            tile, QColor(palette.accent.red(), palette.accent.green(), palette.accent.blue(), 64));
+    }
+
+    if (view != nullptr && index.row() == view->dropTargetRow()) {
+        painter->fillRect(tile, palette.focusedCursorBackground());
+    }
+
+    // The details band, for the hovered tile and the cursor's.
+    if ((isHovered || isCursor) && !showsName && tile.width() >= 60) {
+        const QFont detailFont = metadataFont(option.font);
+        const QFontMetrics detailMetrics(detailFont);
+        QString detail = formatSize(entry.size);
+        if (isImage) {
+            const QSize size = sizeValue.toSize();
+            detail += QStringLiteral(" · %1 × %2").arg(size.width()).arg(size.height());
+        }
+        const bool twoLines =
+            !entry.isDir && tile.height() >= 2.5 * ((2 * metrics.lineSpacing()) + 12);
+        const int bandHeight =
+            std::min<int>(static_cast<int>(tile.height()),
+                          (twoLines ? metrics.lineSpacing() + detailMetrics.lineSpacing()
+                                    : metrics.lineSpacing()) +
+                              12);
+        const QRectF band(tile.left(), tile.bottom() - bandHeight, tile.width(), bandHeight);
+        painter->fillRect(band, QColor(0, 0, 0, 160));
+
+        const int textWidth = static_cast<int>(tile.width()) - 16;
+        const QRect nameRect(static_cast<int>(band.left()) + 8, static_cast<int>(band.top()) + 6,
+                             textWidth, metrics.lineSpacing());
+        painter->setFont(option.font);
+        painter->setPen(QColor(255, 255, 255, 235));
+        painter->drawText(nameRect, Qt::AlignLeft | Qt::AlignVCenter,
+                          metrics.elidedText(entry.name, Qt::ElideMiddle, textWidth));
+        if (twoLines) {
+            painter->setFont(detailFont);
+            painter->setPen(QColor(255, 255, 255, 180));
+            painter->drawText(QRect(nameRect.left(), nameRect.bottom() + 1, textWidth,
+                                    detailMetrics.lineSpacing()),
+                              Qt::AlignLeft | Qt::AlignVCenter,
+                              detailMetrics.elidedText(detail, Qt::ElideRight, textWidth));
+        }
+    }
+
+    painter->setClipping(false);
+    if (isSelected) {
+        painter->setPen(QPen(palette.accent, 3));
+        painter->setBrush(Qt::NoBrush);
+        painter->drawRoundedRect(tile.adjusted(1.5, 1.5, -1.5, -1.5), kPillRadius - 1,
+                                 kPillRadius - 1);
+    }
+    if (isCursor) {
+        painter->setPen(QPen(panelActive ? palette.borderFocused : palette.overlay, 2));
+        painter->setBrush(Qt::NoBrush);
+        painter->drawRoundedRect(tile.adjusted(1, 1, -1, -1), kPillRadius, kPillRadius);
+    }
+    if (view != nullptr && index.row() == view->dropTargetRow()) {
+        painter->setPen(QPen(palette.borderFocused, 2));
+        painter->setBrush(Qt::NoBrush);
+        painter->drawRoundedRect(tile.adjusted(1, 1, -1, -1), kPillRadius, kPillRadius);
+    }
+
+    painter->restore();
 }
 
 } // namespace pf::ui

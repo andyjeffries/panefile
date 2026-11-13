@@ -8,6 +8,7 @@
 #include "ui/FileItemDelegate.h"
 #include "ui/FolderSortMemory.h"
 #include "ui/FolderViewMemory.h"
+#include "ui/MosaicZoom.h"
 #include "ui/PanelView.h"
 #include "ui/ThemePalette.h"
 
@@ -23,6 +24,7 @@
 #include <QSignalBlocker>
 #include <QStyle>
 #include <QStyleOption>
+#include <QTimer>
 #include <QVBoxLayout>
 
 #include <utility>
@@ -47,6 +49,15 @@ constexpr int kThumbnailOvershootRows = 20;
 /// A row only shows a thumbnail when it is at least this tall (see the
 /// delegate), so a shorter one asks for none.
 constexpr int kListThumbnailMinimumRowHeight = 40;
+
+/// How many rows of the mosaic are queued for thumbnails beyond the viewport.
+/// Each one is a 512 px image, so far fewer than icon view's twenty.
+constexpr int kMosaicOvershootRows = 3;
+
+/// How long a burst of reflow requests waits before laying out once, and the
+/// shorter wait that keeps a dragged zoom slider feeling live.
+constexpr int kMosaicProbeDelayMs = 100;
+constexpr int kMosaicZoomDelayMs = 30;
 
 /// The icon box in a row.
 constexpr int kListIconSize = 16;
@@ -233,6 +244,37 @@ FilePanel::FilePanel(QWidget *parent)
             updateThumbnailWindow();
         }
     });
+
+    m_mosaicTimer = new QTimer(this);
+    m_mosaicTimer->setSingleShot(true);
+    connect(m_mosaicTimer, &QTimer::timeout, this, &FilePanel::relayoutMosaic);
+
+    connect(&MosaicZoom::instance(), &MosaicZoom::rowHeightChanged, this, [this] {
+        if (m_viewMode == ViewMode::Mosaic) {
+            m_delegate->invalidateMosaic();
+            scheduleMosaicRelayout(kMosaicZoomDelayMs);
+        }
+    });
+    connect(m_view, &PanelView::zoomRequested, this,
+            [](int steps) { MosaicZoom::instance().zoomBy(steps); });
+
+    const auto invalidateMosaic = [this] {
+        if (m_viewMode == ViewMode::Mosaic) {
+            m_delegate->invalidateMosaic();
+        }
+    };
+    connect(m_proxy, &QAbstractItemModel::rowsInserted, this, invalidateMosaic);
+    connect(m_proxy, &QAbstractItemModel::rowsRemoved, this, invalidateMosaic);
+    connect(m_proxy, &QAbstractItemModel::layoutChanged, this, invalidateMosaic);
+    connect(m_proxy, &QAbstractItemModel::modelReset, this, invalidateMosaic);
+    connect(m_proxy, &QAbstractItemModel::dataChanged, this,
+            [this](const QModelIndex &, const QModelIndex &, const QList<int> &roles) {
+                if (m_viewMode == ViewMode::Mosaic &&
+                    roles.contains(DirectoryModel::AspectRatioRole)) {
+                    m_delegate->invalidateMosaic();
+                    scheduleMosaicRelayout(kMosaicProbeDelayMs);
+                }
+            });
 
     applyPalette();
     setActive(false);
@@ -537,7 +579,10 @@ void FilePanel::moveCursorToEnd()
 void FilePanel::movePage(int direction)
 {
     const QSize grid = m_view->gridSize();
-    const int rowHeight = std::max(1, grid.isValid() ? grid.height() : currentPalette().rowHeight);
+    const int rowHeight =
+        m_viewMode == ViewMode::Mosaic
+            ? std::max(1, MosaicZoom::instance().rowHeight())
+            : std::max(1, grid.isValid() ? grid.height() : currentPalette().rowHeight);
     const int visibleRows = std::max(1, m_view->viewport()->height() / rowHeight);
     // One row of overlap, so a page down leaves a line of context rather than
     // making the reader work out whether anything was skipped.
@@ -546,6 +591,12 @@ void FilePanel::movePage(int direction)
 
 int FilePanel::itemsPerRow() const
 {
+    if (m_viewMode == ViewMode::Mosaic) {
+        const MosaicLayout &mosaic = m_delegate->mosaicLayout(m_proxy);
+        const QModelIndex current = m_view->currentIndex();
+        const int row = mosaic.rowOf(current.isValid() ? current.row() : 0);
+        return row < 0 ? 1 : std::max(1, mosaic.rows.at(row).count);
+    }
     if (m_viewMode != ViewMode::Icons) {
         return 1;
     }
@@ -560,8 +611,17 @@ void FilePanel::moveCursorRows(int rows)
         return;
     }
 
-    const int perRow = itemsPerRow();
     const QModelIndex current = m_view->currentIndex();
+    if (m_viewMode == ViewMode::Mosaic) {
+        const int target = m_delegate->mosaicLayout(m_proxy).verticalNeighbour(
+            current.isValid() ? current.row() : 0, rows);
+        if (target >= 0) {
+            m_view->setCurrentIndex(m_proxy->index(target, 0));
+        }
+        return;
+    }
+
+    const int perRow = itemsPerRow();
     const int from = current.isValid() ? current.row() : 0;
     const int column = from % perRow;
     const int lastRowStart = ((count - 1) / perRow) * perRow;
@@ -580,7 +640,7 @@ void FilePanel::moveCursorRows(int rows)
 
 void FilePanel::moveCursorColumns(int delta)
 {
-    if (m_viewMode == ViewMode::Icons) {
+    if (m_viewMode != ViewMode::List) {
         moveCursor(delta);
     }
 }
@@ -605,7 +665,7 @@ void FilePanel::setViewMode(ViewMode mode)
 
 void FilePanel::toggleViewMode()
 {
-    setViewMode(m_viewMode == ViewMode::Icons ? ViewMode::List : ViewMode::Icons);
+    setViewMode(nextViewMode(m_viewMode));
 }
 
 ViewMode FilePanel::viewMode() const
@@ -632,6 +692,19 @@ void FilePanel::applyViewMode(ViewMode mode)
         m_view->setUniformItemSizes(true);
         m_view->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
         m_view->verticalScrollBar()->setSingleStep(metrics.tile.height());
+    } else if (mode == ViewMode::Mosaic) {
+        // ListMode again, for the same reason. The tiles differ in size, so
+        // Qt's uniform-size shortcut is off and each layout asks the delegate
+        // for every tile once; the delegate answers from one MosaicLayout.
+        m_delegate->setLayout(FileItemDelegate::Layout::Mosaic);
+        m_delegate->invalidateMosaic();
+        m_view->setFlow(QListView::LeftToRight);
+        m_view->setWrapping(true);
+        m_view->setSpacing(0);
+        m_view->setGridSize(QSize());
+        m_view->setUniformItemSizes(false);
+        m_view->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+        m_view->verticalScrollBar()->setSingleStep(MosaicZoom::instance().rowHeight() / 3);
     } else {
         m_delegate->setLayout(FileItemDelegate::Layout::Row);
         m_view->setGridSize(QSize());
@@ -641,6 +714,10 @@ void FilePanel::applyViewMode(ViewMode mode)
         m_view->setUniformItemSizes(true);
         m_view->setVerticalScrollMode(QAbstractItemView::ScrollPerItem);
     }
+
+    m_view->setSnapToWholeRows(mode != ViewMode::Mosaic);
+    m_view->setZoomable(mode == ViewMode::Mosaic);
+    m_model->setImageSizesWanted(mode == ViewMode::Mosaic);
 
     // The view caches the uniform item size; without this it keeps the other
     // layout's.
@@ -653,6 +730,40 @@ void FilePanel::applyViewMode(ViewMode mode)
     m_view->viewport()->update();
     updateThumbnailWindow();
     updateHeader();
+    Q_EMIT viewModeChanged(mode);
+}
+
+void FilePanel::scheduleMosaicRelayout(int delayMs)
+{
+    m_mosaicTimer->start(delayMs);
+}
+
+void FilePanel::relayoutMosaic()
+{
+    if (m_viewMode != ViewMode::Mosaic) {
+        return;
+    }
+    // Keep one tile where it is on screen: the cursor's if it is in view,
+    // else the first one showing, so a zoom or a late image shape does not
+    // throw the reader somewhere else.
+    const QRect viewport = m_view->viewport()->rect();
+    QModelIndex anchor = m_view->currentIndex();
+    if (!anchor.isValid() || !m_view->visualRect(anchor).intersects(viewport)) {
+        anchor = m_view->indexAt(viewport.topLeft() + QPoint(1, 1));
+    }
+    const int before = anchor.isValid() ? m_view->visualRect(anchor).top() : 0;
+
+    m_view->verticalScrollBar()->setSingleStep(MosaicZoom::instance().rowHeight() / 3);
+    m_view->relayout();
+    m_view->doItemsLayout();
+
+    if (anchor.isValid()) {
+        const int after = m_view->visualRect(anchor).top();
+        m_view->verticalScrollBar()->setValue(m_view->verticalScrollBar()->value() + after -
+                                              before);
+    }
+    m_view->viewport()->update();
+    updateThumbnailWindow();
 }
 
 QString FilePanel::filterText() const
@@ -762,14 +873,17 @@ void FilePanel::updateThumbnailWindow()
     }
 
     const bool tiles = m_viewMode == ViewMode::Icons;
+    const bool mosaic = m_viewMode == ViewMode::Mosaic;
 
     // A row too short to show a thumbnail has no use for one.
-    if (!tiles && currentPalette().rowHeight < kListThumbnailMinimumRowHeight) {
+    if (!tiles && !mosaic && currentPalette().rowHeight < kListThumbnailMinimumRowHeight) {
         m_model->requestThumbnails({}, {});
         return;
     }
 
-    const int iconPixels = tiles ? currentPalette().iconSize : kListIconSize;
+    const int iconPixels = mosaic  ? MosaicZoom::instance().rowHeight() * 3 / 2
+                           : tiles ? currentPalette().iconSize
+                                   : kListIconSize;
     m_model->setThumbnailSize(ThumbnailCache::sizeFor(iconPixels, devicePixelRatioF()));
 
     const int count = m_proxy->rowCount();
@@ -781,6 +895,35 @@ void FilePanel::updateThumbnailWindow()
     // Worked out in the proxy's rows — what the view shows, in the order it
     // shows it — and mapped to the model's afterwards. The source rows of a
     // sorted or filtered list are not a contiguous range.
+    if (mosaic) {
+        const MosaicLayout &layout = m_delegate->mosaicLayout(m_proxy);
+        const int scrollY = m_view->verticalScrollBar()->value();
+        const auto [firstItem, lastItem] =
+            layout.itemsInBand(scrollY, scrollY + m_view->viewport()->height());
+        if (firstItem < 0) {
+            m_model->requestThumbnails({}, {});
+            return;
+        }
+        const int perRow = std::max<int>(1, count / std::max<qsizetype>(1, layout.rows.size()));
+        const int reach = kMosaicOvershootRows * perRow;
+
+        QList<int> visible;
+        for (int row = firstItem; row <= std::min(lastItem, count - 1); ++row) {
+            visible.append(m_proxy->mapToSource(m_proxy->index(row, 0)).row());
+        }
+        QList<int> around;
+        for (int step = 1; step <= reach; ++step) {
+            if (lastItem + step < count) {
+                around.append(m_proxy->mapToSource(m_proxy->index(lastItem + step, 0)).row());
+            }
+            if (firstItem - step >= 0) {
+                around.append(m_proxy->mapToSource(m_proxy->index(firstItem - step, 0)).row());
+            }
+        }
+        m_model->requestThumbnails(visible, around);
+        return;
+    }
+
     const int perRow = itemsPerRow();
     const QRect viewport = m_view->viewport()->rect();
     const QSize grid = m_view->gridSize();
@@ -1052,7 +1195,7 @@ void FilePanel::extendSelectionByRows(int rows)
 
 void FilePanel::extendSelectionByColumns(int delta)
 {
-    if (m_viewMode == ViewMode::Icons) {
+    if (m_viewMode != ViewMode::List) {
         extendSelectionBy(delta);
     }
 }
@@ -1480,6 +1623,9 @@ void FilePanel::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
     applyHeaderElision();
+    if (m_viewMode == ViewMode::Mosaic) {
+        m_delegate->invalidateMosaic();
+    }
     // The number of tiles per row has changed with the width.
     updateThumbnailWindow();
 }

@@ -424,17 +424,32 @@ private:
 
 int ThumbnailCache::pixelsFor(Size size)
 {
-    return size == Size::Large ? 256 : 128;
+    switch (size) {
+    case Size::XLarge:
+        return 512;
+    case Size::Large:
+        return 256;
+    case Size::Normal:
+        break;
+    }
+    return 128;
 }
 
 ThumbnailCache::Size ThumbnailCache::sizeFor(int logicalPx, qreal dpr)
 {
-    return static_cast<qreal>(logicalPx) * dpr <= 128.0 ? Size::Normal : Size::Large;
+    const qreal pixels = static_cast<qreal>(logicalPx) * dpr;
+    if (pixels <= 128.0) {
+        return Size::Normal;
+    }
+    return pixels <= 256.0 ? Size::Large : Size::XLarge;
 }
 
 QString ThumbnailCache::memoryKey(const QString &absolutePath, Size size)
 {
-    return (size == Size::Large ? QStringLiteral("L|") : QStringLiteral("N|")) + absolutePath;
+    const QString prefix = size == Size::XLarge  ? QStringLiteral("X|")
+                           : size == Size::Large ? QStringLiteral("L|")
+                                                 : QStringLiteral("N|");
+    return prefix + absolutePath;
 }
 
 void ThumbnailCache::remember(const QString &absolutePath, Size size, const QImage &image)
@@ -455,7 +470,15 @@ QImage ThumbnailCache::peek(const QString &absolutePath, Size size) const
 
 QString ThumbnailCache::directoryNameFor(Size size)
 {
-    return size == Size::Large ? QStringLiteral("large") : QStringLiteral("normal");
+    switch (size) {
+    case Size::XLarge:
+        return QStringLiteral("x-large");
+    case Size::Large:
+        return QStringLiteral("large");
+    case Size::Normal:
+        break;
+    }
+    return QStringLiteral("normal");
 }
 
 QString ThumbnailCache::fileUri(const QString &absolutePath)

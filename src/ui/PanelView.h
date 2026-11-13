@@ -66,6 +66,16 @@ public:
     /// subclass, so the panel asks for the inset rather than reaching for it.
     void setBodyInset(int horizontal, int vertical);
 
+    /// Lays the items out again; QListView's own hook for it is protected.
+    void relayout();
+
+    /// Whether the list's bottom inset absorbs a partial row, so it never ends
+    /// in a sliced one. Rows of unequal height (the mosaic) have no such unit.
+    void setSnapToWholeRows(bool snap);
+
+    /// Whether Ctrl+wheel asks for a zoom instead of scrolling.
+    void setZoomable(bool zoomable);
+
     /// The action a drop should perform.
     ///
     /// `sameFilesystem` is what makes the default sensible rather than merely
@@ -148,6 +158,9 @@ Q_SIGNALS:
     /// Type-ahead moved the cursor to the entry matching the typed name.
     void cursorMovedByTyping();
 
+    /// Ctrl+wheel over a zoomable view: whole notches, positive to zoom in.
+    void zoomRequested(int steps);
+
 private:
     /// The local file paths in a drag payload, ignoring anything that is not a
     /// file — a browser's http:// URL is a download request, not a copy.
@@ -170,6 +183,7 @@ protected:
     void resizeEvent(QResizeEvent *event) override;
     void paintEvent(QPaintEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
+    void wheelEvent(QWheelEvent *event) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
     void focusOutEvent(QFocusEvent *event) override;
     void currentChanged(const QModelIndex &current, const QModelIndex &previous) override;
@@ -214,6 +228,9 @@ private:
     int m_bodyInsetHorizontal = 0;
     int m_bodyInsetVertical = 0;
     int m_appliedBottomInset = -1;
+    bool m_snapToWholeRows = true;
+    bool m_zoomable = false;
+    int m_wheelRemainder = 0;
     QString m_typeAhead;
     QTimer m_typeAheadTimer;
     /// Set while type-ahead itself moves the cursor, so that the move does not

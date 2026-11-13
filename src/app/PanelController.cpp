@@ -9,6 +9,7 @@
 #include "platform/Paths.h"
 #include "ui/FilePanel.h"
 #include "ui/MainWindow.h"
+#include "ui/MosaicZoom.h"
 #include "ui/PanelStrip.h"
 #include "ui/Sidebar.h"
 #include "ui/modals/FolderIconModal.h"
@@ -340,8 +341,20 @@ void PanelController::registerActions()
         onPanel([](ui::FilePanel *panel) { panel->setViewMode(ui::ViewMode::Icons); }));
     reg("view_as_list", tr("View as a list"), ActionCategory::View,
         onPanel([](ui::FilePanel *panel) { panel->setViewMode(ui::ViewMode::List); }));
-    reg("toggle_view_mode", tr("Switch between list and icon view"), ActionCategory::View,
+    reg("view_as_mosaic", tr("View as a mosaic"), ActionCategory::View,
+        onPanel([](ui::FilePanel *panel) { panel->setViewMode(ui::ViewMode::Mosaic); }));
+    reg("toggle_view_mode", tr("Switch view (list, icons, mosaic)"), ActionCategory::View,
         onPanel([](ui::FilePanel *panel) { panel->toggleViewMode(); }));
+    const auto inMosaic = [this] {
+        const ui::FilePanel *panel = focused();
+        return panel != nullptr && panel->viewMode() == ui::ViewMode::Mosaic;
+    };
+    reg(
+        "mosaic_zoom_in", tr("Zoom the mosaic in"), ActionCategory::View,
+        [] { ui::MosaicZoom::instance().zoomBy(1); }, inMosaic);
+    reg(
+        "mosaic_zoom_out", tr("Zoom the mosaic out"), ActionCategory::View,
+        [] { ui::MosaicZoom::instance().zoomBy(-1); }, inMosaic);
     reg("toggle_reverse_sort", tr("Reverse the sort order"), ActionCategory::View,
         onPanel([](ui::FilePanel *panel) { panel->setReverseSort(!panel->reverseSort()); }));
 

@@ -5,6 +5,7 @@
 #include <QMainWindow>
 
 class QLabel;
+class QSlider;
 class QSplitter;
 
 namespace pf::ui {
@@ -116,6 +117,7 @@ private:
     QLabel *m_footer = nullptr;
     QLabel *m_selectionCount = nullptr;
     QLabel *m_pending = nullptr;
+    QSlider *m_zoomSlider = nullptr;
     ChordHint *m_chordHint = nullptr;
     QWidget *m_processBar = nullptr;
     QWidget *m_topBar = nullptr;
@@ -134,6 +136,7 @@ private:
     /// connection and the footer would be updated N times per cursor move.
     QMetaObject::Connection m_panelCursorConnection;
     QMetaObject::Connection m_panelPathConnection;
+    QMetaObject::Connection m_panelViewConnection;
 
     bool m_firstPaintDone = false;
     bool m_sidebarHiddenByWidth = false;

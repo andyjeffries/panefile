@@ -124,6 +124,9 @@ constexpr DefaultBinding kDefaults[] = {
     // (keyboard remappers commonly turn Alt+digit into level-3 symbols).
     {KeymapLayer::Global, "view_as_icons", "Ctrl+Shift+I"},
     {KeymapLayer::Global, "view_as_list", "Ctrl+Shift+L"},
+    {KeymapLayer::Global, "view_as_mosaic", "Ctrl+Shift+M"},
+    {KeymapLayer::Global, "mosaic_zoom_in", "Ctrl+Shift+Up"},
+    {KeymapLayer::Global, "mosaic_zoom_out", "Ctrl+Shift+Down"},
     {KeymapLayer::Global, "search_bar", "Ctrl+/"},
     {KeymapLayer::Global, "change_panel_mode", "Ctrl+Shift+V"},
     {KeymapLayer::Global, "select_all", "Ctrl+A"},

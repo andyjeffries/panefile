@@ -195,6 +195,10 @@ void TestConfig::defaultViewIsParsedAndValidated()
                          QStringLiteral("config.toml"))
                  .settings.panels.defaultView,
              QStringLiteral("icons"));
+    QCOMPARE(parseConfig(QStringLiteral("[panels]\ndefault_view = \"mosaic\"\n"),
+                         QStringLiteral("config.toml"))
+                 .settings.panels.defaultView,
+             QStringLiteral("mosaic"));
 
     const ConfigLoadResult bad = parseConfig(QStringLiteral("[panels]\ndefault_view = \"grid\"\n"),
                                              QStringLiteral("config.toml"));

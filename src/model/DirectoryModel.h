@@ -8,6 +8,7 @@
 #include <QSet>
 #include <QString>
 
+#include <atomic>
 #include <memory>
 #include <vector>
 
@@ -49,6 +50,13 @@ public:
         /// Whether a directory is known to be empty. False until a background
         /// readdir says so, so a folder is drawn open until it is known closed.
         FolderEmptyRole,
+        /// The displayed pixel size of an image (EXIF rotation applied), as a
+        /// QSize; invalid when unknown or not an image. Read from the file
+        /// header on a worker, and only while setImageSizesWanted() is on.
+        ImageSizeRole,
+        /// Width over height for the mosaic layout: 1.0 for anything that is
+        /// not an image, a 3:2 guess for an image not yet probed.
+        AspectRatioRole,
     };
     Q_ENUM(Roles)
 
@@ -85,6 +93,10 @@ public:
     void requestThumbnails(const QList<int> &visibleSourceRows,
                            const QList<int> &overshootSourceRows);
     bool isWatchingEnabled() const;
+
+    /// Whether image dimensions are wanted (the mosaic view). Off, nothing is
+    /// probed, so a list of a huge folder never reads a header.
+    void setImageSizesWanted(bool wanted);
 
     int rowCount(const QModelIndex &parent = {}) const override;
     QVariant data(const QModelIndex &index, int role) const override;
@@ -151,6 +163,16 @@ private:
     /// Starts the one readdir that tells whether a directory is empty.
     void probeEmpty(const QString &absolutePath) const;
 
+    /// Whether the entry is a file whose extension names an image type.
+    bool isImageEntry(const FileEntry &entry) const;
+
+    /// Queues the unknown image sizes for one batched header probe.
+    void queueSizeProbe(int row, const FileEntry &entry) const;
+    void flushSizeProbes();
+    void cancelSizeProbes();
+    void applyProbedSizes(int generation, const QList<int> &rows, const QStringList &names,
+                          const QList<QSize> &sizes);
+
     /// Wires this model to the shared thumbnail cache, on first use.
     void connectThumbnailCache();
 
@@ -183,6 +205,15 @@ private:
     /// what left it rather than cancelling and requeueing everything.
     QSet<QString> m_thumbnailWindow;
     std::vector<FileEntry> m_entries;
+
+    bool m_imageSizesWanted = false;
+    /// Probed sizes by entry name; an invalid QSize means "could not be read".
+    QHash<QString, QSize> m_imageSizes;
+    mutable QSet<QString> m_sizePending;
+    mutable QList<std::pair<int, QString>> m_sizeQueue;
+    std::shared_ptr<std::atomic<bool>> m_sizeCancel = std::make_shared<std::atomic<bool>>(false);
+    bool m_sizeFlushScheduled = false;
+    int m_sizeGeneration = 0;
 
     /// Which directories are empty, filled in off the GUI thread for the ones
     /// that have been painted. Cleared when the path changes.

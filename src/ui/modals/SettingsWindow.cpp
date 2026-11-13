@@ -502,6 +502,7 @@ QWidget *SettingsWindow::buildGeneralTab()
     m_controls->defaultView = new QComboBox;
     m_controls->defaultView->addItem(tr("List"), QStringLiteral("list"));
     m_controls->defaultView->addItem(tr("Icons"), QStringLiteral("icons"));
+    m_controls->defaultView->addItem(tr("Mosaic"), QStringLiteral("mosaic"));
     connect(m_controls->defaultView, &QComboBox::currentIndexChanged, this, [this](int) {
         if (!m_loading) {
             const QString value = m_controls->defaultView->currentData().toString();

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/FuzzyMatcher.h"
+#include "ui/MosaicLayout.h"
 #include "ui/ThemePalette.h"
 
 #include <QCache>
@@ -73,7 +74,14 @@ public:
     /// so the empty and glyph roles can be tested without painting.
     static QIcon iconFor(const QModelIndex &index, const FileEntry &entry, const QColor &colour);
 
-    enum class Layout { Row, Tile };
+    enum class Layout { Row, Tile, Mosaic };
+
+    /// The gap between mosaic tiles. Part of each tile's size hint; the tile is
+    /// painted inset by half of it.
+    static constexpr int kMosaicGap = 6;
+    /// Taken off the width Qt lays out in, so rounding in Qt's own row-break
+    /// test can never push a tile of a full row onto the next one.
+    static constexpr int kMosaicSlack = 2;
 
     explicit FileItemDelegate(QObject *parent = nullptr);
 
@@ -95,7 +103,20 @@ public:
     /// explicit multi-selection the file operations act on.
     void setSelectedNames(const QSet<QString> *names);
 
+    /// Marks the mosaic layout stale: the model's rows, an aspect ratio or the
+    /// zoom changed.
+    void invalidateMosaic();
+
+    /// The mosaic of `model` for a view `width` wide (the last width Qt laid
+    /// out in when negative), rebuilt when stale. Qt asks sizeHint() once per
+    /// item per layout pass, in order; every answer comes from this.
+    const MosaicLayout &mosaicLayout(const QAbstractItemModel *model, int width = -1) const;
+
 private:
+    int mosaicWidth(const QStyleOptionViewItem &option) const;
+    void paintMosaic(QPainter *painter, const QStyleOptionViewItem &option,
+                     const QModelIndex &index, const FileEntry &entry) const;
+
     void paintTile(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index,
                    const FileEntry &entry) const;
 
@@ -109,6 +130,9 @@ private:
 
     const QSet<QString> *m_selectedNames = nullptr;
     Layout m_layout = Layout::Row;
+    mutable MosaicLayout m_mosaic;
+    mutable bool m_mosaicDirty = true;
+    mutable int m_mosaicViewWidth = 0;
 
     /// Wrapped names by (width, font, name): wrapping measures text many times,
     /// and a scroll repaints the same names constantly.

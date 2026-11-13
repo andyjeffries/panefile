@@ -7,6 +7,7 @@
 #include "model/FileEntry.h"
 #include "ui/ChordHint.h"
 #include "ui/FilePanel.h"
+#include "ui/MosaicZoom.h"
 #include "ui/PanelStrip.h"
 #include "ui/PanelView.h"
 #include "ui/Sidebar.h"
@@ -18,6 +19,8 @@
 #include <QLabel>
 #include <QListView>
 #include <QResizeEvent>
+#include <QSignalBlocker>
+#include <QSlider>
 #include <QSplitter>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -104,6 +107,24 @@ MainWindow::MainWindow(QWidget *parent)
     m_pending->hide();
     footerLayout->addWidget(m_pending, 0);
 
+    // The mosaic's zoom, at the far right. Only the mosaic has one.
+    m_zoomSlider = new QSlider(Qt::Horizontal, footerRow);
+    m_zoomSlider->setObjectName(QStringLiteral("mosaicZoom"));
+    m_zoomSlider->setRange(MosaicZoom::kMin, MosaicZoom::kMax);
+    m_zoomSlider->setSingleStep(MosaicZoom::kStep);
+    m_zoomSlider->setPageStep(MosaicZoom::kStep * 2);
+    m_zoomSlider->setFixedWidth(120);
+    m_zoomSlider->setToolTip(tr("Zoom (Ctrl+Shift+Up / Down)"));
+    m_zoomSlider->setValue(MosaicZoom::instance().rowHeight());
+    m_zoomSlider->hide();
+    connect(m_zoomSlider, &QSlider::valueChanged, this,
+            [](int value) { MosaicZoom::instance().setRowHeight(value); });
+    connect(&MosaicZoom::instance(), &MosaicZoom::rowHeightChanged, this, [this](int height) {
+        const QSignalBlocker blocker(m_zoomSlider);
+        m_zoomSlider->setValue(height);
+    });
+    footerLayout->addWidget(m_zoomSlider, 0);
+
     layout->addWidget(footerRow);
     setCentralWidget(central);
 
@@ -147,10 +168,17 @@ void MainWindow::connectPanel(FilePanel *panel)
     // connections are tracked and dropped explicitly.
     disconnect(m_panelCursorConnection);
     disconnect(m_panelPathConnection);
+    disconnect(m_panelViewConnection);
 
     if (panel == nullptr) {
+        m_zoomSlider->hide();
         return;
     }
+
+    m_zoomSlider->setVisible(panel->viewMode() == ViewMode::Mosaic);
+    m_panelViewConnection =
+        connect(panel, &FilePanel::viewModeChanged, this,
+                [this](ViewMode mode) { m_zoomSlider->setVisible(mode == ViewMode::Mosaic); });
 
     m_panelCursorConnection = connect(panel, &FilePanel::cursorChanged, this,
                                       [this](const QString &) { updateFooter(); });

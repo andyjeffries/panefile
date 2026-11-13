@@ -431,6 +431,7 @@ void Application::showApplicationMenu(const QPoint &globalPosition)
         {{.actionId = "toggle_dot_file", .label = tr("Show Hidden Files")},
          {.actionId = "view_as_icons", .label = tr("View as Icons")},
          {.actionId = "view_as_list", .label = tr("View as List")},
+         {.actionId = "view_as_mosaic", .label = tr("View as Mosaic")},
          {.actionId = "toggle_sidebar", .label = tr("Sidebar")},
          {.actionId = "sidebar_new_section", .label = tr("New Sidebar Section…")},
          {.actionId = "toggle_footer", .label = tr("Status Bar")},

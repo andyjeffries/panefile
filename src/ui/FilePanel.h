@@ -12,6 +12,7 @@
 
 class QLabel;
 class QLineEdit;
+class QTimer;
 
 namespace pf {
 class DirectoryModel;
@@ -78,7 +79,7 @@ public:
     /// list, where Left and Right have no meaning.
     void moveCursorColumns(int delta);
 
-    /// Tiles per row in icon view, 1 in a list.
+    /// Tiles per row in icon view, the cursor's row in a mosaic, 1 in a list.
     int itemsPerRow() const;
 
     /// `panels.default_view`: the view for any directory the user has not
@@ -214,6 +215,10 @@ Q_SIGNALS:
     void cursorChanged(const QString &name);
     void selectionChanged(int count);
     void modeChanged();
+
+    /// The panel now shows another view, so the footer can offer the mosaic's
+    /// zoom only while it applies.
+    void viewModeChanged(ViewMode mode);
     void fileActivated(const QString &absolutePath);
 
     /// A right-click (or the Menu key) on a file row. The cursor is on it, and
@@ -269,6 +274,11 @@ private:
     /// cursor on its entry and re-requests thumbnails at the new size.
     void applyViewMode(ViewMode mode);
 
+    /// Reflows the mosaic soon: a zoom, new image shapes or a new width. Each
+    /// call restarts a short timer, so a burst becomes one layout.
+    void scheduleMosaicRelayout(int delayMs);
+    void relayoutMosaic();
+
     // Declaration order is initialisation order, and these are constructed in
     // the member initialiser list, so it has to match it.
     DirectoryModel *m_model = nullptr;
@@ -308,6 +318,7 @@ private:
     /// goes somewhere else.
     QString m_scanError;
 
+    QTimer *m_mosaicTimer = nullptr;
     bool m_active = false;
     bool m_selectionMode = false;
 };

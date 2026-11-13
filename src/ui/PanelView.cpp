@@ -21,6 +21,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QUrl>
+#include <QWheelEvent>
 
 namespace pf::ui {
 namespace {
@@ -293,6 +294,42 @@ void PanelView::resizeEvent(QResizeEvent *event)
     absorbPartialRow();
 }
 
+void PanelView::relayout()
+{
+    scheduleDelayedItemsLayout();
+}
+
+void PanelView::setSnapToWholeRows(bool snap)
+{
+    if (m_snapToWholeRows == snap) {
+        return;
+    }
+    m_snapToWholeRows = snap;
+    absorbPartialRow();
+}
+
+void PanelView::setZoomable(bool zoomable)
+{
+    m_zoomable = zoomable;
+    m_wheelRemainder = 0;
+}
+
+void PanelView::wheelEvent(QWheelEvent *event)
+{
+    if (!m_zoomable || (event->modifiers() & Qt::ControlModifier) == 0) {
+        QListView::wheelEvent(event);
+        return;
+    }
+    // Trackpads send many small deltas; a notch is 120.
+    m_wheelRemainder += event->angleDelta().y();
+    const int steps = m_wheelRemainder / 120;
+    m_wheelRemainder -= steps * 120;
+    if (steps != 0) {
+        Q_EMIT zoomRequested(steps);
+    }
+    event->accept();
+}
+
 void PanelView::absorbPartialRow()
 {
     // A viewport whose height is not a whole number of rows ends in a sliced
@@ -307,7 +344,7 @@ void PanelView::absorbPartialRow()
     const int rowHeight = gridSize().isValid() ? std::max(1, gridSize().height())
                                                : std::max(1, currentPalette().rowHeight);
     const int available = height() - (m_bodyInsetVertical * 2);
-    const int leftover = available > rowHeight ? available % rowHeight : 0;
+    const int leftover = m_snapToWholeRows && available > rowHeight ? available % rowHeight : 0;
 
     const int bottom = m_bodyInsetVertical + leftover;
 

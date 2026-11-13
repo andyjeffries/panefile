@@ -579,6 +579,9 @@ void TestKeymap::defaultKeymapBindsTheDocumentedKeys()
         {KeymapLayer::Selection, "Right", "select_right"},
         {KeymapLayer::Global, "Ctrl+Shift+I", "view_as_icons"},
         {KeymapLayer::Global, "Ctrl+Shift+L", "view_as_list"},
+        {KeymapLayer::Global, "Ctrl+Shift+M", "view_as_mosaic"},
+        {KeymapLayer::Global, "Ctrl+Shift+Up", "mosaic_zoom_in"},
+        {KeymapLayer::Global, "Ctrl+Shift+Down", "mosaic_zoom_out"},
     };
 
     for (const Expectation &expected : kExpectations) {

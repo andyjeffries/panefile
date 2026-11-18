@@ -36,6 +36,10 @@ public:
     /// Shows a transient message in the footer.
     void showStatusMessage(const QString &message);
 
+    /// Shows a message in the footer that stays until it is cleared, in the
+    /// error colour with a warning glyph. An empty message clears it.
+    void setStatusError(const QString &message);
+
     /// The "n selected" field in the status bar. Empty text hides it.
     void setSelectionCount(int count);
 
@@ -62,6 +66,14 @@ public:
     /// Adopts a notice bar and puts it along the top of the window, above the
     /// panels. Showing and hiding it stays the bar's business.
     void setTopBar(QWidget *bar);
+
+    /// Pins the window title, so it stops following the focused folder. A file
+    /// dialog's title is the application's own ("Save File").
+    void setFixedTitle(const QString &title);
+
+    /// Adopts a bar and puts it along the bottom of the window, under the
+    /// status bar.
+    void setBottomBar(QWidget *bar);
 
     /// Adopts the Quick Look pane. Called on its first use; §3.4 keeps the
     /// widget — and every renderer behind it — from existing until then.
@@ -122,6 +134,9 @@ private:
     QWidget *m_processBar = nullptr;
     QWidget *m_topBar = nullptr;
     QWidget *m_footerRow = nullptr;
+    QWidget *m_footerWarning = nullptr;
+    bool m_statusErrorShown = false;
+    QString m_fixedTitle;
 
     QWidget *m_quickLook = nullptr;
     QuickLookOverlay *m_quickLookOverlay = nullptr;

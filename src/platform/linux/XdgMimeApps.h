@@ -114,7 +114,22 @@ inline constexpr char kFileManagerBusName[] = "org.freedesktop.FileManager1";
 /// lets it override the file Nautilus installs there.
 QString fileManagerServiceFilePath(const Environment &env);
 
-/// The service file's text. `executable` must be absolute: the bus starts the
+/// `$XDG_DATA_HOME/dbus-1/services/<busName>.service`.
+QString dbusServiceFilePath(const Environment &env, const QString &busName);
+
+/// A service file for `busName` that runs `executable flag`, after `comment`
+/// (whole `# ` lines, or empty). `executable` must be absolute: the bus starts
+/// the service in its own activation environment, whose PATH may not include
+/// `~/.local/bin`.
+QByteArray dbusServiceFileContents(const QString &busName, const QString &executable,
+                                   const QString &flag, const QString &comment);
+
+/// Writes `contents` to `path`, unless it is already there. Refuses a
+/// relative `executable`.
+WriteResult writeDbusServiceFile(const QString &path, const QByteArray &contents,
+                                 const QString &executable);
+
+/// The FileManager1 service file's text. `executable` must be absolute: the bus starts the
 /// service in its own activation environment, whose PATH may not include
 /// `~/.local/bin`.
 QByteArray fileManagerServiceFileContents(const QString &executable);
@@ -124,6 +139,9 @@ QString executableInServiceFile(const QByteArray &contents);
 
 /// Writes the service file for `executable`.
 WriteResult writeFileManagerServiceFile(const Environment &env, const QString &executable);
+
+/// The file's bytes, empty when it can't be read. `exists` says which.
+QByteArray readFile(const QString &path, bool *exists = nullptr);
 
 /// `path` with the home directory shown as `~`, for messages.
 QString abbreviateHome(const QString &path);

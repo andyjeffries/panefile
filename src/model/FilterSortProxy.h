@@ -3,8 +3,13 @@
 #include "core/FuzzyMatcher.h"
 
 #include <QCollator>
+#include <QRegularExpression>
+#include <QSet>
 #include <QSortFilterProxyModel>
 #include <QString>
+#include <QStringList>
+
+#include <optional>
 
 namespace pf {
 
@@ -38,8 +43,9 @@ public:
     void setShowHidden(bool show);
     bool showHidden() const;
 
-    /// How many rows the filter is choosing between: everything the hidden-file
-    /// rule allows, whether or not the text filter accepts it.
+    /// How many rows the filters are choosing between: everything the hidden-file
+    /// rule allows, whether or not the text filter, a dialog's type filter or
+    /// folders-only mode accepts it.
     ///
     /// This is the honest denominator for "n of m" in the panel header. Using
     /// the source model's row count instead counted dotfiles, so a directory
@@ -47,6 +53,19 @@ public:
     /// tells the user something is being withheld without saying what, when in
     /// fact nothing they asked to see is missing at all.
     int countPassingHiddenRule() const;
+
+    /// A file dialog's type filter: only files whose name matches one of these
+    /// wildcard patterns are listed, case-insensitively. Folders are never
+    /// filtered, or there would be no way to move between them. `std::nullopt`
+    /// means no filter; an empty list means no file passes.
+    void setNameFilters(const std::optional<QStringList> &globs);
+
+    /// Lists folders only, for a dialog that is choosing one.
+    void setDirectoriesOnly(bool only);
+
+    /// Whether a dialog's type filter or folders-only mode is hiding anything
+    /// the hidden-file rule would show.
+    bool restrictsListing() const;
 
     void setDirectoriesFirst(bool first);
     bool directoriesFirst() const;
@@ -102,7 +121,17 @@ private:
     /// directory that is exactly the stutter §11 rules out.
     void refilter();
 
+    /// The rules that do not depend on the typed filter: hidden files, the
+    /// name filters and folders-only.
+    bool passesStaticRules(const QModelIndex &sourceIndex) const;
+
     bool m_showHidden = false;
+    bool m_nameFilterActive = false;
+    bool m_allFiles = false;
+    QSet<QString> m_suffixes;
+    int m_maxSuffixDots = 0;
+    QRegularExpression m_otherGlobs;
+    bool m_directoriesOnly = false;
     bool m_directoriesFirst = true;
     bool m_reverseSort = false;
     SortKey m_sortKey = SortKey::Name;

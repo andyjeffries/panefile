@@ -44,6 +44,43 @@ MakeDefaultResult makePanefileDefaultFileManager()
     return result;
 }
 
+bool fileChooserSupported()
+{
+    return false;
+}
+
+QString FileChooserStatus::fallback() const
+{
+    return {};
+}
+
+QString FileChooserStatus::displayName(const QString &backend)
+{
+    return backend;
+}
+
+FileChooserStatus queryFileChooser()
+{
+    return {};
+}
+
+FileChooserSwitchResult makePanefileFileChooser()
+{
+    FileChooserSwitchResult result;
+    result.error = QStringLiteral("Open and Save dialogs can't be replaced on macOS");
+    return result;
+}
+
+int runFileChooserPortal()
+{
+    return 1;
+}
+
+FileChooserSwitchResult restorePanefileFileChooser()
+{
+    return makePanefileFileChooser();
+}
+
 QString fileManagerNameOwner()
 {
     return {};

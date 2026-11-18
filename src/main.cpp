@@ -16,6 +16,7 @@
 #include "core/Logging.h"
 #include "core/StartupTrace.h"
 #include "core/Version.h"
+#include "platform/DefaultFileManager.h"
 #include "platform/Paths.h"
 
 #include <QCoreApplication>
@@ -75,6 +76,19 @@ int handleEarlyExit(const pf::CommandLineOptions &options, int &argc, char **arg
         return options.action == CommandLineAction::MakeDefault
                    ? pf::runMakeDefaultCommand(out, err)
                    : pf::runDefaultStatusCommand(out);
+    }
+    case CommandLineAction::MakeFileChooser:
+    case CommandLineAction::RestoreFileChooser: {
+        const QCoreApplication core(argc, argv);
+        QTextStream out(stdout);
+        QTextStream err(stderr);
+        return options.action == CommandLineAction::MakeFileChooser
+                   ? pf::runMakeFileChooserCommand(out, err)
+                   : pf::runRestoreFileChooserCommand(out, err);
+    }
+    case CommandLineAction::Portal: {
+        const QCoreApplication core(argc, argv);
+        return pf::platform::runFileChooserPortal();
     }
     case CommandLineAction::Run:
     case CommandLineAction::Benchmark:
@@ -158,7 +172,7 @@ int main(int argc, char **argv)
     //
     //    --dbus-service has no request to hand over: its requests arrive later,
     //    over the bus, and it forwards them itself once it holds the name.
-    if (options.action == pf::CommandLineAction::Run && !options.dbusService &&
+    if (options.action == pf::CommandLineAction::Run && !options.dbusService && !options.chooser &&
         handOffToRunningInstance(options)) {
         pf::StartupTrace::mark(pf::StartupPhase::HandedOff);
         return 0;

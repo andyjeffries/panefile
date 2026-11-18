@@ -975,6 +975,18 @@ bool FilePanel::showHidden() const
     return m_proxy->showHidden();
 }
 
+void FilePanel::setNameFilters(const std::optional<QStringList> &globs)
+{
+    m_proxy->setNameFilters(globs);
+    updateHeader();
+}
+
+void FilePanel::setDirectoriesOnly(bool only)
+{
+    m_proxy->setDirectoriesOnly(only);
+    updateHeader();
+}
+
 void FilePanel::toggleShowHidden()
 {
     setShowHidden(!showHidden());
@@ -1481,19 +1493,24 @@ void FilePanel::updateHeader()
     // The count is only walked when a filter is actually active. Without one
     // the proxy shows everything the hidden rule allows, so `shown` is already
     // the whole story.
+    //
+    // While a first scan runs the header shows its own progress and the count
+    // is not walked, since every batch would walk the whole model again; a
+    // rescan keeps the last count until it settles.
     QString counts;
-    if (filterText().isEmpty()) {
-        counts = counted(shown, tr("item"), tr("items"));
-    } else {
-        const int total = m_proxy->countPassingHiddenRule();
-        counts = shown == total ? counted(shown, tr("item"), tr("items"))
-                                : tr("%1 of %2").arg(shown).arg(total);
-    }
-
     // Not for a rescan: those rows are already on screen and being reconciled in
     // place, so announcing a scan would flash the header for no reason.
-    if (m_model->isScanning() && !m_model->isRescanning()) {
+    const bool firstScan = m_model->isScanning() && !m_model->isRescanning();
+    if (firstScan) {
         counts = tr("scanning… %1").arg(shown);
+    } else if (filterText().isEmpty() && !m_proxy->restrictsListing()) {
+        counts = counted(shown, tr("item"), tr("items"));
+    } else {
+        if (!m_model->isScanning()) {
+            m_headerTotal = m_proxy->countPassingHiddenRule();
+        }
+        counts = shown == m_headerTotal ? counted(shown, tr("item"), tr("items"))
+                                        : tr("%1 of %2").arg(shown).arg(m_headerTotal);
     }
 
     // §6.1: "a badge shows in the panel header" while Selection mode is on.

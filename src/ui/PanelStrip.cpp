@@ -1,5 +1,6 @@
 #include "ui/PanelStrip.h"
 
+#include "core/Format.h"
 #include "core/Logging.h"
 #include "ui/FilePanel.h"
 #include "ui/PanelView.h"
@@ -9,6 +10,8 @@
 #include <QListView>
 #include <QResizeEvent>
 #include <QSplitter>
+
+#include <algorithm>
 
 namespace pf::ui {
 namespace {
@@ -42,14 +45,24 @@ PanelStrip::PanelStrip(QWidget *parent)
     layout->addWidget(m_splitter);
 }
 
+void PanelStrip::setPanelLimit(int limit)
+{
+    m_panelLimit = std::clamp(limit, kMinPanels, kMaxPanels);
+}
+
+int PanelStrip::panelLimit() const
+{
+    return m_panelLimit;
+}
+
 FilePanel *PanelStrip::addPanel(const QString &path)
 {
     // §7.6: the Quick Look pane in `panel` dock mode "counts toward
     // panels.max_count", so it occupies one of the ten slots.
-    if (m_panels.size() + (m_quickLookSlot != nullptr ? 1 : 0) >= kMaxPanels) {
+    if (m_panels.size() + (m_quickLookSlot != nullptr ? 1 : 0) >= m_panelLimit) {
         qCDebug(pfUi) << "panel limit reached";
         Q_EMIT panelLimitReached();
-        Q_EMIT statusMessage(tr("At most %1 panels").arg(kMaxPanels));
+        Q_EMIT statusMessage(tr("At most %1").arg(counted(m_panelLimit, tr("panel"), tr("panels"))));
         return nullptr;
     }
 
@@ -57,6 +70,7 @@ FilePanel *PanelStrip::addPanel(const QString &path)
     // Set before the widget is shown, so the very first polish sees it and the
     // stylesheet's [panelActive] rule applies without a repolish.
     panel->setProperty("panelActive", false);
+    panel->setProperty("soloPanel", m_panelLimit == 1);
     m_splitter->addWidget(panel);
     m_panels.append(panel);
     connectPanel(panel);

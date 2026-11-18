@@ -84,6 +84,22 @@ CommandLineOptions parseCommandLine(int argc, const char *const *argv)
             options.action = CommandLineAction::DefaultStatus;
             return options;
         }
+        if (is("--portal")) {
+            options.action = CommandLineAction::Portal;
+            return options;
+        }
+        if (is("--make-file-chooser")) {
+            options.action = CommandLineAction::MakeFileChooser;
+            return options;
+        }
+        if (is("--restore-file-chooser")) {
+            options.action = CommandLineAction::RestoreFileChooser;
+            return options;
+        }
+        if (is("--chooser")) {
+            options.chooser = true;
+            continue;
+        }
         if (is("--dbus-service")) {
             options.dbusService = true;
             continue;
@@ -200,6 +216,17 @@ QString helpText()
         "      --dbus-service    Run as org.freedesktop.FileManager1 for the session bus:\n"
         "                        no window until a request arrives (used by the\n"
         "                        service file --make-default writes)\n"
+        "\n"
+        "Open and Save dialogs (Linux):\n"
+        "      --make-file-chooser\n"
+        "                        Answer other applications' Open and Save dialogs\n"
+        "                        (xdg-desktop-portal FileChooser), then exit\n"
+        "      --restore-file-chooser\n"
+        "                        Put the previous Open and Save dialog back\n"
+        "      --portal          Run as the FileChooser portal backend for the session bus:\n"
+        "                        no window; starts --chooser for each request\n"
+        "      --chooser         Run one Open or Save dialog: the request is JSON on stdin,\n"
+        "                        the result JSON on stdout (started by --portal)\n"
         "\n"
         "Diagnostics:\n"
         "      --startup-trace   Print startup phase timings to stderr\n"

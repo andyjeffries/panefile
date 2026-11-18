@@ -14,7 +14,8 @@ class UndoStack;
 
 namespace pf::platform {
 class FileManagerService;
-}
+struct FileChooserRequest;
+} // namespace pf::platform
 
 #include <QApplication>
 
@@ -44,6 +45,7 @@ class ProcessBar;
 namespace pf {
 
 struct CommandLineOptions;
+class ChooserController;
 class DefaultFileManagerOffer;
 class FileOperations;
 class KeyDispatcher;
@@ -75,6 +77,15 @@ public:
     /// Builds the window and starts the initial scan. Everything here is on the
     /// critical path and is expected to stay short.
     void startUp(const CommandLineOptions &options);
+
+    /// `--chooser`: one Open or Save dialog for `request`, in a window of its
+    /// own with a single panel. The result is written to stdout as JSON and the
+    /// process exits 0 for a pick, 1 for a cancel. Reading the request from
+    /// stdin is startUp()'s business, so tests can supply one directly.
+    void startUpChooser(const platform::FileChooserRequest &request);
+
+    ChooserController *chooser() const;
+    input::ActionRegistry *registry() const;
 
     ui::MainWindow *mainWindow() const;
 
@@ -110,6 +121,13 @@ private:
     void reloadConfiguration(const QStringList &changedFiles);
     void buildInputSystem();
     void registerGlobalActions();
+
+    /// A file dialog's Tab goes to the Name field instead of the next panel.
+    void applyChooserKeys();
+
+    /// Switches the Open and Save dialogs to Panefile or back, off the GUI
+    /// thread, and reports the outcome in the footer.
+    void changeFileChooser(bool toPanefile);
 
     /// Applies `[panels]` and `[thumbnails]` to a newly created panel.
     void configurePanel(ui::FilePanel *panel);
@@ -205,6 +223,7 @@ private:
     std::unique_ptr<fs::UndoStack> m_undoStack;
     std::unique_ptr<platform::FileManagerService> m_fileManagerService;
     std::unique_ptr<DefaultFileManagerOffer> m_defaultOffer;
+    std::unique_ptr<ChooserController> m_chooser;
 
     /// §3.4: created when the first job starts, not at startup. A user who
     /// copies nothing never pays for it.
@@ -230,6 +249,10 @@ private:
     bool m_quitAfterPaint = false;
     bool m_firstPaintSeen = false;
     bool m_styleInstalled = false;
+
+    /// Running as a file dialog: no session, no single-instance socket, one
+    /// panel.
+    bool m_chooserMode = false;
 
     /// Started by the session bus with --dbus-service.
     bool m_dbusService = false;

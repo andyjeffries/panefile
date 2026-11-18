@@ -4,6 +4,8 @@
 #include "model/DirectoryModel.h"
 #include "model/FileEntry.h"
 
+#include <algorithm>
+
 namespace pf {
 
 SortKey sortKeyFromName(const QString &name)
@@ -197,6 +199,84 @@ int FilterSortProxy::countPassingHiddenRule() const
     return count;
 }
 
+void FilterSortProxy::setNameFilters(const std::optional<QStringList> &globs)
+{
+    m_nameFilterActive = globs.has_value();
+    m_allFiles = false;
+    m_suffixes.clear();
+    m_maxSuffixDots = 0;
+    m_otherGlobs = QRegularExpression();
+
+    // Most globs are "*.ext", which a set lookup answers without a regex. The
+    // rest share one alternation, so a row costs one match, not one per glob.
+    QStringList patterns;
+    for (const QString &glob : globs.value_or(QStringList{})) {
+        if (glob == QLatin1String("*")) {
+            m_allFiles = true;
+        } else if (glob.startsWith(QLatin1String("*.")) && glob.size() > 2 &&
+                   !glob.mid(2).contains(QRegularExpression(QStringLiteral("[*?\\[]")))) {
+            const QString suffix = glob.mid(2).toLower();
+            m_suffixes.insert(suffix);
+            m_maxSuffixDots = std::max<int>(m_maxSuffixDots, suffix.count(QLatin1Char('.')) + 1);
+        } else {
+            patterns << QRegularExpression::wildcardToRegularExpression(glob);
+        }
+    }
+    if (!patterns.isEmpty()) {
+        m_otherGlobs = QRegularExpression(QStringLiteral("(?:") + patterns.join(QStringLiteral(")|(?:")) +
+                                              QLatin1Char(')'),
+                                          QRegularExpression::CaseInsensitiveOption);
+    }
+    refilter();
+}
+
+void FilterSortProxy::setDirectoriesOnly(bool only)
+{
+    if (m_directoriesOnly == only) {
+        return;
+    }
+    m_directoriesOnly = only;
+    refilter();
+}
+
+bool FilterSortProxy::restrictsListing() const
+{
+    return m_nameFilterActive || m_directoriesOnly;
+}
+
+bool FilterSortProxy::passesStaticRules(const QModelIndex &sourceIndex) const
+{
+    const QString name = sourceIndex.data(DirectoryModel::NameRole).toString();
+
+    if (!m_showHidden && name.startsWith(QLatin1Char('.'))) {
+        return false;
+    }
+
+    const bool isDir = sourceIndex.data(DirectoryModel::IsDirRole).toBool();
+    if (m_directoriesOnly && !isDir) {
+        return false;
+    }
+    if (!isDir && m_nameFilterActive) {
+        if (m_allFiles) {
+            return true;
+        }
+        if (!m_suffixes.isEmpty()) {
+            // Every suffix of the name that follows a dot, longest first, but
+            // only as many as the longest glob could match.
+            qsizetype dot = name.lastIndexOf(QLatin1Char('.'));
+            for (int tried = 0; dot >= 0 && tried < m_maxSuffixDots; ++tried) {
+                if (m_suffixes.contains(name.mid(dot + 1).toLower())) {
+                    return true;
+                }
+                dot = dot > 0 ? name.lastIndexOf(QLatin1Char('.'), dot - 1) : -1;
+            }
+        }
+        return m_otherGlobs.isValid() && !m_otherGlobs.pattern().isEmpty() &&
+               m_otherGlobs.match(name).hasMatch();
+    }
+    return true;
+}
+
 bool FilterSortProxy::filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const
 {
     const QModelIndex index = sourceModel()->index(sourceRow, 0, sourceParent);
@@ -204,19 +284,14 @@ bool FilterSortProxy::filterAcceptsRow(int sourceRow, const QModelIndex &sourceP
         return false;
     }
 
-    const QString name = index.data(DirectoryModel::NameRole).toString();
-
-    // 1. Hidden-file filter.
-    if (!m_showHidden && name.startsWith(QLatin1Char('.'))) {
+    // 1. Hidden files, a dialog's type filter and folders-only.
+    if (!passesStaticRules(index)) {
         return false;
     }
 
     // 2. Search filter (§7.8).
-    if (!m_filterText.isEmpty() && !matchFor(name).matched) {
-        return false;
-    }
-
-    return true;
+    return m_filterText.isEmpty() ||
+           matchFor(index.data(DirectoryModel::NameRole).toString()).matched;
 }
 
 QVariant FilterSortProxy::data(const QModelIndex &index, int role) const

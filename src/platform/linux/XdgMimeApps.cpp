@@ -25,18 +25,6 @@ QStringList absoluteEntries(const QByteArray &raw, const QStringList &fallback)
     return result.isEmpty() ? fallback : result;
 }
 
-QByteArray readFile(const QString &path, bool *exists = nullptr)
-{
-    QFile file(path);
-    if (exists != nullptr) {
-        *exists = file.exists();
-    }
-    if (!file.open(QIODevice::ReadOnly)) {
-        return {};
-    }
-    return file.readAll();
-}
-
 /// A line without its `\r`, if it has one. The `\r` itself is never removed
 /// from the file: lines are edited in place, and CRLF survives.
 QByteArray withoutCarriageReturn(const QByteArray &line)
@@ -277,6 +265,18 @@ bool isHidden(const QString &desktopFile)
 }
 
 } // namespace
+
+QByteArray readFile(const QString &path, bool *exists)
+{
+    QFile file(path);
+    if (exists != nullptr) {
+        *exists = file.exists();
+    }
+    if (!file.open(QIODevice::ReadOnly)) {
+        return {};
+    }
+    return file.readAll();
+}
 
 Environment Environment::fromProcess()
 {
@@ -548,22 +548,35 @@ WriteResult writeFileAtomically(const QString &path, const QByteArray &contents)
     return result;
 }
 
+QString dbusServiceFilePath(const Environment &env, const QString &busName)
+{
+    return env.dataHome + QStringLiteral("/dbus-1/services/") + busName +
+           QStringLiteral(".service");
+}
+
+QByteArray dbusServiceFileContents(const QString &busName, const QString &executable,
+                                   const QString &flag, const QString &comment)
+{
+    return QStringLiteral("%1"
+                          "[D-BUS Service]\n"
+                          "Name=%2\n"
+                          "Exec=%3 %4\n")
+        .arg(comment, busName, quoteForExec(executable), flag)
+        .toUtf8();
+}
+
 QString fileManagerServiceFilePath(const Environment &env)
 {
-    return env.dataHome + QStringLiteral("/dbus-1/services/") + QLatin1String(kFileManagerBusName) +
-           QStringLiteral(".service");
+    return dbusServiceFilePath(env, QLatin1String(kFileManagerBusName));
 }
 
 QByteArray fileManagerServiceFileContents(const QString &executable)
 {
-    return QStringLiteral("# Written by Panefile when it was made the default file manager.\n"
-                          "# Delete this file to hand \"Show in folder\" back to the system's\n"
-                          "# file manager.\n"
-                          "[D-BUS Service]\n"
-                          "Name=%1\n"
-                          "Exec=%2 --dbus-service\n")
-        .arg(QLatin1String(kFileManagerBusName), quoteForExec(executable))
-        .toUtf8();
+    return dbusServiceFileContents(
+        QLatin1String(kFileManagerBusName), executable, QStringLiteral("--dbus-service"),
+        QStringLiteral("# Written by Panefile when it was made the default file manager.\n"
+                       "# Delete this file to hand \"Show in folder\" back to the system's\n"
+                       "# file manager.\n"));
 }
 
 QString executableInServiceFile(const QByteArray &contents)
@@ -607,9 +620,9 @@ QString executableInServiceFile(const QByteArray &contents)
     return program;
 }
 
-WriteResult writeFileManagerServiceFile(const Environment &env, const QString &executable)
+WriteResult writeDbusServiceFile(const QString &path, const QByteArray &contents,
+                                 const QString &executable)
 {
-    const QString path = fileManagerServiceFilePath(env);
     if (!QDir::isAbsolutePath(executable)) {
         WriteResult result;
         result.path = path;
@@ -618,7 +631,6 @@ WriteResult writeFileManagerServiceFile(const Environment &env, const QString &e
         return result;
     }
 
-    const QByteArray contents = fileManagerServiceFileContents(executable);
     bool exists = false;
     if (readFile(path, &exists) == contents && exists) {
         WriteResult unchanged;
@@ -627,6 +639,12 @@ WriteResult writeFileManagerServiceFile(const Environment &env, const QString &e
         return unchanged;
     }
     return writeFileAtomically(path, contents);
+}
+
+WriteResult writeFileManagerServiceFile(const Environment &env, const QString &executable)
+{
+    return writeDbusServiceFile(fileManagerServiceFilePath(env),
+                                fileManagerServiceFileContents(executable), executable);
 }
 
 QString abbreviateHome(const QString &path)

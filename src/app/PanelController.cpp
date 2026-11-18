@@ -36,6 +36,11 @@ ui::FilePanel *PanelController::focused() const
     return m_strip == nullptr ? nullptr : m_strip->focusedPanel();
 }
 
+void PanelController::setSingleList(bool single)
+{
+    m_singleList = single;
+}
+
 void PanelController::openPath(const QString &path, bool inNewPanel)
 {
     if (m_strip == nullptr) {
@@ -43,7 +48,11 @@ void PanelController::openPath(const QString &path, bool inNewPanel)
     }
 
     if (inNewPanel || m_strip->focusedPanel() == nullptr) {
-        m_strip->addPanel(path);
+        // At the panel limit there is nowhere to add one, so the place opens
+        // in the panel there is.
+        if (m_strip->addPanel(path) == nullptr && m_strip->focusedPanel() != nullptr) {
+            m_strip->focusedPanel()->navigateTo(path);
+        }
         return;
     }
 
@@ -84,21 +93,21 @@ void PanelController::changeFolderIcon(ui::FilePanel *panel)
     }
     // Rebound each time: the target is whatever the cursor is on now.
     disconnect(m_folderIconModal, &ui::FolderIconModal::chosen, nullptr, nullptr);
-    connect(m_folderIconModal, &ui::FolderIconModal::chosen, this,
-            [this, path](const QString &glyph) {
-                const QString name = QFileInfo(path).fileName();
-                if (glyph.isEmpty()) {
-                    FolderIconStore::instance().clear(path);
-                    Q_EMIT statusMessage(tr("Folder icon reset for %1").arg(name));
-                } else {
-                    if (!FolderIconStore::instance().set(path, glyph)) {
-                        Q_EMIT statusMessage(tr("Couldn't save the folder icon for %1").arg(name));
-                        return;
-                    }
-                    Q_EMIT statusMessage(tr("Folder icon for %1: %2")
-                                             .arg(name, FolderIconStore::displayName(glyph)));
+    connect(
+        m_folderIconModal, &ui::FolderIconModal::chosen, this, [this, path](const QString &glyph) {
+            const QString name = QFileInfo(path).fileName();
+            if (glyph.isEmpty()) {
+                FolderIconStore::instance().clear(path);
+                Q_EMIT statusMessage(tr("Folder icon reset for %1").arg(name));
+            } else {
+                if (!FolderIconStore::instance().set(path, glyph)) {
+                    Q_EMIT statusMessage(tr("Couldn't save the folder icon for %1").arg(name));
+                    return;
                 }
-            });
+                Q_EMIT statusMessage(
+                    tr("Folder icon for %1: %2").arg(name, FolderIconStore::displayName(glyph)));
+            }
+        });
     m_folderIconModal->open(path, FolderIconStore::instance().glyphFor(path));
 }
 
@@ -305,7 +314,8 @@ void PanelController::registerActions()
         }
         const QString glyph = FolderIconStore::instance().glyphFor(panel->cursorPath());
         return glyph.isEmpty() ? panel->cursorName()
-                               : panel->cursorName() + QStringLiteral(" · ") + FolderIconStore::displayName(glyph);
+                               : panel->cursorName() + QStringLiteral(" · ") +
+                                     FolderIconStore::displayName(glyph);
     });
 
     reg("open_terminal_here", tr("Open a terminal in this directory"), ActionCategory::General,
@@ -362,29 +372,33 @@ void PanelController::registerActions()
         onPanel([this](ui::FilePanel *panel) { showSortMenu(panel); }));
 
     // ------------------------------------------------------------------ panels
-    reg(
-        "create_new_file_panel", tr("Open a new panel at home"), ActionCategory::Panels,
-        [this] { m_strip->addPanel(QDir::homePath()); },
-        [this] { return m_strip->count() < ui::PanelStrip::kMaxPanels; });
+    // A file dialog has one list: none of these exist there, so they are in no
+    // menu, palette or help, and their keys do nothing.
+    if (!m_singleList) {
+        reg(
+            "create_new_file_panel", tr("Open a new panel at home"), ActionCategory::Panels,
+            [this] { m_strip->addPanel(QDir::homePath()); },
+            [this] { return m_strip->count() < ui::PanelStrip::kMaxPanels; });
 
-    reg(
-        "split_file_panel", tr("Duplicate the focused panel"), ActionCategory::Panels,
-        [this] { m_strip->splitFocusedPanel(); },
-        [this] { return m_strip->count() < ui::PanelStrip::kMaxPanels; });
+        reg(
+            "split_file_panel", tr("Duplicate the focused panel"), ActionCategory::Panels,
+            [this] { m_strip->splitFocusedPanel(); },
+            [this] { return m_strip->count() < ui::PanelStrip::kMaxPanels; });
 
-    reg(
-        "close_file_panel", tr("Close the focused panel"), ActionCategory::Panels,
-        [this] { m_strip->closeFocusedPanel(); },
-        [this] { return m_strip->count() > ui::PanelStrip::kMinPanels; });
+        reg(
+            "close_file_panel", tr("Close the focused panel"), ActionCategory::Panels,
+            [this] { m_strip->closeFocusedPanel(); },
+            [this] { return m_strip->count() > ui::PanelStrip::kMinPanels; });
 
-    reg(
-        "next_file_panel", tr("Focus the next panel"), ActionCategory::Panels,
-        [this] { m_strip->focusNext(); }, [this] { return m_strip->count() > 1; });
-    reg(
-        "previous_file_panel", tr("Focus the previous panel"), ActionCategory::Panels,
-        [this] { m_strip->focusPrevious(); }, [this] { return m_strip->count() > 1; });
-    reg("equalise_panels", tr("Reset the panels to equal widths"), ActionCategory::Panels,
-        [this] { m_strip->equalise(); });
+        reg(
+            "next_file_panel", tr("Focus the next panel"), ActionCategory::Panels,
+            [this] { m_strip->focusNext(); }, [this] { return m_strip->count() > 1; });
+        reg(
+            "previous_file_panel", tr("Focus the previous panel"), ActionCategory::Panels,
+            [this] { m_strip->focusPrevious(); }, [this] { return m_strip->count() > 1; });
+        reg("equalise_panels", tr("Reset the panels to equal widths"), ActionCategory::Panels,
+            [this] { m_strip->equalise(); });
+    }
 
     reg("focus_on_sidebar", tr("Focus the sidebar"), ActionCategory::Panels, [this] {
         if (m_sidebar != nullptr && m_sidebar->isVisible()) {

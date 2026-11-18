@@ -40,6 +40,11 @@ public:
     /// Registers every panel, movement and view action with the registry.
     void registerActions();
 
+    /// A file dialog has one list and no panels to create, split, close or
+    /// cycle: those actions are switched off, which also drops them from the
+    /// command palette. Set before registerActions().
+    void setSingleList(bool single);
+
     /// Opens a path according to the placement rules the caller has already
     /// resolved: in the focused panel, or in a new one (§10.2).
     void openPath(const QString &path, bool inNewPanel);
@@ -66,6 +71,7 @@ private:
 
     ui::FolderIconModal *m_folderIconModal = nullptr;
 
+    bool m_singleList = false;
     ui::MainWindow *m_window = nullptr;
     ui::PanelStrip *m_strip = nullptr;
     ui::Sidebar *m_sidebar = nullptr;

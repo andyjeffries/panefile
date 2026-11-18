@@ -4,6 +4,7 @@
 #include "config/TomlWriter.h"
 #include "core/Logging.h"
 #include "core/WorkerPools.h"
+#include "platform/DefaultFileManager.h"
 #include "platform/FileManagerService.h"
 #include "platform/Paths.h"
 #include "ui/DefaultFileManagerBar.h"
@@ -374,6 +375,57 @@ int runMakeDefaultCommand(QTextStream &out, QTextStream &err)
     return 0;
 }
 
+namespace {
+
+void printFileChooserSwitch(QTextStream &out, const platform::FileChooserSwitchResult &result)
+{
+    if (!result.portalFile.isEmpty()) {
+        out << "portal file:      " << tildePath(result.portalFile) << '\n'
+            << "service file:     " << tildePath(result.serviceFile) << '\n';
+    }
+    if (!result.configFile.isEmpty()) {
+        out << "portals.conf:     " << tildePath(result.configFile) << '\n';
+    }
+    if (!result.restartNote.isEmpty()) {
+        out << result.restartNote << "; the change takes effect after your next login.\n";
+    }
+}
+
+} // namespace
+
+int runMakeFileChooserCommand(QTextStream &out, QTextStream &err)
+{
+    if (!platform::fileChooserSupported()) {
+        err << "pf: " << platform::makePanefileFileChooser().error << '\n';
+        return 1;
+    }
+    const platform::FileChooserSwitchResult result = platform::makePanefileFileChooser();
+    if (!result.ok) {
+        err << "pf: couldn't make Panefile the Open and Save dialog: " << result.error << '\n';
+        return 1;
+    }
+    printFileChooserSwitch(out, result);
+    out << "Open and Save dialogs from applications that use the desktop portal now open in "
+           "Panefile.\n";
+    return 0;
+}
+
+int runRestoreFileChooserCommand(QTextStream &out, QTextStream &err)
+{
+    if (!platform::fileChooserSupported()) {
+        err << "pf: " << platform::restorePanefileFileChooser().error << '\n';
+        return 1;
+    }
+    const platform::FileChooserSwitchResult result = platform::restorePanefileFileChooser();
+    if (!result.ok) {
+        err << "pf: couldn't restore the Open and Save dialog: " << result.error << '\n';
+        return 1;
+    }
+    printFileChooserSwitch(out, result);
+    out << "Open and Save dialogs are back to what they were.\n";
+    return 0;
+}
+
 int runDefaultStatusCommand(QTextStream &out)
 {
     if (!platform::defaultFileManagerSupported()) {
@@ -410,6 +462,33 @@ int runDefaultStatusCommand(QTextStream &out)
     }
     out << (status.isDefault() ? "Panefile is the default file manager.\n"
                                : "Panefile is not the default file manager.\n");
+
+    const platform::FileChooserStatus chooser = platform::queryFileChooser();
+    out << "\nportals.conf:     "
+        << (chooser.configFile.isEmpty() ? QStringLiteral("none") : tildePath(chooser.configFile))
+        << '\n'
+        << "FileChooser:      "
+        << (chooser.backends.isEmpty() ? QStringLiteral("not set") : chooser.backends.join(u';'))
+        << '\n'
+        << "portal file:      " << tildePath(chooser.portalFile)
+        << (chooser.portalFileExists ? "" : " (missing)") << '\n'
+        << "service file:     " << tildePath(chooser.serviceFile);
+    if (chooser.serviceExecutable.isEmpty()) {
+        out << " (missing)\n";
+    } else {
+        out << "\n  runs:           " << chooser.serviceExecutable
+            << (chooser.serviceExecutableExists ? "" : " (not a pf that exists)") << '\n';
+    }
+    if (chooser.isPanefile()) {
+        out << "Panefile is the Open and Save dialog"
+            << (chooser.fallback().isEmpty()
+                    ? QString()
+                    : QStringLiteral(", with %1 as the fallback")
+                          .arg(platform::FileChooserStatus::displayName(chooser.fallback())))
+            << ".\n";
+    } else {
+        out << "Panefile is not the Open and Save dialog.\n";
+    }
     return 0;
 }
 

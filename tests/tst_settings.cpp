@@ -1,16 +1,23 @@
+#include "config/StyleSheetBuilder.h"
 #include "input/ActionRegistry.h"
 #include "input/DefaultKeymap.h"
 #include "input/Keymap.h"
 #include "config/TomlWriter.h"
+#include "platform/DefaultFileManager.h"
 #include "ui/MainWindow.h"
+#include "ui/ThemePalette.h"
 #include "ui/modals/SettingsWindow.h"
 
 #include <QCheckBox>
 #include <QCoreApplication>
 #include <QFile>
+#include <QFormLayout>
 #include <QLabel>
 #include <QListWidget>
+#include <QImage>
 #include <QPushButton>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -78,6 +85,175 @@ private Q_SLOTS:
 
         QVERIFY2(!QFile::exists(config), "opening settings must not create config.toml");
         QVERIFY2(!QFile::exists(theme), "opening settings must not create theme.toml");
+    }
+
+    /// The Open and Save dialogs row exists where the portal can be switched, and
+    /// its button asks for the switch.
+    void theFileChooserRowAsksToSwitch()
+    {
+        auto *status = m_settings->findChild<QLabel *>(QStringLiteral("settingsFileChooserStatus"));
+        auto *button =
+            m_settings->findChild<QPushButton *>(QStringLiteral("settingsSwitchFileChooser"));
+        if (!platform::fileChooserSupported()) {
+            QVERIFY(status == nullptr && button == nullptr);
+            return;
+        }
+        QVERIFY(status != nullptr && button != nullptr);
+
+        m_settings->present();
+        QTRY_VERIFY_WITH_TIMEOUT(button->isEnabled() && !status->text().isEmpty(), 5000);
+        const bool toPanefile = button->text() == QLatin1String("Use Panefile");
+
+        QSignalSpy spy(m_settings, &ui::SettingsWindow::fileChooserChangeRequested);
+        button->click();
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.first().first().toBool(), toPanefile);
+        QVERIFY(!button->isEnabled());
+    }
+
+    /// The note under the row is shown whole on two lines at the usual window
+    /// size, and the page scrolls rather than squeezing it when the card is short.
+    void theFileChooserNoteIsFullyShown()
+    {
+        if (!platform::fileChooserSupported()) {
+            return;
+        }
+        qApp->setStyleSheet(config::buildStyleSheet(ui::currentPalette()));
+        auto *status = m_settings->findChild<QLabel *>(QStringLiteral("settingsFileChooserStatus"));
+        auto *button =
+            m_settings->findChild<QPushButton *>(QStringLiteral("settingsSwitchFileChooser"));
+        QLabel *note = nullptr;
+        for (auto *label : m_settings->findChildren<QLabel *>(QStringLiteral("settingsNote"))) {
+            if (label->text().startsWith(QLatin1String("Used by"))) {
+                note = label;
+            }
+        }
+        QVERIFY(status != nullptr && button != nullptr && note != nullptr);
+
+        m_window->resize(1100, 760);
+        m_window->show();
+        QVERIFY(QTest::qWaitForWindowExposed(m_window.get()));
+        m_settings->present();
+        m_settings->findChildren<QPushButton *>(QStringLiteral("settingsTab")).at(1)->click();
+        QTRY_VERIFY_WITH_TIMEOUT(!status->text().isEmpty(), 5000);
+
+        QScrollArea *scroll = nullptr;
+        for (QWidget *w = note->parentWidget(); w != nullptr && scroll == nullptr;
+             w = w->parentWidget()) {
+            scroll = qobject_cast<QScrollArea *>(w);
+        }
+        QVERIFY(scroll != nullptr);
+        QWidget *page = scroll->widget();
+        auto *form = page->findChild<QFormLayout *>();
+        QVERIFY(form != nullptr);
+        auto *defaultStatus =
+            m_settings->findChild<QLabel *>(QStringLiteral("settingsDefaultFileManagerStatus"));
+
+        // 1 when every row is stacked, 0 when none is, -1 when they differ.
+        auto wrapState = [form] {
+            int state = -2;
+            for (int r = 0; r < form->rowCount(); ++r) {
+                auto *label = form->itemAt(r, QFormLayout::LabelRole);
+                auto *field = form->itemAt(r, QFormLayout::FieldRole);
+                if (label == nullptr || field == nullptr || label->isEmpty()
+                    || field->isEmpty()) {
+                    continue;
+                }
+                const int wrapped = label->geometry().bottom() < field->geometry().top() ? 1 : 0;
+                if (state != -2 && state != wrapped) {
+                    return -1;
+                }
+                state = wrapped;
+            }
+            return state;
+        };
+        auto noteLinesUp = [&] {
+            return note->mapTo(page, QPoint()).x() == status->mapTo(page, QPoint()).x();
+        };
+
+        for (const bool on : {false, true}) {
+            const QString chooserText = on ? QStringLiteral("Panefile, with GTK as the fallback")
+                                           : QStringLiteral("GTK");
+            auto setTexts = [&] {
+                status->setText(chooserText);
+                button->setText(on ? QStringLiteral("Use GTK") : QStringLiteral("Use Panefile"));
+                if (defaultStatus != nullptr) {
+                    defaultStatus->setText(
+                        QStringLiteral("Panefile — “Show in folder” is not set up"));
+                }
+            };
+            setTexts();
+            QMap<int, int> wrapAtWidth;
+            for (int pass = 0; pass < 2; ++pass) {
+                for (int i = 0; i <= 60; ++i) {
+                    const int width = pass == 0 ? 800 + i * 5 : 1100 - i * 5;
+                    m_window->resize(width, 640);
+                    setTexts();
+                    QCoreApplication::processEvents();
+                    QCOMPARE(scroll->horizontalScrollBar()->maximum(), 0);
+                    for (QLabel *l : {status, defaultStatus}) {
+                        if (l != nullptr) {
+                            QVERIFY2(l->width() >= l->minimumSizeHint().width(),
+                                     qPrintable(QStringLiteral("%1px: %2 < %3")
+                                                    .arg(width).arg(l->width())
+                                                    .arg(l->minimumSizeHint().width())));
+                        }
+                    }
+                    const int state = wrapState();
+                    QVERIFY2(state >= 0, qPrintable(QString::number(width)));
+                    QVERIFY2(noteLinesUp(), qPrintable(QString::number(width)));
+                    QVERIFY(note->height() >= note->heightForWidth(note->width()));
+                    if (pass == 0) {
+                        wrapAtWidth[width] = state;
+                    } else {
+                        QVERIFY2(wrapAtWidth.value(width) == state, qPrintable(QString::number(width)));
+                    }
+                }
+            }
+        }
+
+        for (const QSize &size : {QSize(800, 600), QSize(640, 480)}) {
+            m_window->resize(size);
+            QCoreApplication::processEvents();
+            QVERIFY(wrapState() >= 0);
+            QVERIFY(noteLinesUp());
+            if (size.width() == 640) {
+                QCOMPARE(wrapState(), 1);
+                for (QWidget *w : {static_cast<QWidget *>(status), static_cast<QWidget *>(note)}) {
+                    QVERIFY(w->mapTo(page, QPoint()).x() <= page->layout()->contentsMargins().left() + 1);
+                }
+            }
+        }
+
+        for (const QSize &size : {QSize(1920, 1080), QSize(2560, 1440)}) {
+            m_window->resize(size);
+            QCoreApplication::processEvents();
+            QVERIFY2(note->height() >= note->heightForWidth(note->width()),
+                     qPrintable(QString::number(size.width())));
+        }
+
+        m_window->resize(1100, 760);
+        QCoreApplication::processEvents();
+        QCOMPARE(wrapState(), 0);
+        QVERIFY(note->height() <= 2 * note->fontMetrics().lineSpacing() + 4);
+        QCOMPARE(scroll->verticalScrollBar()->maximum(), 0);
+        QCOMPARE(scroll->horizontalScrollBar()->maximum(), 0);
+        QVERIFY(button->geometry().left() - status->geometry().right() <= 24);
+        for (QLabel *l : page->findChildren<QLabel *>()) {
+            if (l->text() == QLatin1String("Open and Save dialogs")) {
+                QVERIFY(qAbs(l->mapTo(page, l->rect().center()).y()
+                             - status->mapTo(page, status->rect().center()).y()) <= 3);
+            }
+        }
+        const QImage img = page->grab().toImage();
+        const QColor bg(ui::currentPalette().background);
+        QVERIFY(bg != QColor(ui::currentPalette().surface));
+        QCOMPARE(QColor(img.pixel(page->width() - 40, page->height() / 2)), bg);
+        QWidget *row = status->parentWidget();
+        const QPoint inRow =
+            row->mapTo(page, QPoint(status->geometry().right() + 4, row->height() / 2));
+        QCOMPARE(QColor(img.pixel(inRow)), bg);
+        qApp->setStyleSheet({});
     }
 
     /// And changing a control does write, to the right key.

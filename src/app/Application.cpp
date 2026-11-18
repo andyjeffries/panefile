@@ -5,6 +5,7 @@
 #include "input/Chord.h"
 #include "input/DefaultKeymap.h"
 #include "input/Keymap.h"
+#include "app/ChooserController.h"
 #include "app/CommandLine.h"
 #include "app/DefaultFileManagerOffer.h"
 #include "app/FileOperations.h"
@@ -29,9 +30,12 @@
 #include "model/FilterSortProxy.h"
 #include "model/SymbolicIcon.h"
 #include "model/ThumbnailCache.h"
+#include "platform/DefaultFileManager.h"
+#include "platform/FileChooserRequest.h"
 #include "platform/FileManagerService.h"
 #include "platform/Launcher.h"
 #include "platform/Paths.h"
+#include "ui/ChooserBar.h"
 #include "ui/DefaultFileManagerBar.h"
 #include "ui/FilePanel.h"
 #include "ui/MainWindow.h"
@@ -40,6 +44,7 @@
 #include "ui/PanelView.h"
 #include "ui/ProcessBar.h"
 #include "ui/Sidebar.h"
+#include "ui/SidebarLayout.h"
 #include "ui/ThemePalette.h"
 #include "ui/modals/CommandPaletteModal.h"
 #include "ui/modals/ConfirmModal.h"
@@ -48,6 +53,7 @@
 #include "ui/modals/SettingsWindow.h"
 
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QFont>
 #include <QKeyEvent>
@@ -58,8 +64,12 @@
 #include <QTimer>
 #include <QWindow>
 
+#include <QPointer>
+#include <QThreadPool>
+
 #include <array>
 #include <csignal>
+#include <optional>
 
 #include <sys/socket.h>
 #include <unistd.h>
@@ -85,6 +95,16 @@ Application::~Application() = default;
 ui::MainWindow *Application::mainWindow() const
 {
     return m_mainWindow.get();
+}
+
+input::ActionRegistry *Application::registry() const
+{
+    return m_registry.get();
+}
+
+ChooserController *Application::chooser() const
+{
+    return m_chooser.get();
 }
 
 QString Application::initialPath(const CommandLineOptions &options)
@@ -120,6 +140,7 @@ void Application::buildInputSystem()
     m_panelController =
         std::make_unique<PanelController>(m_mainWindow.get(), m_mainWindow->panelStrip(),
                                           m_mainWindow->sidebar(), m_registry.get(), this);
+    m_panelController->setSingleList(m_chooserMode);
 
     connect(m_panelController.get(), &PanelController::statusMessage, m_mainWindow.get(),
             &ui::MainWindow::showStatusMessage);
@@ -184,6 +205,26 @@ void Application::buildInputSystem()
             [this](ui::FilePanel *) { updateActiveLayers(); });
 
     registerGlobalActions();
+    applyChooserKeys();
+}
+
+void Application::applyChooserKeys()
+{
+    if (!m_chooserMode) {
+        return;
+    }
+    const QString name = QStringLiteral("focus_chooser_name");
+    const auto bindOnce = [this, &name](const QString &text) {
+        const std::optional<input::Binding> binding = input::parseBinding(text);
+        if (binding.has_value() &&
+            !m_keymap->bindingsFor(input::KeymapLayer::Global, name).contains(*binding)) {
+            m_keymap->unbind(input::KeymapLayer::Global, QStringLiteral("next_file_panel"));
+            m_keymap->unbind(input::KeymapLayer::Global, QStringLiteral("previous_file_panel"));
+            m_keymap->bind(input::KeymapLayer::Global, *binding, name);
+        }
+    };
+    bindOnce(QStringLiteral("Tab"));
+    bindOnce(QStringLiteral("Shift+Tab"));
 }
 
 void Application::updateActiveLayers()
@@ -233,6 +274,9 @@ void Application::configurePanel(ui::FilePanel *panel)
     // The panel has always emitted this; nothing was listening, so Enter and
     // double-click on a file silently did nothing.
     connect(panel, &ui::FilePanel::fileActivated, this, [this](const QString &path) {
+        if (m_chooser != nullptr && m_chooser->claimActivation(path)) {
+            return;
+        }
         if (!platform::Launcher::openWithDefaultApplication(path)) {
             m_mainWindow->showStatusMessage(
                 tr("Could not open %1").arg(QFileInfo(path).fileName()));
@@ -331,11 +375,33 @@ void Application::registerGlobalActions()
             // abandoned without pasting it somewhere to get rid of it.
             if (m_fileOperations != nullptr && m_fileOperations->hasPendingClipboard()) {
                 m_fileOperations->clearClipboard();
+                return;
+            }
+
+            // A file dialog has nothing left to back out of: Esc is Cancel.
+            if (m_chooser != nullptr) {
+                m_chooser->cancel();
             }
         });
 
     m_registry->registerAction(QStringLiteral("quit"), tr("Quit Panefile"), ActionCategory::General,
-                               [] { quit(); });
+                               [this] {
+                                   if (m_chooser != nullptr) {
+                                       m_chooser->cancel();
+                                   } else {
+                                       quit();
+                                   }
+                               });
+
+    if (m_chooserMode) {
+        m_registry->registerAction(QStringLiteral("focus_chooser_name"),
+                                   tr("Focus the file name field"), ActionCategory::General,
+                                   [this] {
+                                       if (m_chooser != nullptr) {
+                                           m_chooser->focusName();
+                                       }
+                                   });
+    }
 
     m_registry->registerAction(QStringLiteral("toggle_sidebar"), tr("Show or hide the sidebar"),
                                ActionCategory::View, [this] { m_mainWindow->toggleSidebar(); });
@@ -566,6 +632,8 @@ void Application::loadHotkeys()
         qCWarning(pfConfig) << issue.toString();
     }
 
+    applyChooserKeys();
+
     m_dispatcher->setSequenceTimeout(m_settings.keys.sequenceTimeoutMs);
     m_dispatcher->setAmbiguityTimeout(m_settings.keys.ambiguityTimeoutMs);
     // Qt's own setting for how long typed letters run together, so the
@@ -642,8 +710,99 @@ void Application::reloadConfiguration(const QStringList &changedFiles)
     }
 }
 
+void Application::changeFileChooser(bool toPanefile)
+{
+    // The portal restart can take seconds, so it runs off the GUI thread and
+    // reports back.
+    const QPointer<Application> self(this);
+    WorkerPools::acquire("pf-default-fm", 1)->start([self, toPanefile] {
+        const platform::FileChooserSwitchResult result =
+            toPanefile ? platform::makePanefileFileChooser()
+                       : platform::restorePanefileFileChooser();
+        QMetaObject::invokeMethod(
+            self,
+            [self, result, toPanefile] {
+                if (self.isNull()) {
+                    return;
+                }
+                QString message;
+                if (!result.ok) {
+                    message = tr("Couldn't switch the Open and Save dialogs: %1").arg(result.error);
+                } else if (!result.restartNote.isEmpty()) {
+                    message = tr("%1; takes effect after your next login").arg(result.restartNote);
+                } else {
+                    message = toPanefile ? tr("Open and Save dialogs now open in Panefile")
+                                         : tr("Open and Save dialogs are back to what they were");
+                }
+                self->m_mainWindow->showStatusMessage(message);
+                if (self->m_settingsWindow != nullptr) {
+                    self->m_settingsWindow->refreshFileChooserStatus();
+                }
+            },
+            Qt::QueuedConnection);
+    });
+}
+
+void Application::startUpChooser(const platform::FileChooserRequest &request)
+{
+    m_chooserMode = true;
+
+    // Before the window exists, so Wayland's app id is the one a window rule
+    // can float.
+    setDesktopFileName(QStringLiteral("panefile-chooser"));
+
+    installSignalHandling();
+    connect(this, &QCoreApplication::aboutToQuit, this, [] { WorkerPools::drainAll(); });
+
+    loadConfiguration();
+
+    m_mainWindow = std::make_unique<ui::MainWindow>();
+    m_mainWindow->resize(1000, 640);
+    m_mainWindow->panelStrip()->setPanelLimit(1);
+    connect(m_mainWindow.get(), &ui::MainWindow::firstPaintCompleted, this,
+            &Application::onFirstPaint);
+
+    buildInputSystem();
+
+    m_mainWindow->sidebar()->setLayout(ui::SidebarLayout::load());
+    m_mainWindow->panelStrip()->addPanel(ChooserController::startFolder(request));
+
+    m_chooser = std::make_unique<ChooserController>(request, m_mainWindow.get(), this);
+    connect(m_chooser.get(), &ChooserController::finished, this,
+            [](bool accepted, const platform::FileChooserResult &result) {
+                if (accepted) {
+                    const QByteArray json = result.toJson();
+                    std::fwrite(json.constData(), 1, static_cast<std::size_t>(json.size()), stdout);
+                    std::fflush(stdout);
+                }
+                QCoreApplication::exit(accepted ? 0 : 1);
+            });
+
+    m_mainWindow->show();
+    m_chooser->focusInitial();
+
+    postStartupTask([this] { m_mainWindow->sidebar()->populate(); });
+    postStartupTask([this] { loadHotkeys(); });
+    postStartupTask([this] { startWatchingConfig(); });
+}
+
 void Application::startUp(const CommandLineOptions &options)
 {
+    if (options.chooser) {
+        // A blocking read, before any window: the request is all there is to
+        // show. A terminal means somebody ran it by hand, which gets the
+        // default Open dialog rather than waiting for input that isn't coming.
+        QByteArray json;
+        if (isatty(STDIN_FILENO) == 0) {
+            QFile input;
+            if (input.open(stdin, QIODevice::ReadOnly)) {
+                json = input.readAll();
+            }
+        }
+        startUpChooser(platform::FileChooserRequest::fromJson(json));
+        return;
+    }
+
     m_quitAfterPaint = options.quitAfterPaint;
     m_dbusService = options.dbusService;
 
@@ -883,7 +1042,6 @@ QString paletteGlyph(const QString &id, input::ActionCategory category)
     return glyph;
 }
 
-
 /// The write end of the self-pipe, read by the notifier below.
 ///
 /// A file-scope int rather than a member, because a signal handler has no
@@ -961,6 +1119,9 @@ ui::SettingsWindow *Application::settingsWindow()
         // The same code as the bar's Yes, so the two cannot drift apart.
         connect(m_settingsWindow, &ui::SettingsWindow::makeDefaultFileManagerRequested, this,
                 [this] { defaultFileManagerOffer()->makeDefault(); });
+
+        connect(m_settingsWindow, &ui::SettingsWindow::fileChooserChangeRequested, this,
+                &Application::changeFileChooser);
     }
     return m_settingsWindow;
 }
@@ -1177,14 +1338,13 @@ void Application::promptForAction()
                 shown = QStringLiteral("~") + path.mid(home.size());
             }
             const QString name = path == home ? tr("Home") : QFileInfo(path).fileName();
-            items.append(PaletteItem{
-                .id = {},
-                .title = name,
-                .detail = shown,
-                .keys = {},
-                .group = 2,
-                .path = path,
-                .icon = ui::Sidebar::iconNameForEntry(path)});
+            items.append(PaletteItem{.id = {},
+                                     .title = name,
+                                     .detail = shown,
+                                     .keys = {},
+                                     .group = 2,
+                                     .path = path,
+                                     .icon = ui::Sidebar::iconNameForEntry(path)});
         }
     }
 
@@ -1200,7 +1360,8 @@ void Application::openPaletteFromPanel(ui::FilePanel *panel)
 
 void Application::saveSession() const
 {
-    if (!m_settings.general.restoreSession || m_mainWindow == nullptr) {
+    // A file dialog's panel is not the user's session.
+    if (m_chooserMode || !m_settings.general.restoreSession || m_mainWindow == nullptr) {
         return;
     }
 

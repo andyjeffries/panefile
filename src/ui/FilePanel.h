@@ -10,6 +10,8 @@
 #include <QStringList>
 #include <QWidget>
 
+#include <optional>
+
 class QLabel;
 class QLineEdit;
 class QTimer;
@@ -111,6 +113,10 @@ public:
     SortKey sortKey() const;
     void setReverseSort(bool reverse);
     bool reverseSort() const;
+
+    /// A file dialog's type filter and folders-only mode; see FilterSortProxy.
+    void setNameFilters(const std::optional<QStringList> &globs);
+    void setDirectoriesOnly(bool only);
 
     void setFilterText(const QString &text);
     QString filterText() const;
@@ -320,6 +326,7 @@ private:
 
     QTimer *m_mosaicTimer = nullptr;
     bool m_active = false;
+    int m_headerTotal = 0;
     bool m_selectionMode = false;
 };
 

@@ -146,4 +146,10 @@ int runMakeDefaultCommand(QTextStream &out, QTextStream &err);
 /// `pf --default-status`. Returns the exit code.
 int runDefaultStatusCommand(QTextStream &out);
 
+/// `pf --make-file-chooser`. Returns the exit code.
+int runMakeFileChooserCommand(QTextStream &out, QTextStream &err);
+
+/// `pf --restore-file-chooser`. Returns the exit code.
+int runRestoreFileChooserCommand(QTextStream &out, QTextStream &err);
+
 } // namespace pf

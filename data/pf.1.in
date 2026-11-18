@@ -72,6 +72,40 @@ service. Started by the session bus through the service file
 writes, rather than by hand. Opens no window until a request arrives, and
 exits after about ten seconds if none does; otherwise it behaves like any other
 Panefile window. If Panefile is already running, requests are passed to it.
+.SS Open and Save dialogs (Linux)
+.TP
+.B \-\-make\-file\-chooser
+Make Panefile the Open and Save dialog for applications that use the
+xdg-desktop-portal FileChooser (Chromium, Firefox, Electron, Flatpaks). Writes
+.I ~/.local/share/xdg-desktop-portal/portals/panefile.portal
+and a D-Bus service file, puts
+.B panefile
+first in the FileChooser line of the
+.B portals.conf
+that is in effect (copying a system one into
+.I ~/.config/xdg-desktop-portal/
+first, and keeping the old backend as the fallback), and restarts
+xdg-desktop-portal. GTK and Qt applications use it only with
+.B GTK_USE_PORTAL=1
+(GTK 3),
+.B GDK_DEBUG=portals
+(GTK 4) or
+.B QT_QPA_PLATFORMTHEME=xdgdesktopportal
+(Qt) in their environment.
+.TP
+.B \-\-restore\-file\-chooser
+Put the previous FileChooser line back and restart the portal.
+.TP
+.B \-\-portal
+Run as the portal backend. Started by the session bus; opens no window and
+exits after two idle minutes. Each request starts
+.BR "pf \-\-chooser" .
+.TP
+.B \-\-chooser
+Run one Open or Save dialog: the request is JSON on standard input, the result
+JSON on standard output; exits 0 for a pick and 1 for a cancel. The window's
+application id is
+.BR panefile\-chooser .
 .SS Diagnostics
 .TP
 .B \-\-startup\-trace
@@ -135,6 +169,10 @@ The default application for each file type, including folders
 Written by
 .BR \-\-make\-default .
 Delete it to hand \(lqShow in folder\(rq back to the system's file manager.
+.TP
+.I ~/.local/share/xdg-desktop-portal/portals/panefile.portal
+Written by
+.BR \-\-make\-file\-chooser .
 .PP
 On macOS these live under
 .I ~/Library/Application Support/panefile/

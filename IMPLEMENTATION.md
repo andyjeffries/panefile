@@ -967,6 +967,16 @@ A Wayland client cannot raise itself unprompted; it needs an activation token fr
 - Argument parsing on the critical path is hand-rolled; `QCommandLineParser` is constructed only for `--help` and `--version`.
 - Log to stderr with `QLoggingCategory` under `panefile.*` categories.
 
+### 10.6 Open and Save dialogs (Linux)
+
+Panefile answers `org.freedesktop.impl.portal.FileChooser` (version 4: `OpenFile`, `SaveFile`, `SaveFiles`) as an xdg-desktop-portal backend.
+
+- `pf --portal` is a `QCoreApplication` that owns `org.freedesktop.impl.portal.desktop.panefile`, started by D-Bus. It never touches the display. Each call starts `pf --chooser` (same binary), writes the request as JSON on its stdin and delays the reply until it exits: 0 with a result JSON on stdout is response 0, exit 1 is response 1 (cancelled), anything else is 2. `Request.Close` terminates the child and answers 1. It exits after 120 s with no request.
+- `pf --chooser` is a full `Application` with one `MainWindow` (app id `panefile-chooser`), `PanelStrip::setPanelLimit(1)`, no session, no single-instance socket. The panel actions are not registered, so they are in no menu, palette or help. `ChooserController` owns what Enter, Accept and Cancel mean and `ChooserBar` the controls; the result leaves through `finished()`, and `Application` writes it and exits.
+- Save is disabled, with the reason in the footer (`MainWindow::setStatusError`), whenever it cannot succeed; the check is repeated on accept.
+- `--make-file-chooser` edits the `portals.conf` that is in effect (portals.conf(5) search order), never creating a higher-precedence file that would hide it; `--restore-file-chooser` undoes it exactly (`XdgPortals`).
+- Remote URIs and the parent-window handle (xdg-foreign) are out of scope.
+
 ---
 
 ## 11. Performance targets

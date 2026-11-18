@@ -5,6 +5,7 @@
 #include "platform/DefaultFileManager.h"
 #include "platform/FileManagerService.h"
 #include "platform/linux/XdgMimeApps.h"
+#include "platform/linux/XdgPortals.h"
 
 #include <QCoreApplication>
 #include <QDBusAbstractAdaptor>
@@ -14,8 +15,10 @@
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
 #include <QDBusReply>
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QProcess>
 #include <QStandardPaths>
 
 namespace pf::platform {
@@ -163,6 +166,168 @@ QString fileManagerNameOwner()
         .arg(process.isEmpty() ? QStringLiteral("unknown") : process)
         .arg(pid.value())
         .arg(owner.value());
+}
+
+bool fileChooserSupported()
+{
+    return true;
+}
+
+QString FileChooserStatus::fallback() const
+{
+    const bool panefileFirst =
+        !backends.isEmpty() && backends.constFirst() == QLatin1String("panefile");
+    for (qsizetype i = panefileFirst ? 1 : 0; i < backends.size(); ++i) {
+        if (!withoutChooser.contains(backends.at(i))) {
+            return backends.at(i);
+        }
+    }
+    return {};
+}
+
+QString FileChooserStatus::displayName(const QString &backend)
+{
+    if (backend == QLatin1String("gtk")) {
+        return QStringLiteral("GTK");
+    }
+    if (backend == QLatin1String("kde")) {
+        return QStringLiteral("KDE");
+    }
+    if (backend == QLatin1String("*")) {
+        return QStringLiteral("the system default");
+    }
+    return backend.isEmpty() ? backend : backend.at(0).toUpper() + backend.mid(1);
+}
+
+FileChooserStatus queryFileChooser()
+{
+    const xdg::Environment env = xdg::Environment::fromProcess();
+
+    FileChooserStatus status;
+    status.supported = true;
+
+    status.portalFile = xdg::portalFilePath(env);
+    status.portalFileExists = QFileInfo(status.portalFile).isFile();
+
+    status.serviceFile = xdg::portalServiceFilePath(env);
+    QFile service(status.serviceFile);
+    if (service.open(QIODevice::ReadOnly)) {
+        status.serviceExecutable = xdg::executableInServiceFile(service.readAll());
+        const QFileInfo executable(status.serviceExecutable);
+        status.serviceExecutableExists = executable.isFile() && executable.isExecutable() &&
+                                         executable.fileName() == QLatin1String("pf");
+    }
+
+    status.configFile = xdg::effectivePortalConfig(env);
+    if (!status.configFile.isEmpty()) {
+        status.backends = xdg::fileChooserBackends(xdg::readFile(status.configFile));
+        for (const QString &backend : std::as_const(status.backends)) {
+            if (backend != QLatin1String(xdg::kPortalBackendName) && backend != QLatin1String("*") &&
+                !xdg::portalImplements(env, backend, xdg::kFileChooserInterface)) {
+                status.withoutChooser << backend;
+            }
+        }
+    }
+    return status;
+}
+
+namespace {
+
+/// xdg-desktop-portal reads portals.conf once, so the change needs it to start
+/// again. Done by a process with an argument list and a timeout, never a shell.
+QString restartPortal()
+{
+    const QDBusConnection bus = QDBusConnection::sessionBus();
+    if (bus.isConnected()) {
+        bus.call(busCall("ReloadConfig"), QDBus::Block, 2000);
+    }
+
+    QProcess process;
+    process.start(QStringLiteral("systemctl"),
+                  {QStringLiteral("--user"), QStringLiteral("try-restart"),
+                   QStringLiteral("xdg-desktop-portal.service")});
+    if (!process.waitForFinished(5000)) {
+        process.kill();
+        return QStringLiteral("xdg-desktop-portal didn't restart in time");
+    }
+    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+        return QStringLiteral("xdg-desktop-portal couldn't be restarted");
+    }
+    return {};
+}
+
+FileChooserSwitchResult failed(const QString &error)
+{
+    FileChooserSwitchResult result;
+    result.error = error;
+    return result;
+}
+
+} // namespace
+
+FileChooserSwitchResult makePanefileFileChooser()
+{
+    const xdg::Environment env = xdg::Environment::fromProcess();
+    FileChooserSwitchResult result;
+
+    const QString executable = panefileExecutable();
+    if (!QDir::isAbsolutePath(executable)) {
+        return failed(QStringLiteral("couldn't find pf"));
+    }
+
+    result.portalFile = xdg::portalFilePath(env);
+    bool exists = false;
+    if (xdg::readFile(result.portalFile, &exists) != xdg::portalFileContents() || !exists) {
+        const xdg::WriteResult written =
+            xdg::writeFileAtomically(result.portalFile, xdg::portalFileContents());
+        if (!written.ok) {
+            return failed(written.error);
+        }
+    }
+
+    const xdg::WriteResult service = xdg::writePortalServiceFile(env, executable);
+    result.serviceFile = service.path;
+    if (!service.ok) {
+        return failed(service.error);
+    }
+
+    const xdg::PortalConfigTarget target = xdg::userPortalConfigTarget(env);
+    result.configFile = target.path;
+    const QByteArray updated = xdg::withFileChooser(target.content);
+    if (updated != target.content || !QFileInfo::exists(target.path)) {
+        const xdg::WriteResult written = xdg::writeFileAtomically(target.path, updated);
+        if (!written.ok) {
+            return failed(written.error);
+        }
+    }
+
+    result.ok = true;
+    result.restartNote = restartPortal();
+    return result;
+}
+
+FileChooserSwitchResult restorePanefileFileChooser()
+{
+    const xdg::Environment env = xdg::Environment::fromProcess();
+    FileChooserSwitchResult result;
+
+    result.configFile = xdg::effectivePortalConfig(env);
+    if (!result.configFile.isEmpty()) {
+        const QByteArray before = xdg::readFile(result.configFile);
+        const QByteArray after = xdg::withoutFileChooser(before);
+        if (xdg::isRedundantUserConfig(env, result.configFile, after)) {
+            QFile::remove(result.configFile);
+        } else if (after != before) {
+            const xdg::WriteResult written = xdg::writeFileAtomically(result.configFile, after);
+            if (!written.ok) {
+                return failed(written.error);
+            }
+        }
+    }
+
+    result.ok = true;
+    result.restartNote = restartPortal();
+    return result;
 }
 
 class DBusFileManagerService;

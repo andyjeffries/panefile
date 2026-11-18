@@ -198,6 +198,12 @@ QWidget#filePanel[panelActive="true"] {
     background-color: %{surface};
 }
 
+/* With one list there is nothing to tell apart from, so a file dialog's panel
+   keeps the focused surface and drops the edge. */
+QWidget#filePanel[panelActive="true"][soloPanel="true"] {
+    border-top: 2px solid transparent;
+}
+
 /* A hairline under the header rather than a filled bar: the path and the count
    are labels on the list, not a toolbar above it. */
 /* The margins are set on the layout in FilePanel, because padding here would
@@ -321,6 +327,26 @@ QWidget#footerRow {
     background-color: %{sidebar_bg};
     border-top: 1px solid %{border};
     min-height: 28px;
+}
+
+/* A file dialog's bar of name, options, type and buttons: part of the window's
+   chrome, on the same surface and hairline as the status bar above it. */
+QWidget#chooserBar {
+    background-color: %{sidebar_bg};
+    border-top: 1px solid %{border};
+}
+
+QWidget#chooserBar QLabel, QWidget#chooserBar QWidget#chooserChoices,
+QWidget#chooserBar QWidget#chooserActions {
+    background-color: transparent;
+}
+
+QWidget#footerRow QLabel {
+    background-color: transparent;
+}
+
+QLabel#footer[statusError="true"] {
+    color: %{error};
 }
 
 /* The UI face, with the permission string set in monospace inside the label's
@@ -687,7 +713,7 @@ QLabel#settingsHeading {
     font-weight: 600;
 }
 
-QLabel#settingsNote {
+QWidget#modalContent QLabel#settingsNote {
     background-color: transparent;
     color: %{faint};
     font-size: %{small_font_size}px;

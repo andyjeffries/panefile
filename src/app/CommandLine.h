@@ -12,10 +12,13 @@ enum class CommandLineAction {
     ShowVersion,
     PrintConfigDir,
     PrintDefaultConfig,
-    MakeDefault,   ///< --make-default: become the default file manager, then exit
-    DefaultStatus, ///< --default-status: report who the default file manager is
-    Benchmark,     ///< --benchmark <dir>: scan and print timings, then exit
-    Error          ///< `message` explains, exit with `exitCode`
+    MakeDefault,        ///< --make-default: become the default file manager, then exit
+    DefaultStatus,      ///< --default-status: report who the default file manager is
+    Portal,             ///< --portal: answer the xdg-desktop-portal FileChooser, no window
+    MakeFileChooser,    ///< --make-file-chooser: become the Open and Save dialog, then exit
+    RestoreFileChooser, ///< --restore-file-chooser: put the previous Open and Save dialog back
+    Benchmark,          ///< --benchmark <dir>: scan and print timings, then exit
+    Error               ///< `message` explains, exit with `exitCode`
 };
 
 /// Where a path argument should open, overriding the §10.2 defaults.
@@ -60,6 +63,10 @@ struct CommandLineOptions {
     /// org.freedesktop.FileManager1. No window until a call asks for one, and
     /// an exit if none does.
     bool dbusService = false;
+
+    /// --chooser: run as one Open or Save dialog. The request arrives as JSON on
+    /// stdin and the result leaves as JSON on stdout. Started by `--portal`.
+    bool chooser = false;
 
     /// Directory for --benchmark.
     QString benchmarkPath;

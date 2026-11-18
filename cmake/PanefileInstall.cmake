@@ -66,6 +66,13 @@ else()
     install(FILES "${PROJECT_SOURCE_DIR}/data/icons/panefile.svg"
         DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps")
 
+    # The Open and Save dialog backend: with these, a packaged install only needs
+    # the portals.conf line `pf --make-file-chooser` writes.
+    install(FILES "${PROJECT_SOURCE_DIR}/data/panefile.portal"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/xdg-desktop-portal/portals")
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/data/org.freedesktop.impl.portal.desktop.panefile.service"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/dbus-1/services")
+
     install(FILES "${CMAKE_CURRENT_BINARY_DIR}/data/pf.1"
         DESTINATION "${CMAKE_INSTALL_MANDIR}/man1")
 

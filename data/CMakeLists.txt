@@ -11,6 +11,9 @@ add_custom_target(pf_stage_data ALL
     COMMENT "Staging themes and the Heroicons set into the build tree")
 
 configure_file(panefile.desktop.in "${CMAKE_CURRENT_BINARY_DIR}/panefile.desktop" @ONLY)
+include(GNUInstallDirs)
+configure_file(org.freedesktop.impl.portal.desktop.panefile.service.in
+    "${CMAKE_CURRENT_BINARY_DIR}/org.freedesktop.impl.portal.desktop.panefile.service" @ONLY)
 configure_file(pf.1.in "${CMAKE_CURRENT_BINARY_DIR}/pf.1" @ONLY)
 
 # Validating the desktop entry at build time keeps a malformed MimeType or Exec

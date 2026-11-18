@@ -25,6 +25,12 @@ public:
 
     explicit PanelStrip(QWidget *parent = nullptr);
 
+    /// Lowers the most panels the strip will hold, below kMaxPanels. A file
+    /// dialog sets 1: one list, with nothing to tell it apart from, so the
+    /// strip also stops drawing the focused-panel edge.
+    void setPanelLimit(int limit);
+    int panelLimit() const;
+
     /// Adds a panel at `path`, focuses it, and returns it. Returns nullptr when
     /// the maximum is already reached — §7.1 wants a transient footer message
     /// rather than a modal, which the caller emits from panelLimitReached().
@@ -93,6 +99,7 @@ private:
     QList<FilePanel *> m_panels;
     FilePanel *m_focused = nullptr;
     bool m_compact = false;
+    int m_panelLimit = kMaxPanels;
 };
 
 } // namespace pf::ui

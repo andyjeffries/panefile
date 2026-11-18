@@ -49,6 +49,7 @@ const QStringList kRegisteredByTheCompositionRoot{
     QStringLiteral("open_command_line"),
     QStringLiteral("open_panefile_prompt"),
     QStringLiteral("open_settings"),
+    QStringLiteral("focus_chooser_name"),
 };
 
 } // namespace

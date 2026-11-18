@@ -170,3 +170,18 @@ if(PF_PLATFORM_LINUX)
     endif()
 endif()
 pf_add_test(tst_sec_conversions SOURCES tst_sec_conversions.cpp LIBS pf_fs pf_ui)
+
+# Open and Save dialogs through xdg-desktop-portal (Linux only).
+if(PF_PLATFORM_LINUX)
+    pf_add_test(tst_portals SOURCES tst_portals.cpp LIBS pf_platform)
+    pf_add_test(tst_filechooser_request SOURCES tst_filechooser_request.cpp LIBS pf_platform Qt6::DBus)
+    pf_add_test(tst_perf_chooser SERIAL SOURCES tst_perf_chooser.cpp LIBS pf_model pf_platform)
+    pf_add_test(tst_chooser SOURCES tst_chooser.cpp LIBS pf_ui pf_app)
+    if(PF_DBUS_RUN_SESSION)
+        pf_add_test(tst_portal_bus SOURCES tst_portal_bus.cpp LIBS pf_platform Qt6::DBus
+            WRAPPER "${PF_DBUS_RUN_SESSION}" --
+            ENVIRONMENT PF_TEST_PRIVATE_BUS=1)
+    else()
+        pf_add_test(tst_portal_bus SOURCES tst_portal_bus.cpp LIBS pf_platform Qt6::DBus)
+    endif()
+endif()

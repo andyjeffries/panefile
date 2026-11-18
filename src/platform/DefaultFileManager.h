@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 
 namespace pf::platform {
 
@@ -66,5 +67,75 @@ QString panefileExecutable();
 /// "nautilus (pid 1234)" — or empty when nobody does. Blocking; for the command
 /// line only.
 QString fileManagerNameOwner();
+
+// --- Open and Save dialogs ---------------------------------------------------
+
+/// Whether the xdg-desktop-portal FileChooser can be pointed at Panefile.
+/// True on Linux, false on macOS.
+bool fileChooserSupported();
+
+/// Where the portal FileChooser stands. Gathered by reading files, so never on
+/// the GUI thread.
+struct FileChooserStatus {
+    bool supported = false;
+
+    /// `panefile.portal`, which tells xdg-desktop-portal the backend exists.
+    QString portalFile;
+    bool portalFileExists = false;
+
+    /// The D-Bus activation file that starts `pf --portal`, and its `Exec=`.
+    QString serviceFile;
+    QString serviceExecutable;
+    bool serviceExecutableExists = false;
+
+    /// The portals.conf in effect, empty when there is none.
+    QString configFile;
+
+    /// The backends it names for the FileChooser, in order.
+    QStringList backends;
+
+    /// Those of them whose portal file doesn't offer a FileChooser, so the
+    /// portal skips them.
+    QStringList withoutChooser;
+
+    bool isPanefile() const
+    {
+        return !backends.isEmpty() && backends.constFirst() == QLatin1String("panefile") &&
+               portalFileExists && serviceExecutableExists;
+    }
+
+    /// The backend after Panefile that takes over if it is missing, or the
+    /// first one when Panefile is not chosen; empty when there is none.
+    QString fallback() const;
+
+    /// "GTK", "KDE", or the backend's own name.
+    static QString displayName(const QString &backend);
+};
+
+FileChooserStatus queryFileChooser();
+
+struct FileChooserSwitchResult {
+    bool ok = false;
+    QString error;
+    QString configFile;
+    QString portalFile;
+    QString serviceFile;
+    /// Set when the portal could not be restarted; the change still stands
+    /// and takes effect at the next login.
+    QString restartNote;
+};
+
+/// Writes the portal file, the activation file and Panefile's line in the
+/// portals.conf that is in effect, then restarts xdg-desktop-portal.
+FileChooserSwitchResult makePanefileFileChooser();
+
+/// `pf --portal`: answers the portal's FileChooser calls on the session bus
+/// until it has been idle for a while, starting `pf --chooser` for each. Needs a
+/// QCoreApplication. Returns the exit code; non-zero when the name is taken or
+/// there is no bus, and always on macOS.
+int runFileChooserPortal();
+
+/// Puts the previous FileChooser line back and restarts the portal.
+FileChooserSwitchResult restorePanefileFileChooser();
 
 } // namespace pf::platform

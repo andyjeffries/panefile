@@ -11,6 +11,7 @@
 #include "ui/PanelStrip.h"
 #include "ui/PanelView.h"
 #include "ui/Sidebar.h"
+#include "ui/SymbolicWidgets.h"
 #include "ui/ThemePalette.h"
 #include "ui/quicklook/QuickLookOverlay.h"
 
@@ -22,6 +23,7 @@
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QSplitter>
+#include <QStyle>
 #include <QTimer>
 #include <QVBoxLayout>
 
@@ -86,6 +88,12 @@ MainWindow::MainWindow(QWidget *parent)
                                      currentPalette().panelPadding, 4);
     footerLayout->setSpacing(14);
 
+    m_footerWarning = new SymbolicLabel(
+        QStringLiteral("exclamation-triangle"), 14, [] { return currentPalette().error; },
+        footerRow);
+    m_footerWarning->hide();
+    footerLayout->addWidget(m_footerWarning, 0);
+
     m_footer->setObjectName(QStringLiteral("footer"));
     // Rich, so the permission string alone can be set in monospace; every
     // message put here is escaped on the way in.
@@ -136,7 +144,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_strip, &PanelStrip::focusedPanelChanged, this, [this](FilePanel *panel) {
         connectPanel(panel);
         updateFooter();
-        if (panel != nullptr) {
+        if (panel != nullptr && m_fixedTitle.isEmpty()) {
             setWindowTitle(titleForPath(panel->path()));
         }
     });
@@ -183,8 +191,11 @@ void MainWindow::connectPanel(FilePanel *panel)
     m_panelCursorConnection = connect(panel, &FilePanel::cursorChanged, this,
                                       [this](const QString &) { updateFooter(); });
     m_panelPathConnection =
-        connect(panel, &FilePanel::pathChanged, this,
-                [this](const QString &path) { setWindowTitle(titleForPath(path)); });
+        connect(panel, &FilePanel::pathChanged, this, [this](const QString &path) {
+            if (m_fixedTitle.isEmpty()) {
+                setWindowTitle(titleForPath(path));
+            }
+        });
 }
 
 void MainWindow::showPendingKeys(const QString &text)
@@ -239,8 +250,25 @@ void MainWindow::setSelectionCount(int count)
         count > 0 ? tr("%1 selected").arg(counted(count, tr("item"), tr("items"))) : QString());
 }
 
+void MainWindow::setStatusError(const QString &message)
+{
+    m_statusErrorShown = !message.isEmpty();
+    m_footerWarning->setVisible(m_statusErrorShown);
+    m_footer->setProperty("statusError", m_statusErrorShown);
+    m_footer->style()->unpolish(m_footer);
+    m_footer->style()->polish(m_footer);
+    if (m_statusErrorShown) {
+        m_footer->setText(message.toHtmlEscaped());
+    } else {
+        updateFooter();
+    }
+}
+
 void MainWindow::showStatusMessage(const QString &message)
 {
+    if (m_statusErrorShown) {
+        return;
+    }
     const QString shown = message.toHtmlEscaped();
     m_footer->setText(shown);
 
@@ -282,6 +310,22 @@ void MainWindow::setTopBar(QWidget *bar)
     m_topBar = bar;
     if (auto *layout = qobject_cast<QVBoxLayout *>(centralWidget()->layout()); layout != nullptr) {
         layout->insertWidget(0, bar);
+    }
+}
+
+void MainWindow::setFixedTitle(const QString &title)
+{
+    m_fixedTitle = title;
+    setWindowTitle(title);
+}
+
+void MainWindow::setBottomBar(QWidget *bar)
+{
+    if (bar == nullptr) {
+        return;
+    }
+    if (auto *layout = qobject_cast<QVBoxLayout *>(centralWidget()->layout()); layout != nullptr) {
+        layout->insertWidget(layout->indexOf(m_footerRow) + 1, bar);
     }
 }
 
@@ -455,6 +499,10 @@ void MainWindow::toggleSidebar()
 
 void MainWindow::updateFooter()
 {
+    if (m_statusErrorShown) {
+        return;
+    }
+
     const FilePanel *panel = activePanel();
     if (panel == nullptr) {
         m_footer->clear();

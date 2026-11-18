@@ -28,12 +28,14 @@
 #include <QPainter>
 #include <QPointer>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSpinBox>
 #include <QStackedWidget>
 #include <QThreadPool>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <optional>
 
 namespace pf::ui {
@@ -80,26 +82,105 @@ QPushButton *makeTabButton(const QString &iconName, const QString &title)
     return button;
 }
 
-/// A form row's label, so every tab's labels line up and read the same.
+/// A wrapped note whose preferred width is a readable line, so a form that
+/// keeps fields at their size hint gives it the whole field column.
+class FieldNote : public QLabel
+{
+public:
+    using QLabel::QLabel;
+
+    QSize sizeHint() const override
+    {
+        const int width = readableWidth();
+        return {width, QLabel::heightForWidth(width)};
+    }
+
+    int heightForWidth(int width) const override
+    {
+        return QLabel::heightForWidth(std::min(width, readableWidth()));
+    }
+
+private:
+    int readableWidth() const { return fontMetrics().averageCharWidth() * 80; }
+};
+
+/// Keeps a form either fully two-column or fully stacked. Qt's own per-row
+/// wrapping tests each row against its own label, not the widest one, so it
+/// leaves rows squeezed below their minimum and mixes both layouts.
+class FormWrapper : public QObject
+{
+public:
+    FormWrapper(QScrollArea *scroll, QWidget *page, QVBoxLayout *outer, QFormLayout *form)
+        : QObject(scroll), m_scroll(scroll), m_outer(outer), m_form(form)
+    {
+        scroll->viewport()->installEventFilter(this);
+        page->installEventFilter(this);
+    }
+
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (event->type() == QEvent::Resize || event->type() == QEvent::LayoutRequest) {
+            update();
+        }
+        return QObject::eventFilter(watched, event);
+    }
+
+private:
+    void update()
+    {
+        int label = 0;
+        int field = 0;
+        for (int r = 0; r < m_form->rowCount(); ++r) {
+            if (QLayoutItem *item = m_form->itemAt(r, QFormLayout::LabelRole)) {
+                label = std::max(label, item->minimumSize().width());
+            }
+            if (QLayoutItem *item = m_form->itemAt(r, QFormLayout::FieldRole)) {
+                field = std::max(field, item->minimumSize().width());
+            }
+        }
+        const QMargins margins = m_outer->contentsMargins();
+        const int twoColumn =
+            margins.left() + margins.right() + label + m_form->horizontalSpacing() + field;
+        const auto policy = m_scroll->viewport()->width() < twoColumn ? QFormLayout::WrapAllRows
+                                                                      : QFormLayout::DontWrapRows;
+        if (m_form->rowWrapPolicy() != policy) {
+            m_form->setRowWrapPolicy(policy);
+        }
+    }
+
+    QScrollArea *m_scroll;
+    QVBoxLayout *m_outer;
+    QFormLayout *m_form;
+};
+
+/// A scrolling page holding a form, so rows that outgrow the card scroll
+/// instead of being squeezed below their height-for-width.
 QWidget *formPage(QFormLayout **formOut)
 {
     auto *page = new QWidget;
     auto *outer = new QVBoxLayout(page);
-    outer->setContentsMargins(28, 24, 28, 24);
+    outer->setContentsMargins(28, 20, 28, 20);
     outer->setSpacing(0);
 
     auto *form = new QFormLayout;
     form->setLabelAlignment(Qt::AlignRight | Qt::AlignVCenter);
     form->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
     form->setHorizontalSpacing(16);
-    form->setVerticalSpacing(12);
+    form->setVerticalSpacing(10);
+    form->setRowWrapPolicy(QFormLayout::DontWrapRows);
     form->setFieldGrowthPolicy(QFormLayout::FieldsStayAtSizeHint);
 
     outer->addLayout(form);
     outer->addStretch(1);
 
     *formOut = form;
-    return page;
+
+    auto *scroll = new QScrollArea;
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setWidgetResizable(true);
+    scroll->setWidget(page);
+    new FormWrapper(scroll, page, outer, form);
+    return scroll;
 }
 
 /// A button that records a shortcut: click it, press the chord.
@@ -254,6 +335,11 @@ struct SettingsWindow::Controls {
     QCheckBox *offerDefaultFileManager = nullptr;
     QLabel *defaultFileManagerStatus = nullptr;
     QPushButton *makeDefaultFileManager = nullptr;
+
+    // Open and Save dialogs — also Linux only.
+    QLabel *fileChooserStatus = nullptr;
+    QPushButton *switchFileChooser = nullptr;
+    bool fileChooserIsPanefile = false;
 
     // Quick Look
     QComboBox *dock = nullptr;
@@ -546,6 +632,44 @@ QWidget *SettingsWindow::buildGeneralTab()
         form->addRow(tr("Default file manager"), row);
     }
 
+    if (platform::fileChooserSupported()) {
+        m_controls->fileChooserStatus = new QLabel;
+        m_controls->fileChooserStatus->setObjectName(QStringLiteral("settingsFileChooserStatus"));
+        m_controls->fileChooserStatus->setTextFormat(Qt::PlainText);
+        m_controls->fileChooserStatus->setTextInteractionFlags(Qt::TextSelectableByMouse);
+
+        m_controls->switchFileChooser = new QPushButton(tr("Use Panefile"));
+        m_controls->switchFileChooser->setObjectName(QStringLiteral("settingsSwitchFileChooser"));
+        connect(m_controls->switchFileChooser, &QPushButton::clicked, this, [this] {
+            const bool toPanefile = !m_controls->fileChooserIsPanefile;
+            m_controls->switchFileChooser->setEnabled(false);
+            m_controls->fileChooserStatus->setText(toPanefile ? tr("Switching to Panefile…")
+                                                              : tr("Switching back…"));
+            Q_EMIT fileChooserChangeRequested(toPanefile);
+        });
+
+        auto *note = new FieldNote(tr("Used by Chromium, Firefox, Flatpaks and other apps that ask "
+                                   "the desktop portal. Switching restarts the portal, which "
+                                   "pauses any screen share."));
+        note->setObjectName(QStringLiteral("settingsNote"));
+        note->setWordWrap(true);
+
+        auto *field = new QWidget;
+        auto *column = new QVBoxLayout(field);
+        column->setContentsMargins(0, 0, 0, 0);
+        column->setSpacing(6);
+        auto *row = new QWidget;
+        auto *line = new QHBoxLayout(row);
+        line->setContentsMargins(0, 0, 0, 0);
+        line->setSpacing(12);
+        line->addWidget(m_controls->fileChooserStatus);
+        line->addWidget(m_controls->switchFileChooser);
+        line->addStretch(1);
+        column->addWidget(row);
+        column->addWidget(note);
+        form->addRow(tr("Open and Save dialogs"), field);
+    }
+
     return page;
 }
 
@@ -576,6 +700,43 @@ void SettingsWindow::refreshDefaultFileManagerStatus()
                 self->m_controls->defaultFileManagerStatus->setText(text);
                 self->m_controls->makeDefaultFileManager->setEnabled(!status.isDefault() &&
                                                                      status.panefileInstalled);
+            },
+            Qt::QueuedConnection);
+    });
+}
+
+void SettingsWindow::refreshFileChooserStatus()
+{
+    if (m_controls->fileChooserStatus == nullptr) {
+        return;
+    }
+
+    const QPointer<SettingsWindow> self(this);
+    WorkerPools::acquire("pf-default-fm", 1)->start([self] {
+        const platform::FileChooserStatus status = platform::queryFileChooser();
+        QMetaObject::invokeMethod(
+            self,
+            [self, status] {
+                if (self.isNull()) {
+                    return;
+                }
+                using platform::FileChooserStatus;
+                const QString fallback = FileChooserStatus::displayName(status.fallback());
+                QString text;
+                QString button;
+                if (status.isPanefile()) {
+                    text = fallback.isEmpty()
+                               ? tr("Panefile")
+                               : tr("Panefile, with %1 as the fallback").arg(fallback);
+                    button = fallback.isEmpty() ? tr("Use previous") : tr("Use %1").arg(fallback);
+                } else {
+                    text = fallback.isEmpty() ? tr("The system's own dialog") : fallback;
+                    button = tr("Use Panefile");
+                }
+                self->m_controls->fileChooserIsPanefile = status.isPanefile();
+                self->m_controls->fileChooserStatus->setText(text);
+                self->m_controls->switchFileChooser->setText(button);
+                self->m_controls->switchFileChooser->setEnabled(true);
             },
             Qt::QueuedConnection);
     });
@@ -753,6 +914,7 @@ void SettingsWindow::present()
 {
     loadValues();
     refreshDefaultFileManagerStatus();
+    refreshFileChooserStatus();
     showModal();
 }
 

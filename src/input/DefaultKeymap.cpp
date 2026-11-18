@@ -187,6 +187,8 @@ constexpr DefaultBinding kDefaults[] = {
     {KeymapLayer::Global, "open_file_with_editor", "F4"},
     {KeymapLayer::Global, "open_current_directory_with_editor", "Shift+F4"},
     {KeymapLayer::Global, "open_with_default_app", "Ctrl+Return"},
+    // Only a file dialog registers it: the Name field of a Save dialog.
+    {KeymapLayer::Global, "focus_chooser_name", "Ctrl+L"},
     {KeymapLayer::Global, "open_terminal_here", "Ctrl+Shift+T"},
 };
 // NOLINTEND(modernize-use-designated-initializers)

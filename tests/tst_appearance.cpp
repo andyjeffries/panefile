@@ -10,6 +10,7 @@
 #include <QApplication>
 #include <QDir>
 #include <QImage>
+#include <QLabel>
 #include <QPainter>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -300,6 +301,30 @@ private Q_SLOTS:
         m_panel->refreshTheme();
 
         QVERIFY2(tightImage != airyImage, "panel_padding must change the row layout");
+    }
+
+    /// The settings note and the footer's warning glyph sit inside parents whose
+    /// own label rule is more general; they must still get their own look.
+    void namedLabelsBeatTheGeneralLabelRules()
+    {
+        const config::Theme theme = currentPalette();
+        qApp->setStyleSheet(config::buildStyleSheet(theme));
+
+        QWidget modal;
+        modal.setObjectName("modalContent");
+        auto *note = new QLabel("note", &modal);
+        note->setObjectName("settingsNote");
+        modal.ensurePolished();
+        note->ensurePolished();
+        QCOMPARE(note->palette().color(QPalette::WindowText), theme.overlay);
+
+        QWidget footer;
+        footer.setObjectName("footerRow");
+        auto *glyph = new QLabel("x", &footer);
+        footer.ensurePolished();
+        glyph->ensurePolished();
+        QCOMPARE(glyph->palette().color(QPalette::Window).alpha(), 0);
+        qApp->setStyleSheet({});
     }
 
 private:

@@ -25,6 +25,7 @@ target_include_directories(pf_core PUBLIC "${CMAKE_CURRENT_BINARY_DIR}")
 # chosen here so that shared translation units stay free of #ifdef.
 # ---------------------------------------------------------------------------
 set(PF_PLATFORM_SOURCES
+    platform/FileChooserRequest.cpp
     platform/FileManagerService.cpp
     platform/FileOpsCommon.cpp
     platform/LauncherCommon.cpp
@@ -42,6 +43,7 @@ set(PF_PLATFORM_SOURCES
 if(PF_PLATFORM_LINUX)
     list(APPEND PF_PLATFORM_SOURCES
         platform/linux/DefaultFileManager_linux.cpp
+        platform/linux/FileChooserPortal_linux.cpp
         platform/linux/FileOps_linux.cpp
         platform/linux/Launcher_linux.cpp
         platform/linux/MountTable_linux.cpp
@@ -49,7 +51,8 @@ if(PF_PLATFORM_LINUX)
         platform/linux/Paths_linux.cpp
         platform/linux/VolumeMonitor_linux.cpp
         platform/linux/WatchBackend_linux.cpp
-        platform/linux/XdgMimeApps.cpp)
+        platform/linux/XdgMimeApps.cpp
+        platform/linux/XdgPortals.cpp)
 elseif(PF_PLATFORM_DARWIN)
     list(APPEND PF_PLATFORM_SOURCES
         platform/darwin/DefaultFileManager_darwin.cpp
@@ -214,6 +217,8 @@ qt_add_resources(pf_model "emblem_icons"
 pf_layer_library(pf_ui
     LAYER ui
     SOURCES
+        ui/ChooserBar.cpp
+        ui/ElidingComboBox.cpp
         ui/ChordHint.cpp
         ui/CursorMemory.cpp
         ui/DefaultFileManagerBar.cpp
@@ -268,6 +273,7 @@ pf_layer_library(pf_app
     LAYER app
     SOURCES
         app/Application.cpp
+        app/ChooserController.cpp
         app/CommandLine.cpp
         app/DefaultFileManagerOffer.cpp
         app/FileKinds.cpp

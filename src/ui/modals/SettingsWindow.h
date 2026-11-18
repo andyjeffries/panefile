@@ -55,6 +55,9 @@ public:
     /// General tab's status line. Linux only; a no-op elsewhere.
     void refreshDefaultFileManagerStatus();
 
+    /// The same for the Open and Save dialogs row.
+    void refreshFileChooserStatus();
+
 Q_SIGNALS:
     /// A theme was picked. The composition root applies it immediately —
     /// appearance is judged by looking at it, so it has to change under the
@@ -69,6 +72,12 @@ Q_SIGNALS:
     /// the offer bar's Yes does, and calls refreshDefaultFileManagerStatus()
     /// when it is done.
     void makeDefaultFileManagerRequested();
+
+    /// The Open and Save dialogs button was pressed: `toPanefile` is true to
+    /// switch to Panefile, false to put the previous dialog back. The composition
+    /// root does it off the GUI thread and calls refreshFileChooserStatus()
+    /// when it is done.
+    void fileChooserChangeRequested(bool toPanefile);
 
 private:
     static QWidget *buildToolbar();

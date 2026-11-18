@@ -191,6 +191,57 @@ line yourself if yours is a symlink.)
 
 None of this applies on macOS, where Finder cannot be replaced.
 
+## System Open and Save dialogs
+
+On Linux Panefile can be the Open and Save dialog for other applications. They
+ask the desktop portal (xdg-desktop-portal), which passes the request to
+whichever FileChooser backend `portals.conf` names; Panefile is one. Switch it
+on in Settings → General → **Open and Save dialogs**, or:
+
+```sh
+pf --make-file-chooser      # on; restarts xdg-desktop-portal, no login needed
+pf --restore-file-chooser   # back to what it was
+pf --default-status         # where it stands
+```
+
+It writes `~/.local/share/xdg-desktop-portal/portals/panefile.portal`, a D-Bus
+service file for `pf --portal`, and one line in the `portals.conf` that is in
+effect: `org.freedesktop.impl.portal.FileChooser=panefile;` followed by the old
+value as the fallback. A system `portals.conf` (say `hyprland-portals.conf`) is
+copied into `~/.config/xdg-desktop-portal/` under the same name first, because
+the portal reads only the first file it finds; every other line is untouched,
+so screen sharing keeps working. `--restore-file-chooser` puts the old line
+back and deletes the copy again when nothing else in it changed. Restarting the portal pauses a running screen
+share for a moment.
+
+Each dialog is a Panefile window with one list, your keys, themes and Quick
+Look, and a bar underneath: the name (Save), the application's own options, the
+file type, **Cancel** and **Open** / **Save**. Ctrl+L focuses the name, Tab
+moves between the name and the list, Esc cancels, and Save asks before
+replacing a file and is disabled where it can't succeed. The window's
+application id is `panefile-chooser`, so a Hyprland rule can float it:
+
+```
+windowrule = float on, match:class ^(panefile-chooser)$
+windowrule = size 1100 700, match:class ^(panefile-chooser)$
+```
+
+Which applications use it: Chromium, Electron, Firefox (set
+`widget.use-xdg-desktop-portal.file-picker` to `1` in `about:config`) and
+Flatpaks already ask the portal. Native GTK and Qt applications keep their own
+dialog unless their environment says otherwise:
+
+| Toolkit | Environment |
+| --- | --- |
+| GTK 3 | `GTK_USE_PORTAL=1` |
+| GTK 4 | `GDK_DEBUG=portals` |
+| Qt | `QT_QPA_PLATFORMTHEME=xdgdesktopportal` |
+
+Only local files are returned, and a file-type filter given as a MIME type is
+matched by name, so a file with no extension is hidden by it. The dialog opens
+at the folder the application suggests, then the last one used for it, then
+home. Not available on macOS.
+
 ## Licence
 
 MIT. See `LICENSE`.

@@ -106,6 +106,10 @@ private Q_SLOTS:
     void directoriesStayFirstWhenReversed();
     void directoriesFirstCanBeDisabled();
     void hiddenFilesAreFilteredByDefault();
+    void nameFiltersHideFilesButNeverFolders();
+    void anEmptyNameFilterListsOnlyFolders();
+    void suffixAndPatternGlobsBothMatch();
+    void directoriesOnlyListsFolders();
     void showHiddenRevealsThem();
     void filterTextIsCaseInsensitiveSubstring();
     void filterAndHiddenCombine();
@@ -128,6 +132,8 @@ void TestSorting::init()
     m_proxy.setReverseSort(false);
     m_proxy.setSortKey(SortKey::Name);
     m_proxy.setFilterText({});
+    m_proxy.setNameFilters(std::nullopt);
+    m_proxy.setDirectoriesOnly(false);
 }
 
 void TestSorting::namesSortNaturally()
@@ -188,6 +194,50 @@ void TestSorting::hiddenFilesAreFilteredByDefault()
     m_model.setEntries({makeFile(".gitignore"), makeFile("README.md"), makeFile(".env")});
 
     QCOMPARE(visibleNames(), QStringList{"README.md"});
+}
+
+void TestSorting::nameFiltersHideFilesButNeverFolders()
+{
+    m_model.setEntries(
+        {makeDir("Docs.d"), makeFile("a.PDF"), makeFile("b.txt"), makeFile("c.pdf")});
+    m_proxy.setNameFilters(QStringList{QStringLiteral("*.pdf")});
+
+    QCOMPARE(visibleNames(), (QStringList{"Docs.d", "a.PDF", "c.pdf"}));
+    QVERIFY(m_proxy.restrictsListing());
+    // The header's "n of m" compares with everything the hidden rule allows.
+    QCOMPARE(m_proxy.countPassingHiddenRule(), 4);
+
+    m_proxy.setNameFilters(std::nullopt);
+    QCOMPARE(visibleNames().size(), 4);
+}
+
+void TestSorting::anEmptyNameFilterListsOnlyFolders()
+{
+    m_model.setEntries({makeDir("Docs"), makeFile("a.pdf")});
+    m_proxy.setNameFilters(QStringList{});
+
+    QCOMPARE(visibleNames(), QStringList{"Docs"});
+    QVERIFY(m_proxy.restrictsListing());
+}
+
+void TestSorting::suffixAndPatternGlobsBothMatch()
+{
+    m_model.setEntries({makeFile("x.pdf"), makeFile("a.tar.gz"), makeFile("b.txt"),
+                        makeFile("ab.txt"), makeFile("Makefile"), makeFile("other")});
+
+    m_proxy.setNameFilters(QStringList{"*.tar.gz", "*.PDF", "?.txt", "Makefile"});
+    QCOMPARE(visibleNames(), (QStringList{"a.tar.gz", "b.txt", "Makefile", "x.pdf"}));
+
+    m_proxy.setNameFilters(QStringList{"*"});
+    QCOMPARE(visibleNames().size(), 6);
+}
+
+void TestSorting::directoriesOnlyListsFolders()
+{
+    m_model.setEntries({makeDir("Docs"), makeFile("a.pdf")});
+    m_proxy.setDirectoriesOnly(true);
+
+    QCOMPARE(visibleNames(), QStringList{"Docs"});
 }
 
 void TestSorting::showHiddenRevealsThem()

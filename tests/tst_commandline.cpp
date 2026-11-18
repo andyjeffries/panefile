@@ -100,6 +100,11 @@ void TestCommandLine::informationalFlags_data()
         << "--print-default-config" << CommandLineAction::PrintDefaultConfig;
     QTest::newRow("--make-default") << "--make-default" << CommandLineAction::MakeDefault;
     QTest::newRow("--default-status") << "--default-status" << CommandLineAction::DefaultStatus;
+    QTest::newRow("--portal") << "--portal" << CommandLineAction::Portal;
+    QTest::newRow("--make-file-chooser")
+        << "--make-file-chooser" << CommandLineAction::MakeFileChooser;
+    QTest::newRow("--restore-file-chooser")
+        << "--restore-file-chooser" << CommandLineAction::RestoreFileChooser;
 }
 
 void TestCommandLine::informationalFlags()
@@ -155,6 +160,11 @@ void TestCommandLine::dbusServiceRunsWithoutPaths()
     QVERIFY(options.dbusService);
     QVERIFY(options.paths.isEmpty());
     QVERIFY(!parseCommandLine(QStringList{"pf"}).dbusService);
+
+    const auto chooser = parseCommandLine(QStringList{"pf", "--chooser"});
+    QCOMPARE(chooser.action, CommandLineAction::Run);
+    QVERIFY(chooser.chooser);
+    QVERIFY(!parseCommandLine(QStringList{"pf"}).chooser);
 }
 
 void TestCommandLine::benchmarkRequiresArgument()

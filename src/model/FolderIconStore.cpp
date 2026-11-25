@@ -136,7 +136,6 @@ void FolderIconStore::preload(const QString &glyphId)
 
     if (isImageGlyph(glyphId)) {
         QImageReader reader(maskPath(glyphId), "png");
-        reader.setAllocationLimit(16);
         QImage mask;
         if (reader.size() == QSize(FolderIconImage::kMaskSize, FolderIconImage::kMaskSize)) {
             mask = reader.read();

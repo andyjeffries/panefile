@@ -20,8 +20,8 @@ namespace {
 
 /// Refused before decoding: either side beyond this many pixels.
 constexpr int kMaxSide = 8192;
-/// Qt's decode allocation limit, in megabytes.
-constexpr int kAllocationLimitMb = 128;
+/// Refused before decoding: more than this many decoded bytes (4 per pixel).
+constexpr qint64 kMaxDecodeBytes = qint64(128) * 1024 * 1024;
 /// SVGs have no pixel size; they are rasterised to fit this square, aspect kept.
 constexpr int kSvgSide = 512;
 /// The picture is scaled to fit this square before analysis.
@@ -56,7 +56,6 @@ double smoothstep(double low, double high, double x)
 QImage decode(QImageReader &reader, bool svg)
 {
     reader.setAutoTransform(true);
-    reader.setAllocationLimit(kAllocationLimitMb);
     if (svg) {
         const QSize size = reader.size();
         reader.setScaledSize(size.isEmpty() ? QSize(kSvgSide, kSvgSide)
@@ -66,7 +65,7 @@ QImage decode(QImageReader &reader, bool svg)
         if (size.isValid() && (size.width() > kMaxSide || size.height() > kMaxSide)) {
             return {};
         }
-        if (!size.isValid()) {
+        if (!size.isValid() || qint64(size.width()) * size.height() * 4 > kMaxDecodeBytes) {
             return {};
         }
     }

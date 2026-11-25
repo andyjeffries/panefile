@@ -12,6 +12,7 @@
 #include <QDir>
 #include <QFile>
 #include <QGuiApplication>
+#include <QImageReader>
 #include <QKeyEvent>
 #include <QMimeData>
 #include <QPainter>
@@ -20,6 +21,8 @@
 #include <QTest>
 #include <QUrl>
 #include <QWidget>
+
+#include <memory>
 
 using namespace pf;
 
@@ -30,12 +33,14 @@ class TestFolderIcons : public QObject
 
 private:
     QTemporaryDir m_state;
+    int m_allocationLimit = 0;
 
 private Q_SLOTS:
     void initTestCase()
     {
         // Never the developer's real state directory.
         qputenv("PANEFILE_STATE_DIR", m_state.path().toUtf8());
+        m_allocationLimit = QImageReader::allocationLimit();
     }
 
     void init() { FolderIconStore::instance().reset(); }
@@ -247,6 +252,37 @@ private Q_SLOTS:
         QVERIFY(QFile::exists(file));
         store.clear(QStringLiteral("/tmp/x/two"));
         QVERIFY(!QFile::exists(file));
+    }
+
+    void loadingImageEmblemsLeavesOtherDecodesAlone()
+    {
+        // QImageReader::setAllocationLimit() is static: a limit set for one
+        // reader holds for every decode in the process, so a 2880x2018 PNG
+        // (23 MB decoded) would fail in Quick Look and thumbnails.
+        QTemporaryDir dir;
+        const QString big = dir.filePath(QStringLiteral("big@2x.png"));
+        QImage picture(2880, 2018, QImage::Format_ARGB32);
+        picture.fill(Qt::transparent);
+        QPainter painter(&picture);
+        painter.fillRect(QRect(400, 400, 2000, 1200), Qt::black);
+        painter.end();
+        QVERIFY(picture.save(big));
+
+        auto mime = std::make_unique<QMimeData>();
+        mime->setUrls({QUrl::fromLocalFile(big)});
+        QVERIFY(!FolderIconImage::sourceFromClipboard(mime.get()).isNull());
+
+        auto &store = FolderIconStore::instance();
+        const QString id = store.addImage(testMask(20));
+        QVERIFY(store.set(QStringLiteral("/tmp/limit/one"), id));
+        store.reset();
+        QVERIFY(store.set(QStringLiteral("/tmp/limit/one"), id));
+        QVERIFY(!store.maskFor(id).isNull());
+        store.clear(QStringLiteral("/tmp/limit/one"));
+
+        QCOMPARE(QImageReader::allocationLimit(), m_allocationLimit);
+        QImageReader reader(big);
+        QVERIFY2(!reader.read().isNull(), qPrintable(reader.errorString()));
     }
 
     void imageEmblemPaintsInsideTheEmblemOnly()
